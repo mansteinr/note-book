@@ -14,7 +14,7 @@
 - [目录生成](#目录生成)
 
 ### 语法
-[markdown官网](https://markdown.p2hp.com/getting-started/)
+[markdown官网](https://markdown.p2hp.com/basic-syntax/)
 <link id="myCss" rel="stylesheet" type="text/css" href="./style.css">
 
 
@@ -74,3 +74,11 @@ d
 ### 目录生成
 
   将光标移至需要插入目录的位置，可以通过Ctrl-Shift-P然后选择Generate Toc for markdown，目录即自动插入。 显示效果如下：
+
+  ### 生产table
+
+  | 功能       | 语法          | 效果               |
+|:----------|:------------:|------------------:|
+| 加粗      | `**文本**`   | **加粗文本**       |
+| 链接      | `[标题](URL)` | [示例](https://example.com) |
+| 代码块    | \`\`\`代码\`\`\` | 多行代码块         |
