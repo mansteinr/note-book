@@ -4,10 +4,10 @@
 <!-- code_chunk_output -->
 
 - [语法](#语法)
-- [My Great Heading {#custom-id}](#my-great-heading-custom-id)
+- [My Great Heading](#custom-id)
 - [目录生成](#目录生成)
-- [生产table](#生产table)
 - [流程图](#流程图)
+- [插入图片](#插入图片)
 
 <!-- /code_chunk_output -->
 
@@ -16,6 +16,7 @@
 - [目录生成](#目录生成)
 - [生产table](#生产table)
 - [流程图](#流程图)
+- [插入图片](#插入图片)
 
 ### 语法
 [markdown官网](https://markdown.p2hp.com/basic-syntax/)
@@ -84,6 +85,7 @@ d
 
   | 功能       | 语法          | 效果               |
 |:----------|:------------:|------------------:|
+| 左对齐      | 居中   | 右对齐   |
 | 加粗      | `**文本**`   | **加粗文本**       |
 | 链接      | `[标题](URL)` | [示例](https://example.com) |
 | 代码块    | \`\`\`代码\`\`\` | 多行代码块         |
@@ -110,3 +112,13 @@ C --> E[覆盖 node_modules]
 D --> E
 E --> F[写入 package-lock.json]
 ```
+
+### 插入图片
+![语义化版本号格式](./other/images/语义化版本号格式.png)
+
+- [x] Write the press release
+- [ ] Update the website
+- [ ] Contact the media
+- [ ] 
+
+❎✅ ❌
