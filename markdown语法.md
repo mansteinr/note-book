@@ -3,20 +3,34 @@
 
 <!-- code_chunk_output -->
 
+- [加粗](#加粗)
 - [语法](#语法)
 - [My Great Heading](#custom-id)
 - [目录生成](#目录生成)
 - [流程图](#流程图)
 - [插入图片](#插入图片)
+- [插入音频](#插入音频)
+  - [​3.1 使用audio 标签](#31-使用audio-标签)
+  - [3.2 使用iframe标签](#32-使用iframe标签)
+  - [3.3 使用video标签](#33-使用video标签)
 
 <!-- /code_chunk_output -->
 
+- [加粗](#加粗)
 - [语法](#语法)
 - [My Great Heading {#custom-id}](#my-great-heading-custom-id)
 - [目录生成](#目录生成)
 - [生产table](#生产table)
 - [流程图](#流程图)
 - [插入图片](#插入图片)
+- [插入音频](#插入音频)
+  - [​3.1 使用audio 标签](#31-使用audio-标签)
+  - [3.2 使用iframe标签](#32-使用iframe标签)
+  - [3.3 使用video标签](#33-使用video标签)
+
+### 加粗
+__加粗__
+**重要**
 
 ### 语法
 [markdown官网](https://markdown.p2hp.com/basic-syntax/)
@@ -26,8 +40,6 @@
 <div style="background-color: #FFFF00;">
 这里的文本将会有黄色背景。
 </div>
-d
-<div></div>
 
 > Dorothy followed her through many of the beautiful rooms in her castle.
 
@@ -131,5 +143,25 @@ E --> F[写入 package-lock.json]
 - Fourth item
 
 
-__加粗__
-**重要**
+### 插入音频
+
+#### ​3.1 使用audio 标签
+```
+<audio id="audio" controls="" preload="none">
+      <source id="mp3" src="音频地址">
+</audio>
+```
+
+#### 3.2 使用iframe标签
+
+```
+<iframe src="./css/images/auto-fill-devtools.mov" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true"> </iframe>
+```
+
+<iframe src="./css/images/auto-fill-devtools.mp4" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true" width="600"> </iframe>
+<iframe src="https://vdept3.bdstatic.com/mda-rgj984jptz698xn1/cae_h264/1752993163292975753/mda-rgj984jptz698xn1.mp4?v_from_s=hkapp-haokan-nanjing&auth_key=1754915785-0-0-0862428eb19c5022ffe5ca8278806280&bcevod_channel=searchbox_feed&cr=0&cd=0&pd=1&pt=3&logid=2185263610&vid=1091603445691108323&klogid=2185263610&abtest=" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true"> </iframe>
+
+#### 3.3 使用video标签
+<video controls src="https://vdept3.bdstatic.com/mda-rgj984jptz698xn1/cae_h264/1752993163292975753/mda-rgj984jptz698xn1.mp4?v_from_s=hkapp-haokan-nanjing&auth_key=1754915785-0-0-0862428eb19c5022ffe5ca8278806280&bcevod_channel=searchbox_feed&cr=0&cd=0&pd=1&pt=3&logid=2185263610&vid=1091603445691108323&klogid=2185263610&abtest=" width="600"></video>
+
+
