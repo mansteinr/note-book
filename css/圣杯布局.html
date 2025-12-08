@@ -1,0 +1,37 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>圣杯布局</title>
+  <style>
+.HolyGrail-body {
+  display: flex;
+  flex: 1;
+}
+nav, aside {
+  /* 两个边栏的宽度设为12em */
+  flex: 0 0 12em;
+  height: 100px;
+}
+
+main {
+flex: 1;
+height: 100px;
+ background-color: #3498db;
+}
+nav {
+ background-color: #2ecc71;
+}
+aside {
+ background-color: red;
+}
+  </style>
+</head>
+<body >
+  <div class="HolyGrail-body">
+    <nav >nav</nav>
+    <main >main</main>
+    <aside>aside</aside>
+  </div>
+</body>
+</html>
