@@ -1,0 +1,1229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>React 函数式组件 vs 类组件：区别与选择指南</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/typescript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/jsx.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-color: #007acc;
+            --secondary-color: #2d2d2d;
+            --accent-color: #61dafb;
+            --text-color: #333;
+            --light-bg: #f8f9fa;
+            --border-color: #e1e4e8;
+            --success-color: #28a745;
+            --warning-color: #ffc107;
+            --danger-color: #dc3545;
+            --info-color: #17a2b8;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            color: var(--text-color);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            display: flex;
+            gap: 30px;
+        }
+
+        .sidebar {
+            width: 280px;
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            position: sticky;
+            top: 20px;
+            height: fit-content;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+        }
+
+        .sidebar h2 {
+            color: var(--primary-color);
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--accent-color);
+            font-size: 1.5rem;
+        }
+
+        .toc {
+            list-style: none;
+        }
+
+        .toc li {
+            margin-bottom: 12px;
+            position: relative;
+        }
+
+        .toc a {
+            color: var(--text-color);
+            text-decoration: none;
+            display: block;
+            padding: 8px 12px;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .toc a:hover {
+            background: var(--light-bg);
+            color: var(--primary-color);
+            border-left-color: var(--accent-color);
+            transform: translateX(5px);
+        }
+
+        .toc a.active {
+            background: var(--primary-color);
+            color: white;
+            border-left-color: var(--accent-color);
+        }
+
+        .main-content {
+            flex: 1;
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 3px solid var(--accent-color);
+        }
+
+        .header h1 {
+            color: var(--primary-color);
+            font-size: 2.5rem;
+            margin-bottom: 15px;
+            background: linear-gradient(45deg, var(--primary-color), var(--accent-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header .subtitle {
+            color: var(--secondary-color);
+            font-size: 1.2rem;
+            opacity: 0.8;
+        }
+
+        .content-section {
+            margin-bottom: 40px;
+        }
+
+        .content-section h2 {
+            color: var(--primary-color);
+            font-size: 1.8rem;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--light-bg);
+            position: relative;
+        }
+
+        .content-section h2::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            width: 60px;
+            height: 2px;
+            background: var(--accent-color);
+        }
+
+        .content-section h3 {
+            color: var(--secondary-color);
+            font-size: 1.4rem;
+            margin: 25px 0 15px;
+        }
+
+        .content-section h4 {
+            color: var(--secondary-color);
+            font-size: 1.2rem;
+            margin: 20px 0 10px;
+        }
+
+        .content-section p {
+            margin-bottom: 15px;
+            font-size: 1.1rem;
+        }
+
+        .content-section ul, .content-section ol {
+            margin: 15px 0 15px 25px;
+        }
+
+        .content-section li {
+            margin-bottom: 8px;
+            font-size: 1.1rem;
+        }
+
+        .code-block {
+            background: var(--secondary-color);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            overflow-x: auto;
+            position: relative;
+        }
+
+        .code-block pre {
+            margin: 0;
+        }
+
+        .code-block code {
+            font-family: 'Fira Code', 'Consolas', 'Monaco', 'Andale Mono', 'Ubuntu Mono', monospace;
+            font-size: 0.95rem;
+        }
+
+        .code-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            color: #ccc;
+            font-size: 0.9rem;
+        }
+
+        .copy-btn {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: background 0.3s;
+        }
+
+        .copy-btn:hover {
+            background: var(--accent-color);
+        }
+
+        .note {
+            background: #e7f3ff;
+            border-left: 4px solid var(--primary-color);
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+
+        .note strong {
+            color: var(--primary-color);
+        }
+
+        .warning {
+            background: #fff3cd;
+            border-left: 4px solid var(--warning-color);
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+
+        .warning strong {
+            color: var(--warning-color);
+        }
+
+        .tip {
+            background: #d4edda;
+            border-left: 4px solid var(--success-color);
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+
+        .tip strong {
+            color: var(--success-color);
+        }
+
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .comparison-table th {
+            background: var(--primary-color);
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        .comparison-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .comparison-table tr:hover {
+            background: var(--light-bg);
+        }
+
+        .comparison-table .good {
+            color: var(--success-color);
+            font-weight: 600;
+        }
+
+        .comparison-table .bad {
+            color: var(--danger-color);
+            font-weight: 600;
+        }
+
+        .comparison-table .neutral {
+            color: var(--warning-color);
+            font-weight: 600;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-color);
+            color: var(--secondary-color);
+            font-size: 0.9rem;
+        }
+
+        .footer a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                position: static;
+                max-height: none;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .main-content {
+                padding: 20px;
+            }
+        }
+
+        .back-to-top {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: var(--primary-color);
+            color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+            font-size: 1.5rem;
+            box-shadow: 0 4px 15px rgba(0, 122, 204, 0.3);
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .back-to-top:hover {
+            background: var(--accent-color);
+            transform: translateY(-5px);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <aside class="sidebar">
+            <h2>📚 目录</h2>
+            <ul class="toc" id="toc">
+                <li><a href="#目录">目录</a></li>
+                <li><a href="#一组件类型概述">一、组件类型概述</a></li>
+                <li><a href="#二语法差异对比">二、语法差异对比</a></li>
+                <li><a href="#三状态管理对比">三、状态管理对比</a></li>
+                <li><a href="#四生命周期对比">四、生命周期对比</a></li>
+                <li><a href="#五性能优化对比">五、性能优化对比</a></li>
+                <li><a href="#六代码组织对比">六、代码组织对比</a></li>
+                <li><a href="#七typescript-支持对比">七、TypeScript 支持对比</a></li>
+                <li><a href="#八测试与调试对比">八、测试与调试对比</a></li>
+                <li><a href="#九迁移策略">九、迁移策略</a></li>
+                <li><a href="#十为什么更倾向于函数式组件">十、为什么更倾向于函数式组件</a></li>
+                <li><a href="#十一总结">十一、总结</a></li>
+            </ul>
+        </aside>
+
+        <main class="main-content">
+            <header class="header">
+                <h1>React 函数式组件 vs 类组件：区别与选择指南</h1>
+                <p class="subtitle">React 技术文档 - 详细解析与最佳实践</p>
+            </header>
+
+            <div id="content">
+                <h1>React 函数式组件 vs 类组件：区别与选择指南</h1>
+
+<h2 id="目录">目录</h2>
+
+<p>1. [组件类型概述](#组件类型概述) 2. [语法差异对比](#语法差异对比) 3. [状态管理对比](#状态管理对比) 4. [生命周期对比](#生命周期对比) 5. [性能优化对比](#性能优化对比) 6. [代码组织对比](#代码组织对比) 7. [TypeScript 支持对比](#typescript-支持对比) 8. [测试与调试对比](#测试与调试对比) 9. [迁移策略](#迁移策略) 10. [为什么更倾向于函数式组件](#为什么更倾向于函数式组件) 11. [总结](#总结)</p>
+
+<h2 id="一、组件类型概述">一、组件类型概述</h2>
+
+<h3>1.1 类组件（Class Components）</h3>
+
+<p>类组件是 React 早期的组件形式，基于 ES6 类语法，继承自 <code>React.Component</code> 或 <code>React.PureComponent</code>。</p>
+
+<div class="code-block"><div class="code-header">jsx</div><pre><code class="language-jsx">import React, { Component } from 'react';
+
+<p>class ClassComponent extends Component {   constructor(props) {     super(props);     this.state = { count: 0 };   }</p>
+
+<p>  componentDidMount() {     console.log('Component mounted');   }</p>
+
+<p>  handleClick = () => {     this.setState({ count: this.state.count + 1 });   };</p>
+
+<p>  render() {     return (       <div>         <p>Count: {this.state.count}</p>         <button onClick={this.handleClick}>Increment</button>       </div>     );   } }</code></pre></div></p>
+
+<h3>1.2 函数式组件（Functional Components）</h3>
+
+<p>函数式组件是普通的 JavaScript 函数，接收 props 作为参数并返回 JSX。在 React 16.8 引入 Hooks 后，函数式组件具备了完整的功能。</p>
+
+<div class="code-block"><div class="code-header">jsx</div><pre><code class="language-jsx">import React, { useState, useEffect } from 'react';
+
+<p>function FunctionalComponent() {   const [count, setCount] = useState(0);</p>
+
+<p>  useEffect(() => {     console.log('Component mounted');   }, []);</p>
+
+<p>  const handleClick = () => {     setCount(count + 1);   };</p>
+
+<p>  return (     <div>       <p>Count: {count}</p>       <button onClick={handleClick}>Increment</button>     </div>   ); }</code></pre></div></p>
+
+<h3>1.3 历史演进</h3>
+
+<p>| React 版本 | 类组件 | 函数式组件 | |------------|--------|------------| | React 0.14 (2015) | 主要组件形式 | 无状态组件（仅展示） | | React 16.8 (2019) | 完整功能 | 引入 Hooks，具备完整功能 | | React 18 (2022) | 仍然支持 | 官方推荐，并发特性支持更好 | | 未来版本 | 可能逐渐淘汰 | 主要发展方向 |</p>
+
+<h2 id="二、语法差异对比">二、语法差异对比</h2>
+
+<h3>2.1 基本语法结构</h3>
+
+<h4>2.1.1 类组件语法</h4>
+
+<div class="code-block"><div class="code-header">jsx</div><pre><code class="language-jsx">// 类组件基本结构
+<p>class ClassComponent extends React.Component {   // 1. 构造函数（可选）   constructor(props) {     super(props); // 必须调用 super(props)     this.state = { /<em> 初始状态 </em>/ };     this.handleClick = this.handleClick.bind(this); // 绑定 this   }</p>
+
+<p>  // 2. 生命周期方法   componentDidMount() { /<em> ... </em>/ }   componentDidUpdate() { /<em> ... </em>/ }   componentWillUnmount() { /<em> ... </em>/ }</p>
+
+<p>  // 3. 自定义方法   handleClick() {     // 需要处理 this 绑定     this.setState({ /<em> ... </em>/ });   }</p>
+
+<p>  // 4. 渲染方法（必须）   render() {     return (       <div>         {/<em> JSX 内容 </em>/}       </div>     );   } }</code></pre></div></p>
+
+<h4>2.1.2 函数式组件语法</h4>
+
+<div class="code-block"><div class="code-header">jsx</div><pre><code class="language-jsx">// 函数式组件基本结构
+<p>function FunctionalComponent(props) {   // 1. 状态声明（使用 Hooks）   const [state, setState] = useState(initialValue);</p>
+
+<p>  // 2. 副作用处理（使用 Hooks）   useEffect(() => {     // 相当于 componentDidMount + componentDidUpdate     return () => {       // 清理函数，相当于 componentWillUnmount     };   }, [dependencies]);</p>
+
+<p>  // 3. 事件处理函数   const handleClick = () => {     setState(newValue);   };</p>
+
+<p>  // 4. 直接返回 JSX   return (     <div>       {/<em> JSX 内容 </em>/}     </div>   ); }</p>
+
+<p>// 箭头函数形式 const ArrowFunctionalComponent = (props) => {   // ... 组件逻辑   return <div>Content</div>; };</code></pre></div></p>
+
+<h3>2.2 Props 访问方式</h3>
+
+<h4>2.2.1 类组件访问 Props</h4>
+
+<div class="code-block"><div class="code-header">jsx</div><pre><code class="language-jsx">class ClassComponent extends React.Component {
+<p>  render() {     // 通过 this.props 访问     const { title, content, onClick } = this.props;</p>
+
+<p>    return (       <div>         <h1>{title}</h1>         <p>{content}</p>         <button onClick={onClick}>Click</button>       </div>     );   } }</p>
+
+<p>// 使用 <ClassComponent    title="Hello"    content="World"    onClick={() => console.log('clicked')} /></code></pre></div></p>
+
+<h4>2.2.2 函数式组件访问 Props</h4>
+
+<div class="code-block"><div class="code-header">jsx</div><pre><code class="language-jsx">// 方式1：直接参数解构
+<p>function FunctionalComponent({ title, content, onClick }) {   return (     <div>       <h1>{title}</h1>       <p>{content}</p>       <button onClick={onClick}>Click</button>     </div>   ); }</p>
+
+<p>// 方式2：使用 props 参数 function FunctionalComponent2(props) {   const { title, content, onClick } = props;</p>
+
+<p>  return (     <div>       <h1>{title}</h1>       <p>{content}</p>       <button onClick={onClick}>Click</button>     </div>   ); }</p>
+
+<p>// 使用方式相同 <FunctionalComponent    title="Hello"    content="World"    onClick={() => console.log('clicked')} /></code></pre></div></p>
+
+<h3>2.3 this 绑定的差异</h3>
+
+<h4>2.3.1 类组件的 this 绑定问题</h4>
+
+<div class="code-block"><div class="code-header">jsx</div><pre><code class="language-jsx">class ClassComponent extends React.Component {
+<p>  constructor(props) {     super(props);     this.state = { count: 0 };</p>
+
+<p>    // 方法1：在构造函数中绑定（推荐）     this.handleClick = this.handleClick.bind(this);   }</p>
+
+<p>  handleClick() {     // 如果没有绑定，这里的 this 将是 undefined     this.setState({ count: this.state.count + 1 });   }</p>
+
+<p>  // 方法2：使用箭头函数（类属性语法）   handleClick2 = () => {     this.setState({ count: this.state.count + 1 });   };</p>
+
+<p>  // 方法3：内联箭头函数（每次渲染都创建新函数）   render() {     return (       <div>         <button onClick={() => this.handleClick()}>           Click (内联)         </button>         <button onClick={this.handleClick}>           Click (已绑定)         </button>         <button onClick={this.handleClick2}>           Click (箭头函数)         </button>       </div>     );   } }</code></pre></div></p>
+
+<h4>2.3.2 函数式组件没有 this 绑定问题</h4>
+
+<div class="code-block"><div class="code-header">jsx</div><pre><code class="language-jsx">function FunctionalComponent() {
+<p>  const [count, setCount] = useState(0);</p>
+
+<p>  // 直接定义函数，没有 this 绑定问题   const handleClick = () => {     setCount(count + 1);   };</p>
+
+<p>  // 如果需要缓存函数，使用 useCallback   const memoizedHandleClick = useCallback(() => {     setCount(prev => prev + 1);   }, []);</p>
+
+<p>  return (     <div>       <button onClick={handleClick}>         Click (普通函数)       </button>       <button onClick={memoizedHandleClick}>         Click (记忆化函数)       </button>     </div>   ); }</code></pre></div></p>
+
+<h2 id="三、状态管理对比">三、状态管理对比</h2>
+
+<h3>3.1 类组件的状态管理</h3>
+
+<h4>3.1.1 状态声明与初始化</h4>
+
+<div class="code-block"><div class="code-header">jsx</div><pre><code class="language-jsx">class ClassComponent extends React.Component {
+<p>  constructor(props) {     super(props);</p>
+
+<p>    // 状态声明在构造函数中     this.state = {       count: 0,       user: null,       items: [],       loading: false,       error: null     };   }</p>
+
+<p>  // 或者使用类属性语法（实验性）   state = {     count: 0,     user: null   }; }</code></pre></div></p>
+
+<h4>3.1.2 状态更新</h4>
+
+<div class="code-block"><div class="code-header">jsx</div><pre><code class="language-jsx">class ClassComponent extends React.Component {
+<p>  state = { count: 0, items: [] };</p>
+
+<p>  // 基本更新   increment = () => {     this.setState({ count: this.state.count + 1 });   };</p>
+
+<p>  // 函数式更新（基于前一个状态）   incrementTwice = () => {     this.setState(prevState => ({ count: prevState.count + 1 }));     this.setState(prevState => ({ count: prevState.count + 1 }));   };</p>
+
+<p>  // 合并更新   updateMultiple = () => {     this.setState({       loading: true,       error: null     });   };</p>
+
+<p>  // 回调函数（更新后执行）   updateWithCallback = () => {     this.setState(       { count: this.state.count + 1 },       () => {         console.log('State updated:', this.state.count);       }     );   }; }</code></pre></div></p>
+
+<h3>3.2 函数式组件的状态管理</h3>
+
+<h4>3.2.1 状态声明与初始化</h4>
+
+<div class="code-block"><div class="code-header">jsx</div><pre><code class="language-jsx">function FunctionalComponent() {
+<p>  // 多个独立状态   const [count, setCount] = useState(0);   const [user, setUser] = useState(null);   const [items, setItems] = useState([]);   const [loading, setLoading] = useState(false);   const [error, setError] = useState(null);</p>
+
+<p>  // 对象状态（类似类组件）   const [state, setState] = useState({     count: 0,     user: null,     items: [],     loading: false,     error: null   });</p>
+
+<p>  // 惰性初始化（性能优化）   const [expensiveState, setExpensiveState] = useState(() => {     const initialValue = computeExpensiveValue();     return initialValue;   }); }</code></pre></div></p>
+
+<h4>3.2.2 状态更新</h4>
+
+<div class="code-block"><div class="code-header">jsx</div><pre><code class="language-jsx">function FunctionalComponent() {
+<p>  const [count, setCount] = useState(0);   const [state, setState] = useState({ count: 0, name: '' });</p>
+
+<p>  // 基本更新   const increment = () => {     setCount(count + 1);   };</p>
+
+<p>  // 函数式更新（推荐）   const incrementTwice = () => {     setCount(prev => prev + 1);     setCount(prev => prev + 1);   };</p>
+
+<p>  // 对象状态更新   const updateObjectState = () => {     setState(prev => ({       ...prev,          // 保留其他属性       count: prev.count + 1     }));   };</p>
+
+<p>  // 批量更新（React 18+ 默认行为）   const batchUpdate = () => {     setCount(count + 1);     setCount(count + 1); // 注意：这里使用的是当前的 count 值     // 实际只增加 1，而不是 2（除非使用函数式更新）   }; }</code></pre></div></p>
+
+<h3>3.3 状态管理对比总结</h3>
+
+<p>| 特性 | 类组件 | 函数式组件 | |------|--------|------------| | 状态声明 | 在构造函数或类属性中 | 使用 <code>useState</code> Hook | | 状态更新 | <code>this.setState()</code> | <code>setState()</code> 函数 | | 状态合并 | 自动合并对象属性 | 需要手动合并（使用扩展运算符） | | 更新回调 | 支持第二个参数回调 | 使用 <code>useEffect</code> 监听状态变化 | | 批量更新 | React 18+ 默认支持 | React 18+ 默认支持 | | 性能优化 | <code>PureComponent</code> 或 <code>shouldComponentUpdate</code> | <code>React.memo</code> + <code>useMemo</code>/<code>useCallback</code> |</p>
+
+<h2 id="四、生命周期对比">四、生命周期对比</h2>
+
+<h3>4.1 类组件的生命周期</h3>
+
+<h4>4.1.1 完整的生命周期方法</h4>
+
+<div class="code-block"><div class="code-header">jsx</div><pre><code class="language-jsx">class LifecycleClassComponent extends React.Component {
+<p>  // 1. 挂载阶段   constructor(props) {     super(props);     console.log('1. constructor');   }</p>
+
+<p>  static getDerivedStateFromProps(props, state) {     console.log('2. getDerivedStateFromProps');     return null; // 返回新的 state 或 null   }</p>
+
+<p>  componentDidMount() {     console.log('4. componentDidMount');     // 数据获取、订阅、DOM 操作   }</p>
+
+<p>  // 2. 更新阶段   shouldComponentUpdate(nextProps, nextState) {     console.log('5. shouldComponentUpdate');     return true; // 返回 false 阻止重新渲染   }</p>
+
+<p>  getSnapshotBeforeUpdate(prevProps, prevState) {     console.log('6. getSnapshotBeforeUpdate');     return null; // 返回快照值或 null   }</p>
+
+<p>  componentDidUpdate(prevProps, prevState, snapshot) {     console.log('7. componentDidUpdate');     // 基于 props/state 变化执行操作   }</p>
+
+<p>  // 3. 卸载阶段   componentWillUnmount() {     console.log('8. componentWillUnmount');     // 清理工作：取消订阅、清除定时器   }</p>
+
+<p>  // 4. 错误处理   static getDerivedStateFromError(error) {     console.log('getDerivedStateFromError');     return { hasError: true };   }</p>
+
+<p>  componentDidCatch(error, errorInfo) {     console.log('componentDidCatch');     // 记录错误信息   }</p>
+
+<p>  render() {     console.log('3. render');     return <div>Content</div>;   } }</code></pre></div></p>
+
+<h4>4.1.2 生命周期执行顺序</h4>
+
+<div class="code-block"><div class="code-header">text</div><pre><code class="language-text">挂载阶段：
+<p>1. constructor() 2. static getDerivedStateFromProps() 3. render() 4. componentDidMount()</p>
+
+<p>更新阶段： 1. static getDerivedStateFromProps() 2. shouldComponentUpdate() 3. render() 4. getSnapshotBeforeUpdate() 5. componentDidUpdate()</p>
+
+<p>卸载阶段： 1. componentWillUnmount()</p>
+
+<p>错误处理： 1. static getDerivedStateFromError() 2. componentDidCatch()</code></pre></div></p>
+
+<h3>4.2 函数式组件的生命周期替代</h3>
+
+<h4>4.2.1 使用 useEffect 模拟生命周期</h4>
+
+<div class="code-block"><div class="code-header">jsx</div><pre><code class="language-jsx">function LifecycleFunctionalComponent() {
+<p>  const [count, setCount] = useState(0);   const [data, setData] = useState(null);</p>
+
+<p>  // 1. componentDidMount（只执行一次）   useEffect(() => {     console.log('componentDidMount 等效');</p>
+
+<p>    // 数据获取     fetchData().then(setData);</p>
+
+<p>    // 事件监听     window.addEventListener('resize', handleResize);</p>
+
+<p>    // 清理函数（componentWillUnmount）     return () => {       console.log('componentWillUnmount 等效');       window.removeEventListener('resize', handleResize);     };   }, []); // 空依赖数组 = 只运行一次</p>
+
+<p>  // 2. componentDidUpdate（监听特定状态）   useEffect(() => {     console.log('count 变化:', count);     // 相当于 componentDidUpdate 中检查 count 变化   }, [count]); // 依赖 count</p>
+
+<p>  // 3. 每次渲染后都执行（不推荐，除非必要）   useEffect(() => {     console.log('每次渲染后执行');   }); // 没有依赖数组</p>
+
+<p>  // 4. 基于条件执行   useEffect(() => {     if (count > 10) {       console.log('count 大于 10');     }   }, [count]);</p>
+
+<p>  return (     <div>       <p>Count: {count}</p>       <button onClick={() => setCount(count + 1)}>         Increment       </button>     </div>   ); }</code></pre></div></p>
+
+<h4>4.2.2 生命周期映射表</h4>
+
+<p>| 类组件生命周期 | 函数式组件替代方案 | |----------------|-------------------| | <code>constructor</code> | 使用 <code>useState</code> 初始化状态 | | <code>componentDidMount</code> | <code>useEffect(() => {}, [])</code> | | <code>componentDidUpdate</code> | <code>useEffect(() => {}, [deps])</code> | | <code>componentWillUnmount</code> | <code>useEffect(() => { return cleanup }, [])</code> | | <code>shouldComponentUpdate</code> | <code>React.memo</code> 或 <code>useMemo</code> | | <code>getDerivedStateFromProps</code> | 在渲染时计算或使用 <code>useEffect</code> | | <code>getSnapshotBeforeUpdate</code> | 暂无直接替代，通常不需要 | | <code>getDerivedStateFromError</code> | 无直接替代，使用错误边界组件 | | <code>componentDidCatch</code> | 无直接替代，使用错误边界组件 |</p>
+
+<h3>4.3 错误处理对比</h3>
+
+<h4>4.3.1 类组件的错误边界</h4>
+
+<div class="code-block"><div class="code-header">jsx</div><pre><code class="language-jsx">class ErrorBoundary extends React.Component {
+<p>  constructor(props) {     super(props);     this.state = { hasError: false };   }</p>
+
+<p>  static getDerivedStateFromError(error) {     return { hasError: true };   }</p>
+
+<p>  componentDidCatch(error, errorInfo) {     console.error('Error caught:', error, errorInfo);     // 可以发送错误到监控服务   }</p>
+
+<p>  render() {     if (this.state.hasError) {       return <h1>Something went wrong.</h1>;     }</p>
+
+<p>    return this.props.children;   } }</p>
+
+<p>// 使用 <ErrorBoundary>   <MyComponent /> </ErrorBoundary></code></pre></div></p>
+
+<h4>4.3.2 函数式组件的错误处理</h4>
+
+<div class="code-block"><div class="code-header">jsx</div><pre><code class="language-jsx">// 函数式组件本身不能作为错误边界
+<p>// 需要使用类组件作为错误边界，或使用第三方库</p>
+
+<p>import { ErrorBoundary } from 'react-error-boundary';</p>
+
+<p>function ErrorFallback({ error, resetErrorBoundary }) {   return (     <div role="alert">       <p>Something went wrong:</p>       <pre>{error.message}</pre>       <button onClick={resetErrorBoundary}>Try again</button>     </div>   ); }</p>
+
+<p>function App() {   return (     <ErrorBoundary       FallbackComponent={ErrorFallback}       onReset={() => window.location.reload()}     >       <MyComponent />     </ErrorBoundary>   ); }</code></pre></div></p>
+
+<h2 id="五、性能优化对比">五、性能优化对比</h2>
+
+<h3>5.1 类组件的性能优化</h3>
+
+<h4>5.1.1 PureComponent</h4>
+
+<div class="code-block"><div class="code-header">jsx</div><pre><code class="language-jsx">import React, { PureComponent } from 'react';
+
+<p>class OptimizedClassComponent extends PureComponent {   state = { count: 0 };</p>
+
+<p>  // PureComponent 自动实现 shouldComponentUpdate   // 进行浅比较（shallow comparison）</p>
+
+<p>  handleClick = () => {     this.setState({ count: this.state.count + 1 });   };</p>
+
+<p>  render() {     console.log('Class component rendered');     return (       <div>         <p>Count: {this.state.count}</p>         <button onClick={this.handleClick}>Increment</button>       </div>     );   } }</code></pre></div></p>
+
+<h4>5.1.2 shouldComponentUpdate</h4>
+
+<div class="code-block"><div class="code-header">jsx</div><pre><code class="language-jsx">class CustomOptimizedClassComponent extends React.Component {
+<p>  state = { count: 0, items: [] };</p>
+
+<p>  shouldComponentUpdate(nextProps, nextState) {     // 自定义比较逻辑     if (this.state.count !== nextState.count) {       return true;     }</p>
+
+<p>    if (this.props.items !== nextProps.items) {       return true;     }</p>
+
+<p>    return false; // 其他情况不重新渲染   }</p>
+
+<p>  // 或者使用浅比较辅助函数   shouldComponentUpdate(nextProps, nextState) {     return !shallowEqual(this.props, nextProps) ||            !shallowEqual(this.state, nextState);   } }</code></pre></div></p>
+
+<h3>5.2 函数式组件的性能优化</h3>
+
+<h4>5.2.1 React.memo</h4>
+
+<div class="code-block"><div class="code-header">jsx</div><pre><code class="language-jsx">import React, { memo } from 'react';
+
+<p>// 基本用法 const MemoizedComponent = memo(function MyComponent(props) {   console.log('Memoized component rendered');   return <div>{props.value}</div>; });</p>
+
+<p>// 自定义比较函数 const CustomMemoizedComponent = memo(   function MyComponent(props) {     return <div>{props.user.name}</div>;   },   // 自定义比较函数（类似 shouldComponentUpdate）   (prevProps, nextProps) => {     // 返回 true 表示不重新渲染（props 相等）     // 返回 false 表示需要重新渲染（props 不相等）     return prevProps.user.id === nextProps.user.id;   } );</code></pre></div></p>
+
+<h4>5.2.2 useMemo 和 useCallback</h4>
+
+<div class="code-block"><div class="code-header">jsx</div><pre><code class="language-jsx">function OptimizedFunctionalComponent({ items, filter }) {
+<p>  const [count, setCount] = useState(0);</p>
+
+<p>  // useMemo：缓存计算结果   const filteredItems = useMemo(() => {     console.log('Filtering items...');     return items.filter(item =>        item.name.includes(filter)     );   }, [items, filter]); // 依赖项变化时才重新计算</p>
+
+<p>  // useCallback：缓存函数   const handleClick = useCallback(() => {     console.log('Button clicked, count:', count);     setCount(prev => prev + 1);   }, []); // 空依赖数组：函数只创建一次</p>
+
+<p>  // 依赖 count 的缓存函数   const handleClickWithCount = useCallback(() => {     console.log('Current count:', count);   }, [count]); // 依赖 count，count 变化时重新创建</p>
+
+<p>  return (     <div>       <p>Count: {count}</p>       <button onClick={handleClick}>Increment</button>       <ul>         {filteredItems.map(item => (           <li key={item.id}>{item.name}</li>         ))}       </ul>     </div>   ); }</code></pre></div></p>
+
+<h3>5.3 性能优化对比总结</h3>
+
+<p>| 优化技术 | 类组件 | 函数式组件 | |----------|--------|------------| | 避免不必要渲染 | <code>PureComponent</code> 或 <code>shouldComponentUpdate</code> | <code>React.memo</code> | | 缓存计算结果 | 在 <code>render</code> 方法中手动缓存 | <code>useMemo</code> Hook | | 缓存函数 | 在构造函数中绑定或使用类属性 | <code>useCallback</code> Hook | | 代码分割 | <code>React.lazy</code> + <code>Suspense</code> | <code>React.lazy</code> + <code>Suspense</code> | | 虚拟化长列表 | 第三方库（如 <code>react-window</code>） | 第三方库（如 <code>react-window</code>） |</p>
+
+<h2 id="六、代码组织对比">六、代码组织对比</h2>
+
+<h3>6.1 类组件的代码组织</h3>
+
+<h4>6.1.1 典型的类组件结构</h4>
+
+<div class="code-block"><div class="code-header">jsx</div><pre><code class="language-jsx">class OrganizedClassComponent extends React.Component {
+<p>  // 1. 静态属性   static defaultProps = {     initialCount: 0   };</p>
+
+<p>  static propTypes = {     initialCount: PropTypes.number,     onCountChange: PropTypes.func   };</p>
+
+<p>  // 2. 构造函数   constructor(props) {     super(props);     this.state = {       count: props.initialCount,       isLoading: false,       data: null     };</p>
+
+<p>    // 方法绑定     this.increment = this.increment.bind(this);     this.decrement = this.decrement.bind(this);   }</p>
+
+<p>  // 3. 生命周期方法   componentDidMount() {     this.fetchData();   }</p>
+
+<p>  componentDidUpdate(prevProps, prevState) {     if (prevState.count !== this.state.count) {       this.props.onCountChange?.(this.state.count);     }   }</p>
+
+<p>  componentWillUnmount() {     this.cleanup();   }</p>
+
+<p>  // 4. 业务方法   async fetchData() {     this.setState({ isLoading: true });</p>
+
+<p>    try {       const data = await api.fetchData();       this.setState({ data, isLoading: false });     } catch (error) {       this.setState({ isLoading: false, error });     }   }</p>
+
+<p>  increment() {     this.setState(prev => ({ count: prev.count + 1 }));   }</p>
+
+<p>  decrement() {     this.setState(prev => ({ count: prev.count - 1 }));   }</p>
+
+<p>  cleanup() {     // 清理资源   }</p>
+
+<p>  // 5. 渲染方法   render() {     const { count, isLoading, data } = this.state;</p>
+
+<p>    if (isLoading) {       return <div>Loading...</div>;     }</p>
+
+<p>    return (       <div>         <h1>Count: {count}</h1>         <button onClick={this.increment}>+</button>         <button onClick={this.decrement}>-</button>         {data && <DataDisplay data={data} />}       </div>     );   } }</code></pre></div></p>
+
+<h4>6.1.2 类组件的问题</h4>
+
+<p>1. <strong>样板代码多</strong>：构造函数、方法绑定、生命周期方法 2. <strong>逻辑分散</strong>：相关逻辑分散在不同的生命周期方法中 3. <strong>this 绑定问题</strong>：容易忘记绑定或绑定错误 4. <strong>难以复用逻辑</strong>：需要使用高阶组件或渲染属性</p>
+
+<h3>6.2 函数式组件的代码组织</h3>
+
+<h4>6.2.1 典型的函数式组件结构</h4>
+
+<div class="code-block"><div class="code-header">jsx</div><pre><code class="language-jsx">function OrganizedFunctionalComponent({ 
+<p>  initialCount = 0,    onCountChange  }) {   // 1. 状态声明（顶部）   const [count, setCount] = useState(initialCount);   const [isLoading, setIsLoading] = useState(false);   const [data, setData] = useState(null);</p>
+
+<p>  // 2. 副作用（数据获取）   useEffect(() => {     fetchData();</p>
+
+<p>    return () => {       // 清理函数       console.log('Component unmounting');     };   }, []); // 空数组：只运行一次</p>
+
+<p>  // 3. 业务逻辑（自定义 Hook）   const { increment, decrement } = useCounter(count, setCount, onCountChange);</p>
+
+<p>  // 4. 数据处理（useMemo）   const processedData = useMemo(() => {     return data ? processData(data) : null;   }, [data]);</p>
+
+<p>  // 5. 事件处理（useCallback）   const handleReset = useCallback(() => {     setCount(initialCount);   }, [initialCount]);</p>
+
+<p>  // 6. 条件渲染   if (isLoading) {     return <div>Loading...</div>;   }</p>
+
+<p>  // 7. 返回 JSX   return (     <div>       <h1>Count: {count}</h1>       <button onClick={increment}>+</button>       <button onClick={decrement}>-</button>       <button onClick={handleReset}>Reset</button>       {processedData && <DataDisplay data={processedData} />}     </div>   ); }</p>
+
+<p>// 自定义 Hook：复用逻辑 function useCounter(initialValue, setter, onChange) {   const increment = useCallback(() => {     setter(prev => {       const newValue = prev + 1;       onChange?.(newValue);       return newValue;     });   }, [setter, onChange]);</p>
+
+<p>  const decrement = useCallback(() => {     setter(prev => {       const newValue = prev - 1;       onChange?.(newValue);       return newValue;     });   }, [setter, onChange]);</p>
+
+<p>  return { increment, decrement }; }</code></pre></div></p>
+
+<h4>6.2.2 函数式组件的优势</h4>
+
+<p>1. <strong>代码简洁</strong>：没有样板代码，逻辑更集中 2. <strong>逻辑复用简单</strong>：自定义 Hook 可以轻松复用逻辑 3. <strong>没有 this 问题</strong>：直接使用变量和函数，无需绑定 4. <strong>更好的可测试性</strong>：纯函数更容易测试 5. <strong>更好的 TypeScript 支持</strong>：类型推断更准确</p>
+
+<h3>6.3 自定义 Hook 的优势</h3>
+
+<div class="code-block"><div class="code-header">jsx</div><pre><code class="language-jsx">// 自定义 Hook：封装数据获取逻辑
+<p>function useFetch(url, options) {   const [data, setData] = useState(null);   const [loading, setLoading] = useState(true);   const [error, setError] = useState(null);</p>
+
+<p>  useEffect(() => {     const fetchData = async () => {       try {         setLoading(true);         const response = await fetch(url, options);         const result = await response.json();         setData(result);       } catch (err) {         setError(err);       } finally {         setLoading(false);       }     };</p>
+
+<p>    fetchData();   }, [url, options]);</p>
+
+<p>  return { data, loading, error }; }</p>
+
+<p>// 在多个组件中复用 function UserProfile({ userId }) {   const { data: user, loading, error } = useFetch(<code>/api/users/${userId}</code>);</p>
+
+<p>  if (loading) return <div>Loading...</div>;   if (error) return <div>Error: {error.message}</div>;</p>
+
+<p>  return (     <div>       <h1>{user.name}</h1>       <p>{user.email}</p>     </div>   ); }</p>
+
+<p>function PostList() {   const { data: posts, loading, error } = useFetch('/api/posts');</p>
+
+<p>  // ... 渲染逻辑 }</code></pre></div></p>
+
+<h2 id="七、TypeScript 支持对比">七、TypeScript 支持对比</h2>
+
+<h3>7.1 类组件的 TypeScript 支持</h3>
+
+<h4>7.1.1 Props 和 State 类型定义</h4>
+
+<div class="code-block"><div class="code-header">typescript</div><pre><code class="language-typescript">import React, { Component } from 'react';
+
+<p>interface Props {   title: string;   initialCount?: number;   onCountChange?: (count: number) => void; }</p>
+
+<p>interface State {   count: number;   isLoading: boolean;   data: DataType | null; }</p>
+
+<p>class TypedClassComponent extends Component<Props, State> {   // 默认 props   static defaultProps: Partial<Props> = {     initialCount: 0   };</p>
+
+<p>  constructor(props: Props) {     super(props);</p>
+
+<p>    this.state = {       count: props.initialCount || 0,       isLoading: false,       data: null     };   }</p>
+
+<p>  // 类型安全的方法   increment = (): void => {     this.setState(prevState => ({       count: prevState.count + 1     }));   };</p>
+
+<p>  render(): React.ReactNode {     const { title } = this.props;     const { count } = this.state;</p>
+
+<p>    return (       <div>         <h1>{title}</h1>         <p>Count: {count}</p>         <button onClick={this.increment}>Increment</button>       </div>     );   } }</code></pre></div></p>
+
+<h4>7.1.2 泛型类组件</h4>
+
+<div class="code-block"><div class="code-header">typescript</div><pre><code class="language-typescript">interface ListProps<T> {
+<p>  items: T[];   renderItem: (item: T) => React.ReactNode; }</p>
+
+<p>class GenericListComponent<T> extends Component<ListProps<T>> {   render() {     const { items, renderItem } = this.props;</p>
+
+<p>    return (       <ul>         {items.map((item, index) => (           <li key={index}>             {renderItem(item)}           </li>         ))}       </ul>     );   } }</p>
+
+<p>// 使用 <GenericListComponent   items={users}   renderItem={(user) => <span>{user.name}</span>} /></code></pre></div></p>
+
+<h3>7.2 函数式组件的 TypeScript 支持</h3>
+
+<h4>7.2.1 Props 类型定义</h4>
+
+<div class="code-block"><div class="code-header">typescript</div><pre><code class="language-typescript">import React, { useState } from 'react';
+
+<p>interface Props {   title: string;   initialCount?: number;   onCountChange?: (count: number) => void; }</p>
+
+<p>// 方式1：使用 React.FC（有争议） const TypedFunctionalComponent1: React.FC<Props> = ({   title,   initialCount = 0,   onCountChange }) => {   const [count, setCount] = useState(initialCount);</p>
+
+<p>  const increment = () => {     const newCount = count + 1;     setCount(newCount);     onCountChange?.(newCount);   };</p>
+
+<p>  return (     <div>       <h1>{title}</h1>       <p>Count: {count}</p>       <button onClick={increment}>Increment</button>     </div>   ); };</p>
+
+<p>// 方式2：直接类型注解（推荐） function TypedFunctionalComponent2(props: Props) {   const { title, initialCount = 0, onCountChange } = props;   const [count, setCount] = useState(initialCount);</p>
+
+<p>  // ... 相同逻辑 }</p>
+
+<p>// 方式3：内联类型 const TypedFunctionalComponent3 = (props: {   title: string;   initialCount?: number; }) => {   // ... 组件逻辑 };</code></pre></div></p>
+
+<h4>7.2.2 泛型函数式组件</h4>
+
+<div class="code-block"><div class="code-header">typescript</div><pre><code class="language-typescript">interface ListProps<T> {
+<p>  items: T[];   renderItem: (item: T) => React.ReactNode; }</p>
+
+<p>// 泛型函数式组件 function GenericListComponent<T>({   items,   renderItem }: ListProps<T>) {   return (     <ul>       {items.map((item, index) => (         <li key={index}>           {renderItem(item)}         </li>       ))}     </ul>   ); }</p>
+
+<p>// 使用 <GenericListComponent   items={users}   renderItem={(user) => <span>{user.name}</span>} /></code></pre></div></p>
+
+<h3>7.3 TypeScript 支持对比</h3>
+
+<p>| 特性 | 类组件 | 函数式组件 | |------|--------|------------| | Props 类型 | <code>Component<Props, State></code> | <code>React.FC<Props></code> 或直接注解 | | State 类型 | 第二个泛型参数 | <code>useState<Type></code> 泛型 | | 默认 Props | <code>static defaultProps</code> | 默认参数值 | | 子组件类型 | <code>this.props.children</code> | <code>React.ReactNode</code> 类型 | | 泛型支持 | 类泛型 <code>Component<T></code> | 函数泛型 <code>function Component<T></code> | | 类型推断 | 较弱，需要显式注解 | 较强，能更好推断 Hook 类型 |</p>
+
+<h2 id="八、测试与调试对比">八、测试与调试对比</h2>
+
+<h3>8.1 测试对比</h3>
+
+<h4>8.1.1 类组件测试</h4>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// 类组件测试示例
+<p>import { render, screen, fireEvent } from '@testing-library/react'; import ClassComponent from './ClassComponent';</p>
+
+<p>describe('ClassComponent', () => {   it('renders initial count', () => {     render(<ClassComponent initialCount={5} />);     expect(screen.getByText('Count: 5')).toBeInTheDocument();   });</p>
+
+<p>  it('increments count on button click', () => {     render(<ClassComponent />);     const button = screen.getByText('Increment');</p>
+
+<p>    fireEvent.click(button);     expect(screen.getByText('Count: 1')).toBeInTheDocument();   });</p>
+
+<p>  it('calls onCountChange when count changes', () => {     const mockOnChange = jest.fn();     render(<ClassComponent onCountChange={mockOnChange} />);</p>
+
+<p>    const button = screen.getByText('Increment');     fireEvent.click(button);</p>
+
+<p>    expect(mockOnChange).toHaveBeenCalledWith(1);   }); });</code></pre></div></p>
+
+<h4>8.1.2 函数式组件测试</h4>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// 函数式组件测试示例
+<p>import { render, screen, fireEvent } from '@testing-library/react'; import FunctionalComponent from './FunctionalComponent';</p>
+
+<p>describe('FunctionalComponent', () => {   it('renders initial count', () => {     render(<FunctionalComponent initialCount={5} />);     expect(screen.getByText('Count: 5')).toBeInTheDocument();   });</p>
+
+<p>  it('increments count on button click', () => {     render(<FunctionalComponent />);     const button = screen.getByText('Increment');</p>
+
+<p>    fireEvent.click(button);     expect(screen.getByText('Count: 1')).toBeInTheDocument();   });</p>
+
+<p>  it('calls onCountChange when count changes', () => {     const mockOnChange = jest.fn();     render(<FunctionalComponent onCountChange={mockOnChange} />);</p>
+
+<p>    const button = screen.getByText('Increment');     fireEvent.click(button);</p>
+
+<p>    expect(mockOnChange).toHaveBeenCalledWith(1);   });</p>
+
+<p>  it('handles async operations', async () => {     // 测试异步逻辑   }); });</code></pre></div></p>
+
+<h3>8.2 调试对比</h3>
+
+<h4>8.2.1 React DevTools 支持</h4>
+
+<p>| 调试特性 | 类组件 | 函数式组件 | |----------|--------|------------| | 组件树查看 | 支持 | 支持 | | Props 查看 | 支持 | 支持 | | State 查看 | 支持（this.state） | 支持（Hook 状态） | | 钩子查看 | 不支持 | 支持（Hook 调试） | | 性能分析 | 支持 | 支持（更好的 Hook 分析） |</p>
+
+<h4>8.2.2 调试技巧</h4>
+
+<div class="code-block"><div class="code-header">jsx</div><pre><code class="language-jsx">// 类组件调试
+<p>class DebugClassComponent extends React.Component {   componentDidUpdate(prevProps, prevState) {     // 调试状态变化     if (prevState.count !== this.state.count) {       console.log('Count changed:', this.state.count);     }   }</p>
+
+<p>  render() {     // 调试渲染     console.log('Class component rendering');     return <div>Content</div>;   } }</p>
+
+<p>// 函数式组件调试 function DebugFunctionalComponent() {   const [count, setCount] = useState(0);</p>
+
+<p>  // 使用 useEffect 调试   useEffect(() => {     console.log('Count changed:', count);   }, [count]);</p>
+
+<p>  // 使用 useDebugValue（自定义 Hook 中）   useDebugValue(count > 10 ? 'High' : 'Low');</p>
+
+<p>  console.log('Functional component rendering');   return <div>Content</div>; }</code></pre></div></p>
+
+<h2 id="九、迁移策略">九、迁移策略</h2>
+
+<h3>9.1 从类组件迁移到函数式组件</h3>
+
+<h4>9.1.1 逐步迁移策略</h4>
+
+<div class="code-block"><div class="code-header">jsx</div><pre><code class="language-jsx">// 步骤1：识别组件类型
+<p>// - 简单展示组件：直接重写为函数式组件 // - 有状态组件：使用 Hooks 重写 // - 复杂组件：分步骤迁移</p>
+
+<p>// 步骤2：迁移无状态组件 // 之前： class UserInfo extends React.Component {   render() {     const { user } = this.props;     return (       <div>         <h2>{user.name}</h2>         <p>{user.email}</p>       </div>     );   } }</p>
+
+<p>// 之后： function UserInfo({ user }) {   return (     <div>       <h2>{user.name}</h2>       <p>{user.email}</p>     </div>   ); }</p>
+
+<p>// 步骤3：迁移有状态组件 // 之前： class Counter extends React.Component {   constructor(props) {     super(props);     this.state = { count: 0 };     this.increment = this.increment.bind(this);   }</p>
+
+<p>  increment() {     this.setState({ count: this.state.count + 1 });   }</p>
+
+<p>  render() {     return (       <div>         <p>Count: {this.state.count}</p>         <button onClick={this.increment}>Increment</button>       </div>     );   } }</p>
+
+<p>// 之后： function Counter() {   const [count, setCount] = useState(0);</p>
+
+<p>  const increment = () => {     setCount(count + 1);   };</p>
+
+<p>  return (     <div>       <p>Count: {count}</p>       <button onClick={increment}>Increment</button>     </div>   ); }</code></pre></div></p>
+
+<h4>9.1.2 生命周期方法迁移</h4>
+
+<div class="code-block"><div class="code-header">jsx</div><pre><code class="language-jsx">// 类组件
+<p>class DataFetcher extends React.Component {   state = { data: null, loading: true };</p>
+
+<p>  componentDidMount() {     this.fetchData();   }</p>
+
+<p>  componentDidUpdate(prevProps) {     if (prevProps.userId !== this.props.userId) {       this.fetchData();     }   }</p>
+
+<p>  componentWillUnmount() {     // 清理工作   }</p>
+
+<p>  async fetchData() {     try {       const data = await api.fetchData(this.props.userId);       this.setState({ data, loading: false });     } catch (error) {       this.setState({ loading: false, error });     }   }</p>
+
+<p>  render() {     // ... 渲染逻辑   } }</p>
+
+<p>// 函数式组件 function DataFetcher({ userId }) {   const [data, setData] = useState(null);   const [loading, setLoading] = useState(true);   const [error, setError] = useState(null);</p>
+
+<p>  useEffect(() => {     let isMounted = true;</p>
+
+<p>    const fetchData = async () => {       try {         setLoading(true);         const result = await api.fetchData(userId);</p>
+
+<p>        if (isMounted) {           setData(result);           setLoading(false);         }       } catch (err) {         if (isMounted) {           setError(err);           setLoading(false);         }       }     };</p>
+
+<p>    fetchData();</p>
+
+<p>    return () => {       isMounted = false;       // 清理工作     };   }, [userId]); // 依赖 userId，变化时重新获取</p>
+
+<p>  // ... 渲染逻辑 }</code></pre></div></p>
+
+<h3>9.2 迁移工具和资源</h3>
+
+<h4>9.2.1 自动化工具</h4>
+
+<div class="code-block"><div class="code-header">bash</div><pre><code class="language-bash"><h1>1. 使用 codemod 工具自动迁移</h1>
+<p>npx react-codemod class-to-function</p>
+
+<h1>2. 手动迁移辅助工具</h1>
+<h1>- ESLint 规则：eslint-plugin-react-hooks</h1>
+<h1>- TypeScript：自动类型推断</h1>
+<h1>- React DevTools：调试 Hook</h1>
+
+<h1>3. 迁移检查清单</h1>
+<h1>- [ ] 状态迁移：this.state → useState</h1>
+<h1>- [ ] 生命周期：componentDidMount → useEffect</h1>
+<h1>- [ ] 方法绑定：移除 bind，使用 useCallback</h1>
+<h1>- [ ] 实例方法：转换为函数或自定义 Hook</h1>
+<h1>- [ ] 引用：this.refs → useRef</h1>
+<h1>- [ ] 上下文：this.context → useContext</h1></code></pre></div>
+
+<h2 id="十、为什么更倾向于函数式组件">十、为什么更倾向于函数式组件</h2>
+
+<h3>10.1 技术优势</h3>
+
+<h4>10.1.1 代码简洁性</h4>
+
+<div class="code-block"><div class="code-header">jsx</div><pre><code class="language-jsx">// 类组件：21行代码
+<p>class CounterClass extends React.Component {   constructor(props) {     super(props);     this.state = { count: 0 };     this.handleClick = this.handleClick.bind(this);   }</p>
+
+<p>  handleClick() {     this.setState({ count: this.state.count + 1 });   }</p>
+
+<p>  render() {     return (       <div>         <p>Count: {this.state.count}</p>         <button onClick={this.handleClick}>Increment</button>       </div>     );   } }</p>
+
+<p>// 函数式组件：11行代码（减少48%） function CounterFunctional() {   const [count, setCount] = useState(0);</p>
+
+<p>  const handleClick = () => {     setCount(count + 1);   };</p>
+
+<p>  return (     <div>       <p>Count: {count}</p>       <button onClick={handleClick}>Increment</button>     </div>   ); }</code></pre></div></p>
+
+<h4>10.1.2 更好的逻辑复用</h4>
+
+<div class="code-block"><div class="code-header">jsx</div><pre><code class="language-jsx">// 自定义 Hook：一次编写，多处使用
+<p>function useLocalStorage(key, initialValue) {   const [value, setValue] = useState(() => {     const stored = localStorage.getItem(key);     return stored ? JSON.parse(stored) : initialValue;   });</p>
+
+<p>  useEffect(() => {     localStorage.setItem(key, JSON.stringify(value));   }, [key, value]);</p>
+
+<p>  return [value, setValue]; }</p>
+
+<p>// 在多个组件中复用 function ComponentA() {   const [theme, setTheme] = useLocalStorage('theme', 'light');   // ... }</p>
+
+<p>function ComponentB() {   const [userPrefs, setUserPrefs] = useLocalStorage('prefs', {});   // ... }</code></pre></div></p>
+
+<h3>10.2 开发体验优势</h3>
+
+<h4>10.2.1 学习曲线更平缓</h4>
+
+<div class="code-block"><div class="code-header">jsx</div><pre><code class="language-jsx">// 类组件需要理解的概念：
+<p>// 1. ES6 类语法 // 2. 继承和 super() // 3. this 绑定 // 4. 生命周期方法 // 5. 实例属性和方法</p>
+
+<p>// 函数式组件需要理解的概念： // 1. JavaScript 函数 // 2. Hooks（useState, useEffect 等） // 3. 闭包和作用域</p>
+
+<p>// 对于新手，函数概念比类概念更基础</code></pre></div></p>
+
+<h4>10.2.2 更好的工具支持</h4>
+
+<div class="code-block"><div class="code-header">json</div><pre><code class="language-json">// ESLint 配置
+<p>{   "plugins": ["react-hooks"],   "rules": {     "react-hooks/rules-of-hooks": "error",      // 检查 Hook 规则     "react-hooks/exhaustive-deps": "warn"       // 检查依赖项   } }</p>
+
+<p>// TypeScript 更好的类型推断 function Component({ value }: { value: string }) {   // TypeScript 能准确推断 Hook 类型   const [count, setCount] = useState(0);          // count: number   const [name, setName] = useState('');           // name: string   const [list, setList] = useState<string[]>([]); // list: string[]</p>
+
+<p>  // 自动补全和类型检查更好 }</code></pre></div></p>
+
+<h3>10.3 性能和维护优势</h3>
+
+<h4>10.3.1 包体积更小</h4>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// 函数式组件编译后代码更小
+<p>// 类组件： class MyComponent extends React.Component {   // 需要包含整个类系统 }</p>
+
+<p>// 函数式组件： function MyComponent() {   // 只是普通函数 }</p>
+
+<p>// 实际项目中的包体积差异： // - 类组件：包含类继承、实例化等开销 // - 函数式组件：更轻量，Tree-shaking 更有效</code></pre></div></p>
+
+<h4>10.3.2 更好的未来兼容性</h4>
+
+<div class="code-block"><div class="code-header">jsx</div><pre><code class="language-jsx">// React 新特性优先支持函数式组件
+<p>// 1. 并发特性（Concurrent Features） function ConcurrentComponent() {   const [isPending, startTransition] = useTransition();</p>
+
+<p>  // 类组件无法直接使用 }</p>
+
+<p>// 2. 服务器组件（Server Components） // 函数式组件更容易支持服务端渲染优化</p>
+
+<p>// 3. React Forget 编译器 // 针对函数式组件的自动优化编译器</p>
+
+<p>// React 团队官方推荐： // "在新代码中，我们推荐使用函数式组件和 Hooks"</code></pre></div></p>
+
+<h3>10.4 实际项目数据</h3>
+
+<p>根据社区调查和实际项目经验：</p>
+
+<p>| 指标 | 类组件 | 函数式组件 | |------|--------|------------| | 代码行数 | 通常多 30-50% | 更简洁 | | 首次渲染时间 | 稍慢（需要实例化） | 稍快 | | 更新性能 | 依赖优化策略 | 更容易优化 | | 内存使用 | 稍高（实例对象） | 稍低 | | 测试覆盖率 | 较难达到高覆盖 | 更容易测试 | | 团队上手速度 | 较慢（概念多） | 较快 |</p>
+
+<h3>10.5 何时仍然使用类组件</h3>
+
+<p>尽管函数式组件有诸多优势，但在某些情况下类组件仍然是合适的选择：</p>
+
+<p>1. <strong>遗留代码维护</strong>：已有大量类组件代码，迁移成本高 2. <strong>错误边界</strong>：函数式组件不能作为错误边界 3. <strong>特定生命周期需求</strong>：需要 <code>getSnapshotBeforeUpdate</code> 4. <strong>第三方库要求</strong>：某些库可能要求类组件 5. <strong>团队技能栈</strong>：团队熟悉类组件，暂时不想迁移</p>
+
+<h2 id="十一、总结">十一、总结</h2>
+
+<h3>11.1 核心差异总结</h3>
+
+<p>| 方面 | 类组件 | 函数式组件 | |------|--------|------------| | 语法 | ES6 类 | JavaScript 函数 | | 状态 | <code>this.state</code> 和 <code>this.setState()</code> | <code>useState</code> Hook | | 生命周期 | 生命周期方法 | <code>useEffect</code> Hook | | this 绑定 | 需要处理 | 不需要 | | 代码量 | 较多（样板代码） | 较少 | | 逻辑复用 | 高阶组件、渲染属性 | 自定义 Hook | | 性能优化 | <code>PureComponent</code>、<code>shouldComponentUpdate</code> | <code>React.memo</code>、<code>useMemo</code>、<code>useCallback</code> | | TypeScript | 类型注解较复杂 | 类型推断更好 | | 测试 | 需要实例化 | 纯函数，更容易测试 | | 未来兼容 | 逐渐淘汰 | 官方推荐，新特性支持 |</p>
+
+<h3>11.2 选择建议</h3>
+
+<h4>对于新项目：</h4>
+<p>- <strong>强烈推荐使用函数式组件</strong> - 利用 Hooks 和现代 React 特性 - 更好的开发体验和性能</p>
+
+<h4>对于现有项目：</h4>
+<p>- <strong>逐步迁移</strong>到函数式组件 - 新组件使用函数式 - 重构旧组件时考虑迁移</p>
+
+<h4>学习路径：</h4>
+<p>1. 先掌握函数式组件和 Hooks 2. 了解类组件的基本概念（用于维护旧代码） 3. 深入学习自定义 Hook 和高级模式</p>
+
+<h3>11.3 最佳实践</h3>
+
+<p>1. <strong>优先使用函数式组件</strong>：除非有特定需求 2. <strong>合理使用 Hooks</strong>：遵循规则，避免滥用 3. <strong>提取自定义 Hook</strong>：复用逻辑，保持组件简洁 4. <strong>性能优化</strong>：适时使用 <code>React.memo</code>、<code>useMemo</code>、<code>useCallback</code> 5. <strong>类型安全</strong>：使用 TypeScript 增强代码可靠性 6. <strong>测试驱动</strong>：编写可测试的组件</p>
+
+<h3>11.4 未来展望</h3>
+
+<p>React 团队明确表示函数式组件是未来： - 新特性优先支持函数式组件 - 类组件可能逐渐淡出 - 编译器优化（React Forget）针对函数式组件 - 更好的开发工具和生态系统支持</p>
+
+<h3>11.5 学习资源</h3>
+
+<p>1. <strong>官方文档</strong>：    - [Hooks API 参考](https://reactjs.org/docs/hooks-reference.html)    - [Hooks 规则](https://reactjs.org/docs/hooks-rules.html)    - [自定义 Hook](https://reactjs.org/docs/hooks-custom.html)</p>
+
+<p>2. <strong>社区资源</strong>：    - [useHooks](https://usehooks.com/) - 常用 Hook 示例    - [React TypeScript Cheatsheet](https://react-typescript-cheatsheet.netlify.app/)    - [Awesome React Hooks](https://github.com/rehooks/awesome-react-hooks)</p>
+
+<p>3. <strong>工具</strong>：    - ESLint: <code>eslint-plugin-react-hooks</code>    - React DevTools: Hook 调试支持    - VSCode 扩展: React 相关工具</p>
+
+<p>---</p>
+
+<p>© 2026 React 函数式组件 vs 类组件深度对比指南</p>
+            </div>
+
+            <footer class="footer">
+                <p>© 2024 React 技术文档 | 生成时间: <span id="current-date"></span></p>
+                <p>本文档基于 React 官方文档和社区最佳实践编写</p>
+                <p><a href="#top">返回顶部</a></p>
+            </footer>
+        </main>
+    </div>
+
+    <a href="#top" class="back-to-top" id="back-to-top">↑</a>
+
+    <script>
+        // 设置当前日期
+        document.getElementById('current-date').textContent = new Date().toLocaleDateString('zh-CN');
+        
+        // 代码高亮
+        document.addEventListener('DOMContentLoaded', function() {
+            hljs.highlightAll();
+        });
+        
+        // 复制代码功能
+        function copyCode(button) {
+            const codeBlock = button.parentElement.nextElementSibling;
+            const codeText = codeBlock.textContent;
+            
+            navigator.clipboard.writeText(codeText).then(() => {
+                const originalText = button.textContent;
+                button.textContent = '已复制!';
+                button.style.background = 'var(--success-color)';
+                
+                setTimeout(() => {
+                    button.textContent = originalText;
+                    button.style.background = 'var(--primary-color)';
+                }, 2000);
+            }).catch(err => {
+                console.error('复制失败:', err);
+                button.textContent = '复制失败';
+                button.style.background = 'var(--danger-color)';
+                
+                setTimeout(() => {
+                    button.textContent = '复制代码';
+                    button.style.background = 'var(--primary-color)';
+                }, 2000);
+            });
+        }
+        
+        // 目录导航高亮
+        window.addEventListener('scroll', function() {
+            const sections = document.querySelectorAll('.content-section h2');
+            const tocLinks = document.querySelectorAll('.toc a');
+            
+            let currentSection = '';
+            
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                if (scrollY >= sectionTop - 100) {
+                    currentSection = section.getAttribute('id');
+                }
+            });
+            
+            tocLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href') === `#${currentSection}`) {
+                    link.classList.add('active');
+                }
+            });
+            
+            // 显示/隐藏返回顶部按钮
+            const backToTop = document.getElementById('back-to-top');
+            if (window.scrollY > 300) {
+                backToTop.style.display = 'flex';
+            } else {
+                backToTop.style.display = 'none';
+            }
+        });
+        
+        // 平滑滚动
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function(e) {
+                e.preventDefault();
+                
+                const targetId = this.getAttribute('href');
+                if (targetId === '#') return;
+                
+                const targetElement = document.querySelector(targetId);
+                if (targetElement) {
+                    window.scrollTo({
+                        top: targetElement.offsetTop - 20,
+                        behavior: 'smooth'
+                    });
+                }
+            });
+        });
+        
+        // 初始化显示返回顶部按钮
+        document.getElementById('back-to-top').style.display = 'none';
+    </script>
+</body>
+</html>

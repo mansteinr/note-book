@@ -5,14 +5,16 @@
 
 - [加粗](#加粗)
 - [语法](#语法)
-- [My Great Heading](#custom-id)
+- [My Great Heading {#custom-id}](#my-great-heading-custom-id)
 - [目录生成](#目录生成)
+- [生产table](#生产table)
 - [流程图](#流程图)
 - [插入图片](#插入图片)
 - [插入音频](#插入音频)
   - [​3.1 使用audio 标签](#31-使用audio-标签)
   - [3.2 使用iframe标签](#32-使用iframe标签)
   - [3.3 使用video标签](#33-使用video标签)
+- [子项目示范](#子项目示范)
 
 <!-- /code_chunk_output -->
 
@@ -27,6 +29,7 @@
   - [​3.1 使用audio 标签](#31-使用audio-标签)
   - [3.2 使用iframe标签](#32-使用iframe标签)
   - [3.3 使用video标签](#33-使用video标签)
+- [子项目示范](#子项目示范)
 
 ### 加粗
 __加粗__
@@ -155,13 +158,21 @@ E --> F[写入 package-lock.json]
 #### 3.2 使用iframe标签
 
 ```
-<iframe src="./css/images/auto-fill-devtools.mov" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true"> </iframe>
+<iframe src="file:///d:/code/前端/note-book/css/images/auto-fill-devtools.mov" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true"> </iframe>
 ```
+<iframe src="file:///d:/code/前端/note-book/css/images/auto-fill-devtools.mov" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true" width="600"> </iframe>
 
-<iframe src="./css/images/auto-fill-devtools.mp4" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true" width="600"> </iframe>
 <iframe src="https://vdept3.bdstatic.com/mda-rgj984jptz698xn1/cae_h264/1752993163292975753/mda-rgj984jptz698xn1.mp4?v_from_s=hkapp-haokan-nanjing&auth_key=1754915785-0-0-0862428eb19c5022ffe5ca8278806280&bcevod_channel=searchbox_feed&cr=0&cd=0&pd=1&pt=3&logid=2185263610&vid=1091603445691108323&klogid=2185263610&abtest=" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true"> </iframe>
 
 #### 3.3 使用video标签
 <video controls src="https://vdept3.bdstatic.com/mda-rgj984jptz698xn1/cae_h264/1752993163292975753/mda-rgj984jptz698xn1.mp4?v_from_s=hkapp-haokan-nanjing&auth_key=1754915785-0-0-0862428eb19c5022ffe5ca8278806280&bcevod_channel=searchbox_feed&cr=0&cd=0&pd=1&pt=3&logid=2185263610&vid=1091603445691108323&klogid=2185263610&abtest=" width="600"></video>
 
+<video controls src="file:///d:/code/前端/note-book/css/images/auto-fill-devtools.mov" width="600"></video>
 
+
+
+### 子项目示范
+
+- 1. 优化渲染性能
+- 2. 保持组件状态
+- 3. 避免组件销毁

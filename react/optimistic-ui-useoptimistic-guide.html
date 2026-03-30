@@ -1,0 +1,1684 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>乐观更新（Optimistic UI）与 useOptimistic Hook 深度解析</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/typescript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/jsx.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-color: #007acc;
+            --secondary-color: #2d2d2d;
+            --accent-color: #61dafb;
+            --text-color: #333;
+            --light-bg: #f8f9fa;
+            --border-color: #e1e4e8;
+            --success-color: #28a745;
+            --warning-color: #ffc107;
+            --danger-color: #dc3545;
+            --info-color: #17a2b8;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            color: var(--text-color);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            display: flex;
+            gap: 30px;
+        }
+
+        .sidebar {
+            width: 280px;
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            position: sticky;
+            top: 20px;
+            height: fit-content;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+        }
+
+        .sidebar h2 {
+            color: var(--primary-color);
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--accent-color);
+            font-size: 1.5rem;
+        }
+
+        .toc {
+            list-style: none;
+        }
+
+        .toc li {
+            margin-bottom: 12px;
+            position: relative;
+        }
+
+        .toc a {
+            color: var(--text-color);
+            text-decoration: none;
+            display: block;
+            padding: 8px 12px;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .toc a:hover {
+            background: var(--light-bg);
+            color: var(--primary-color);
+            border-left-color: var(--accent-color);
+            transform: translateX(5px);
+        }
+
+        .toc a.active {
+            background: var(--primary-color);
+            color: white;
+            border-left-color: var(--accent-color);
+        }
+
+        .main-content {
+            flex: 1;
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 3px solid var(--accent-color);
+        }
+
+        .header h1 {
+            color: var(--primary-color);
+            font-size: 2.5rem;
+            margin-bottom: 15px;
+            background: linear-gradient(45deg, var(--primary-color), var(--accent-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header .subtitle {
+            color: var(--secondary-color);
+            font-size: 1.2rem;
+            opacity: 0.8;
+        }
+
+        .content-section {
+            margin-bottom: 40px;
+        }
+
+        .content-section h2 {
+            color: var(--primary-color);
+            font-size: 1.8rem;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--light-bg);
+            position: relative;
+        }
+
+        .content-section h2::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            width: 60px;
+            height: 2px;
+            background: var(--accent-color);
+        }
+
+        .content-section h3 {
+            color: var(--secondary-color);
+            font-size: 1.4rem;
+            margin: 25px 0 15px;
+        }
+
+        .content-section h4 {
+            color: var(--secondary-color);
+            font-size: 1.2rem;
+            margin: 20px 0 10px;
+        }
+
+        .content-section p {
+            margin-bottom: 15px;
+            font-size: 1.1rem;
+        }
+
+        .content-section ul, .content-section ol {
+            margin: 15px 0 15px 25px;
+        }
+
+        .content-section li {
+            margin-bottom: 8px;
+            font-size: 1.1rem;
+        }
+
+        .code-block {
+            background: var(--secondary-color);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            overflow-x: auto;
+            position: relative;
+        }
+
+        .code-block pre {
+            margin: 0;
+        }
+
+        .code-block code {
+            font-family: 'Fira Code', 'Consolas', 'Monaco', 'Andale Mono', 'Ubuntu Mono', monospace;
+            font-size: 0.95rem;
+        }
+
+        .code-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            color: #ccc;
+            font-size: 0.9rem;
+        }
+
+        .copy-btn {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: background 0.3s;
+        }
+
+        .copy-btn:hover {
+            background: var(--accent-color);
+        }
+
+        .note {
+            background: #e7f3ff;
+            border-left: 4px solid var(--primary-color);
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+
+        .note strong {
+            color: var(--primary-color);
+        }
+
+        .warning {
+            background: #fff3cd;
+            border-left: 4px solid var(--warning-color);
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+
+        .warning strong {
+            color: var(--warning-color);
+        }
+
+        .tip {
+            background: #d4edda;
+            border-left: 4px solid var(--success-color);
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+
+        .tip strong {
+            color: var(--success-color);
+        }
+
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .comparison-table th {
+            background: var(--primary-color);
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        .comparison-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .comparison-table tr:hover {
+            background: var(--light-bg);
+        }
+
+        .comparison-table .good {
+            color: var(--success-color);
+            font-weight: 600;
+        }
+
+        .comparison-table .bad {
+            color: var(--danger-color);
+            font-weight: 600;
+        }
+
+        .comparison-table .neutral {
+            color: var(--warning-color);
+            font-weight: 600;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-color);
+            color: var(--secondary-color);
+            font-size: 0.9rem;
+        }
+
+        .footer a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                position: static;
+                max-height: none;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .main-content {
+                padding: 20px;
+            }
+        }
+
+        .back-to-top {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: var(--primary-color);
+            color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+            font-size: 1.5rem;
+            box-shadow: 0 4px 15px rgba(0, 122, 204, 0.3);
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .back-to-top:hover {
+            background: var(--accent-color);
+            transform: translateY(-5px);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <aside class="sidebar">
+            <h2>📚 目录</h2>
+            <ul class="toc" id="toc">
+                <li><a href="#乐观更新概念解析">乐观更新概念解析</a></li>
+                <li><a href="#useoptimistic-hook-深度解析">useOptimistic Hook 深度解析</a></li>
+                <li><a href="#实现原理与工作机制">实现原理与工作机制</a></li>
+                <li><a href="#使用场景与最佳实践">使用场景与最佳实践</a></li>
+                <li><a href="#性能优化与错误处理">性能优化与错误处理</a></li>
+                <li><a href="#与其他-hook-的协同工作">与其他 Hook 的协同工作</a></li>
+                <li><a href="#typescript-集成">TypeScript 集成</a></li>
+                <li><a href="#实战案例与代码示例">实战案例与代码示例</a></li>
+                <li><a href="#常见问题与解决方案">常见问题与解决方案</a></li>
+                <li><a href="#总结与未来展望">总结与未来展望</a></li>
+            </ul>
+        </aside>
+
+        <main class="main-content">
+            <header class="header">
+                <h1>乐观更新（Optimistic UI）与 useOptimistic Hook 深度解析</h1>
+                <p class="subtitle">全面理解乐观更新策略与 useOptimistic Hook 的实现原理</p>
+            </header>
+
+            <div class="content-section">
+                <h2 id="乐观更新概念解析">一、乐观更新概念解析</h2>
+                <h3>1.1 什么是乐观更新？</h3>
+                <p>乐观更新（Optimistic UI）是一种用户体验优化策略，其核心思想是：<strong>在用户执行某个操作时，立即在界面上显示预期的结果，同时在后端异步执行实际的操作</strong>。如果操作成功，则保持更新后的状态；如果操作失败，则回滚到之前的状态并显示错误信息。</p>
+                
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>更新流程对比</span>
+                        <button class="copy-btn" onclick="copyCode(this)">复制代码</button>
+                    </div>
+                    <pre><code class="language-javascript">// 传统悲观更新流程
+用户点击"喜欢"按钮 → 发送请求到服务器 → 等待响应 → 更新界面
+
+// 乐观更新流程
+用户点击"喜欢"按钮 → 立即更新界面（显示已喜欢） → 异步发送请求 → 
+   成功：保持状态
+   失败：回滚状态并显示错误</code></pre>
+                </div>
+
+                <h3>1.2 乐观更新的核心优势</h3>
+                <h4>1.2.1 即时反馈，提升用户体验</h4>
+                <ul>
+                    <li><strong>零延迟响应</strong>：用户操作后立即看到结果</li>
+                    <li><strong>流畅交互</strong>：消除网络延迟带来的卡顿感</li>
+                    <li><strong>心理满足</strong>：给用户"操作成功"的即时满足感</li>
+                </ul>
+
+                <h4>1.2.2 降低感知延迟</h4>
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>延迟对比</span>
+                        <button class="copy-btn" onclick="copyCode(this)">复制代码</button>
+                    </div>
+                    <pre><code class="language-javascript">// 网络延迟对用户体验的影响
+网络延迟: 200ms → 用户感知: "有点慢"
+网络延迟: 500ms → 用户感知: "太慢了"
+网络延迟: 1000ms → 用户感知: "卡住了"
+
+// 乐观更新消除感知延迟
+乐观更新: 0ms → 用户感知: "立即响应"</code></pre>
+                </div>
+
+                <h4>1.2.3 提高应用响应性</h4>
+                <p>乐观更新使应用感觉更加响应迅速，特别是在移动网络或高延迟环境下。</p>
+
+                <div class="note">
+                    <strong>📝 注意：</strong> 乐观更新最适合那些成功率高、失败后可安全回滚的操作，如点赞、收藏、标记完成等。
+                </div>
+            </div>
+
+            <div class="content-section">
+                <h2 id="useoptimistic-hook-深度解析">二、useOptimistic Hook 深度解析</h2>
+                <h3>2.1 useOptimistic Hook 的基本语法</h3>
+                <p>useOptimistic 是 React 19 引入的实验性 Hook，专门用于实现乐观更新：</p>
+                
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>useOptimistic 基本语法</span>
+                        <button class="copy-btn" onclick="copyCode(this)">复制代码</button>
+                    </div>
+                    <pre><code class="language-jsx">import { useOptimistic } from 'react';
+
+function LikeButton({ postId, initialLikes }) {
+  const [likes, addOptimisticLike] = useOptimistic(
+    initialLikes,
+    (currentState, optimisticValue) => {
+      return currentState + optimisticValue;
+    }
+  );
+
+  const handleLike = async () => {
+    addOptimisticLike(1); // 立即更新界面
+    try {
+      await likePost(postId); // 异步发送请求
+    } catch (error) {
+      console.error('点赞失败:', error);
+      // 错误处理：可以显示错误信息，但状态会自动回滚
+    }
+  };
+
+  return (
+    &lt;button onClick={handleLike}&gt;
+      👍 {likes}
+    &lt;/button&gt;
+  );
+}</code></pre>
+                </div>
+
+                <h3>2.2 参数详解</h3>
+                <p>useOptimistic 接收两个参数：</p>
+                
+                <table class="comparison-table">
+                    <thead>
+                        <tr>
+                            <th>参数</th>
+                            <th>类型</th>
+                            <th>描述</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>initialState</strong></td>
+                            <td>any</td>
+                            <td>初始状态值</td>
+                        </tr>
+                        <tr>
+                            <td><strong>reducer</strong></td>
+                            <td>(currentState, optimisticValue) => newState</td>
+                            <td>状态更新函数，接收当前状态和乐观值，返回新状态</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>2.3 返回值</h3>
+                <p>useOptimistic 返回一个数组，包含两个元素：</p>
+                
+                <ol>
+                    <li><strong>optimisticState</strong>：当前乐观状态（可能包含未确认的更新）</li>
+                    <li><strong>addOptimistic</strong>：触发乐观更新的函数</li>
+                </ol>
+
+                <div class="tip">
+                    <strong>💡 提示：</strong> useOptimistic 会自动处理状态回滚。如果异步操作失败，它会自动将状态恢复到操作前的值。
+                </div>
+            </div>
+
+            <div class="content-section">
+                <h2 id="实现原理与工作机制">三、实现原理与工作机制</h2>
+                <h3>3.1 内部状态管理</h3>
+                <p>useOptimistic 在内部维护两个状态：</p>
+                
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>内部状态结构</span>
+                        <button class="copy-btn" onclick="copyCode(this)">复制代码</button>
+                    </div>
+                    <pre><code class="language-javascript">// useOptimistic 内部状态示意
+const [baseState, setBaseState] = useState(initialState);
+const [pendingUpdates, setPendingUpdates] = useState([]);
+
+// 计算乐观状态
+const optimisticState = pendingUpdates.reduce(
+  (state, update) => reducer(state, update),
+  baseState
+);
+
+// 触发乐观更新
+const addOptimistic = (value) => {
+  setPendingUpdates(prev => [...prev, value]);
+  
+  // 异步操作完成后
+  someAsyncOperation().then(() => {
+    // 更新基础状态
+    setBaseState(prev => reducer(prev, value));
+    // 移除待处理更新
+    setPendingUpdates(prev => prev.filter(u => u !== value));
+  }).catch(() => {
+    // 操作失败，只移除待处理更新
+    setPendingUpdates(prev => prev.filter(u => u !== value));
+  });
+};</code></pre>
+                </div>
+
+                <h3>3.2 状态回滚机制</h3>
+                <p>useOptimistic 的状态回滚是自动的：</p>
+                
+                <ol>
+                    <li><strong>操作开始</strong>：用户触发操作，立即更新 pendingUpdates</li>
+                    <li><strong>界面更新</strong>：基于 pendingUpdates 计算 optimisticState</li>
+                    <li><strong>异步执行</strong>：发送请求到服务器</li>
+                    <li><strong>成功处理</strong>：更新 baseState，移除 pendingUpdates 中的对应项</li>
+                    <li><strong>失败处理</strong>：只移除 pendingUpdates 中的对应项，状态自动回滚</li>
+                </ol>
+
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>状态回滚示例</span>
+                        <button class="copy-btn" onclick="copyCode(this)">复制代码</button>
+                    </div>
+                    <pre><code class="language-javascript">// 初始状态
+baseState: 10
+pendingUpdates: []
+optimisticState: 10
+
+// 用户点赞
+addOptimistic(1) → pendingUpdates: [1]
+optimisticState: 11 (立即显示)
+
+// 异步请求成功
+请求成功 → baseState: 11, pendingUpdates: []
+optimisticState: 11 (保持不变)
+
+// 异步请求失败
+请求失败 → baseState: 10, pendingUpdates: []
+optimisticState: 10 (自动回滚)</code></pre>
+                </div>
+
+                <div class="note">
+                    <strong>📝 注意：</strong> useOptimistic 的状态回滚是原子性的，即使多个乐观更新同时进行，每个更新都会独立处理成功或失败。
+                </div>
+            </div>
+
+            <div class="content-section">
+                <h2 id="使用场景与最佳实践">四、使用场景与最佳实践</h2>
+                <h3>4.1 适用场景</h3>
+                <p>乐观更新最适合以下场景：</p>
+                
+                <table class="comparison-table">
+                    <thead>
+                        <tr>
+                            <th>场景</th>
+                            <th>示例</th>
+                            <th>适合度</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>社交互动</strong></td>
+                            <td>点赞、收藏、关注</td>
+                            <td class="good">高</td>
+                        </tr>
+                        <tr>
+                            <td><strong>状态切换</strong></td>
+                            <td>标记完成、切换开关</td>
+                            <td class="good">高</td>
+                        </tr>
+                        <tr>
+                            <td><strong>简单表单</strong></td>
+                            <td>评论、评分</td>
+                            <td class="good">高</td>
+                        </tr>
+                        <tr>
+                            <td><strong>复杂表单</strong></td>
+                            <td>用户注册、订单提交</td>
+                            <td class="neutral">中</td>
+                        </tr>
+                        <tr>
+                            <td><strong>金融交易</strong></td>
+                            <td>支付、转账</td>
+                            <td class="bad">低</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>4.2 最佳实践</h3>
+                <h4>4.2.1 提供视觉反馈</h4>
+                <p>在乐观更新期间提供视觉反馈，让用户知道操作正在进行：</p>
+                
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>视觉反馈示例</span>
+                        <button class="copy-btn" onclick="copyCode(this)">复制代码</button>
+                    </div>
+                    <pre><code class="language-jsx">function LikeButtonWithFeedback({ postId, initialLikes }) {
+  const [likes, addOptimisticLike] = useOptimistic(
+    initialLikes,
+    (current, value) => current + value
+  );
+  
+  const [isPending, startTransition] = useTransition();
+
+  const handleLike = async () => {
+    addOptimisticLike(1);
+    
+    startTransition(async () => {
+      try {
+        await likePost(postId);
+      } catch (error) {
+        // 错误处理
+        showErrorToast('点赞失败');
+      }
+    });
+  };
+
+  return (
+    &lt;button 
+      onClick={handleLike}
+      disabled={isPending}
+      className={isPending ? 'pending' : ''}
+    &gt;
+      {isPending ? '⏳' : '👍'} {likes}
+    &lt;/button&gt;
+  );
+}</code></pre>
+                </div>
+
+                <h4>4.2.2 处理并发操作</h4>
+                <p>防止用户快速连续点击导致的问题：</p>
+                
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>防并发示例</span>
+                        <button class="copy-btn" onclick="copyCode(this)">复制代码</button>
+                    </div>
+                    <pre><code class="language-jsx">function LikeButtonWithDebounce({ postId, initialLikes }) {
+  const [likes, addOptimisticLike] = useOptimistic(
+    initialLikes,
+    (current, value) => current + value
+  );
+  
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleLike = async () => {
+    if (isLoading) return; // 防止并发点击
+    
+    setIsLoading(true);
+    addOptimisticLike(1);
+    
+    try {
+      await likePost(postId);
+    } catch (error) {
+      showErrorToast('点赞失败');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    &lt;button 
+      onClick={handleLike}
+      disabled={isLoading}
+    &gt;
+      {isLoading ? '处理中...' : '👍'} {likes}
+    &lt;/button&gt;
+  );
+}</code></pre>
+                </div>
+
+                <div class="warning">
+                    <strong>⚠️ 警告：</strong> 对于不可逆操作（如删除、支付），谨慎使用乐观更新，或者提供明确的撤销机制。
+                </div>
+            </div>
+
+            <div class="content-section">
+                <h2 id="性能优化与错误处理">五、性能优化与错误处理</h2>
+                <h3>5.1 性能优化策略</h3>
+                <h4>5.1.1 批量更新</h4>
+                <p>使用 useTransition 批量处理多个乐观更新：</p>
+                
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>批量更新示例</span>
+                        <button class="copy-btn" onclick="copyCode(this)">复制代码</button>
+                    </div>
+                    <pre><code class="language-jsx">function TodoList({ todos }) {
+  const [items, addOptimisticTodo] = useOptimistic(
+    todos,
+    (current, newTodo) => [...current, newTodo]
+  );
+  
+  const [isPending, startTransition] = useTransition();
+
+  const handleAddTodo = async (text) => {
+    const newTodo = { id: Date.now(), text, completed: false };
+    
+    addOptimisticTodo(newTodo);
+    
+    startTransition(async () => {
+      try {
+        await saveTodoToServer(newTodo);
+      } catch (error) {
+        showErrorToast('添加失败');
+      }
+    });
+  };
+
+  return (
+    &lt;div&gt;
+      &lt;AddTodoForm onSubmit={handleAddTodo} /&gt;
+      {isPending && &lt;div className="loading-indicator"&gt;保存中...&lt;/div&gt;}
+      &lt;ul&gt;
+        {items.map(todo => (
+          &lt;TodoItem key={todo.id} todo={todo} /&gt;
+        ))}
+      &lt;/ul&gt;
+    &lt;/div&gt;
+  );
+}</code></pre>
+                </div>
+
+                <h4>5.1.2 内存优化</h4>
+                <p>及时清理已完成的乐观更新，避免内存泄漏：</p>
+                
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>内存优化示例</span>
+                        <button class="copy-btn" onclick="copyCode(this)">复制代码</button>
+                    </div>
+                    <pre><code class="language-jsx">function useOptimisticWithCleanup(initialState, reducer) {
+  const [state, setState] = useState(initialState);
+  const pendingUpdatesRef = useRef(new Map());
+  
+  const addOptimistic = useCallback((key, value) => {
+    const updateId = Date.now();
+    
+    // 添加乐观更新
+    pendingUpdatesRef.current.set(updateId, value);
+    setState(prev => reducer(prev, value));
+    
+    return () => {
+      // 清理函数
+      pendingUpdatesRef.current.delete(updateId);
+    };
+  }, [reducer]);
+  
+  return [state, addOptimistic];
+}</code></pre>
+                </div>
+
+                <h3>5.2 错误处理策略</h3>
+                <h4>5.2.1 用户友好的错误提示</h4>
+                <p>在乐观更新失败时，提供清晰的错误信息：</p>
+                
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>错误处理示例</span>
+                        <button class="copy-btn" onclick="copyCode(this)">复制代码</button>
+                    </div>
+                    <pre><code class="language-jsx">function LikeButtonWithErrorHandling({ postId, initialLikes }) {
+  const [likes, addOptimisticLike] = useOptimistic(
+    initialLikes,
+    (current, value) => current + value
+  );
+  
+  const [error, setError] = useState(null);
+
+  const handleLike = async () => {
+    setError(null);
+    addOptimisticLike(1);
+    
+    try {
+      await likePost(postId);
+    } catch (error) {
+      setError('点赞失败，请重试');
+      // 状态会自动回滚，无需手动处理
+    }
+  };
+
+  return (
+    &lt;div className="like-container"&gt;
+      &lt;button onClick={handleLike}&gt;
+        👍 {likes}
+      &lt;/button&gt;
+      {error && (
+        &lt;div className="error-message"&gt;
+          {error}
+          &lt;button onClick={handleLike}&gt;重试&lt;/button&gt;
+        &lt;/div&gt;
+      )}
+    &lt;/div&gt;
+  );
+}</code></pre>
+                </div>
+
+                <h4>5.2.2 重试机制</h4>
+                <p>为重要的操作提供重试机制：</p>
+                
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>重试机制示例</span>
+                        <button class="copy-btn" onclick="copyCode(this)">复制代码</button>
+                    </div>
+                    <pre><code class="language-jsx">function useOptimisticWithRetry(initialState, reducer, asyncAction) {
+  const [state, addOptimistic] = useOptimistic(initialState, reducer);
+  const [retryCount, setRetryCount] = useState(0);
+  
+  const executeWithRetry = useCallback(async (value) => {
+    let attempts = 0;
+    const maxAttempts = 3;
+    
+    addOptimistic(value);
+    
+    while (attempts < maxAttempts) {
+      try {
+        await asyncAction(value);
+        return; // 成功则退出
+      } catch (error) {
+        attempts++;
+        if (attempts === maxAttempts) {
+          throw error; // 达到最大重试次数
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempts)); // 指数退避
+      }
+    }
+  }, [addOptimistic, asyncAction]);
+  
+  return [state, executeWithRetry];
+}</code></pre>
+                </div>
+
+                <div class="tip">
+                    <strong>💡 提示：</strong> 对于网络不稳定的环境，考虑实现指数退避重试机制，避免短时间内大量重试请求。
+                </div>
+            </div>
+
+            <div class="content-section">
+                <h2 id="与其他-hook-的协同工作">六、与其他 Hook 的协同工作</h2>
+                <h3>6.1 与 useTransition 配合</h3>
+                <p>useOptimistic 与 useTransition 完美配合，提供更好的用户体验：</p>
+                
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>与 useTransition 配合示例</span>
+                        <button class="copy-btn" onclick="copyCode(this)">复制代码</button>
+                    </div>
+                    <pre><code class="language-jsx">function CommentForm({ postId }) {
+  const [comments, addOptimisticComment] = useOptimistic(
+    [],
+    (current, newComment) => [...current, newComment]
+  );
+  
+  const [isPending, startTransition] = useTransition();
+  const [text, setText] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!text.trim()) return;
+    
+    const newComment = {
+      id: Date.now(),
+      text,
+      author: '当前用户',
+      timestamp: new Date().toISOString()
+    };
+    
+    addOptimisticComment(newComment);
+    setText('');
+    
+    startTransition(async () => {
+      try {
+        await submitComment(postId, text);
+      } catch (error) {
+        showErrorToast('评论提交失败');
+      }
+    });
+  };
+
+  return (
+    &lt;div&gt;
+      &lt;form onSubmit={handleSubmit}&gt;
+        &lt;textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="写下你的评论..."
+          disabled={isPending}
+        /&gt;
+        &lt;button type="submit" disabled={isPending || !text.trim()}&gt;
+          {isPending ? '提交中...' : '提交评论'}
+        &lt;/button&gt;
+      &lt;/form&gt;
+      
+      &lt;div className="comments-list"&gt;
+        {comments.map(comment => (
+          &lt;CommentItem 
+            key={comment.id} 
+            comment={comment}
+            isOptimistic={comment.id > 1000000000000} // 临时ID判断
+          /&gt;
+        ))}
+      &lt;/div&gt;
+    &lt;/div&gt;
+  );
+}</code></pre>
+                </div>
+
+                <h3>6.2 与 useActionState 配合</h3>
+                <p>在 React 19 中，useOptimistic 可以与 useActionState 一起使用：</p>
+                
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>与 useActionState 配合示例</span>
+                        <button class="copy-btn" onclick="copyCode(this)">复制代码</button>
+                    </div>
+                    <pre><code class="language-jsx">'use client';
+
+import { useOptimistic, useActionState } from 'react';
+
+async function likePostAction(prevState, formData) {
+  const postId = formData.get('postId');
+  
+  try {
+    await fetch(`/api/posts/${postId}/like`, {
+      method: 'POST'
+    });
+    return { success: true, error: null };
+  } catch (error) {
+    return { success: false, error: '点赞失败' };
+  }
+}
+
+function LikeButtonWithActionState({ postId, initialLikes }) {
+  const [state, formAction, isPending] = useActionState(
+    likePostAction,
+    { success: true, error: null }
+  );
+  
+  const [likes, addOptimisticLike] = useOptimistic(
+    initialLikes,
+    (current, value) => current + value
+  );
+
+  const handleLike = () => {
+    addOptimisticLike(1);
+    
+    const formData = new FormData();
+    formData.set('postId', postId);
+    formAction(formData);
+  };
+
+  return (
+    &lt;div&gt;
+      &lt;button onClick={handleLike} disabled={isPending}&gt;
+        {isPending ? '处理中...' : '👍'} {likes}
+      &lt;/button&gt;
+      {state.error && (
+        &lt;div className="error"&gt;{state.error}&lt;/div&gt;
+      )}
+    &lt;/div&gt;
+  );
+}</code></pre>
+                </div>
+
+                <div class="note">
+                    <strong>📝 注意：</strong> useOptimistic 与 useActionState 的配合在 React 19 中提供了完整的表单处理解决方案，结合了乐观更新和服务器状态管理。
+                </div>
+            </div>
+
+            <div class="content-section">
+                <h2 id="typescript-集成">七、TypeScript 集成</h2>
+                <h3>7.1 类型定义</h3>
+                <p>为 useOptimistic 提供完整的 TypeScript 类型支持：</p>
+                
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>TypeScript 类型定义</span>
+                        <button class="copy-btn" onclick="copyCode(this)">复制代码</button>
+                    </div>
+                    <pre><code class="language-typescript">import { useOptimistic } from 'react';
+
+// 定义状态类型
+interface Todo {
+  id: number;
+  text: string;
+  completed: boolean;
+}
+
+// 定义乐观更新值的类型
+type TodoOptimisticValue = Todo | { id: number }; // 可以是完整Todo或仅ID
+
+function TodoList({ initialTodos }: { initialTodos: Todo[] }) {
+  const [todos, addOptimisticTodo] = useOptimistic&lt;Todo[], TodoOptimisticValue&gt;(
+    initialTodos,
+    (currentTodos, optimisticValue) => {
+      if ('text' in optimisticValue) {
+        // 添加新Todo
+        return [...currentTodos, optimisticValue as Todo];
+      } else {
+        // 删除Todo（通过ID）
+        return currentTodos.filter(todo => todo.id !== optimisticValue.id);
+      }
+    }
+  );
+
+  const handleAddTodo = async (text: string) => {
+    const newTodo: Todo = {
+      id: Date.now(),
+      text,
+      completed: false
+    };
+    
+    addOptimisticTodo(newTodo);
+    
+    try {
+      await saveTodo(newTodo);
+    } catch (error) {
+      console.error('保存失败:', error);
+    }
+  };
+
+  const handleDeleteTodo = async (id: number) => {
+    addOptimisticTodo({ id });
+    
+    try {
+      await deleteTodo(id);
+    } catch (error) {
+      console.error('删除失败:', error);
+    }
+  };
+
+  return (
+    &lt;div&gt;
+      {/* 组件实现 */}
+    &lt;/div&gt;
+  );
+}</code></pre>
+                </div>
+
+                <h3>7.2 泛型支持</h3>
+                <p>useOptimistic 支持泛型，可以创建类型安全的乐观更新：</p>
+                
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>泛型示例</span>
+                        <button class="copy-btn" onclick="copyCode(this)">复制代码</button>
+                    </div>
+                    <pre><code class="language-typescript">// 创建类型安全的 useOptimistic Hook
+function useTypedOptimistic&lt;T, V&gt;(
+  initialState: T,
+  reducer: (state: T, value: V) => T
+): [T, (value: V) => void] {
+  return useOptimistic(initialState, reducer);
+}
+
+// 使用示例
+interface User {
+  id: number;
+  name: string;
+  followers: number;
+}
+
+function FollowButton({ user }: { user: User }) {
+  const [userState, addOptimisticFollow] = useTypedOptimistic&lt;
+    User,
+    number // 乐观更新值的类型
+  &gt;(
+    user,
+    (currentUser, increment) => ({
+      ...currentUser,
+      followers: currentUser.followers + increment
+    })
+  );
+
+  const handleFollow = async () => {
+    addOptimisticFollow(1);
+    
+    try {
+      await followUser(user.id);
+    } catch (error) {
+      console.error('关注失败:', error);
+    }
+  };
+
+  return (
+    &lt;button onClick={handleFollow}&gt;
+      👤 {userState.followers}
+    &lt;/button&gt;
+  );
+}</code></pre>
+                </div>
+
+                <div class="tip">
+                    <strong>💡 提示：</strong> 在 TypeScript 中，为 useOptimistic 提供明确的泛型参数可以提高代码的可读性和类型安全性。
+                </div>
+            </div>
+
+            <div class="content-section">
+                <h2 id="实战案例与代码示例">八、实战案例与代码示例</h2>
+                <h3>8.1 社交应用点赞功能</h3>
+                <p>完整的社交应用点赞功能实现：</p>
+                
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>社交点赞完整示例</span>
+                        <button class="copy-btn" onclick="copyCode(this)">复制代码</button>
+                    </div>
+                    <pre><code class="language-jsx">import { useOptimistic, useState, useCallback } from 'react';
+
+interface Post {
+  id: number;
+  title: string;
+  likes: number;
+  isLiked: boolean;
+}
+
+async function toggleLike(postId: number): Promise&lt;boolean&gt; {
+  const response = await fetch(`/api/posts/${postId}/like`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  });
+  
+  if (!response.ok) {
+    throw new Error('点赞失败');
+  }
+  
+  const data = await response.json();
+  return data.isLiked;
+}
+
+function LikeButton({ post }: { post: Post }) {
+  const [optimisticPost, addOptimisticLike] = useOptimistic(
+    post,
+    (currentPost, shouldLike) => ({
+      ...currentPost,
+      likes: shouldLike ? currentPost.likes + 1 : currentPost.likes - 1,
+      isLiked: shouldLike
+    })
+  );
+  
+  const [error, setError] = useState&lt;string | null&gt;(null);
+  const [isPending, setIsPending] = useState(false);
+
+  const handleLike = useCallback(async () => {
+    setError(null);
+    setIsPending(true);
+    
+    // 乐观更新
+    addOptimisticLike(!optimisticPost.isLiked);
+    
+    try {
+      const newIsLiked = await toggleLike(post.id);
+      
+      // 如果服务器返回的状态与乐观更新不一致，进行修正
+      if (newIsLiked !== !optimisticPost.isLiked) {
+        addOptimisticLike(newIsLiked);
+      }
+    } catch (err) {
+      setError('操作失败，请重试');
+      // 状态会自动回滚
+    } finally {
+      setIsPending(false);
+    }
+  }, [post.id, optimisticPost.isLiked, addOptimisticLike]);
+
+  return (
+    &lt;div className="like-container"&gt;
+      &lt;button
+        onClick={handleLike}
+        disabled={isPending}
+        className={`like-button ${optimisticPost.isLiked ? 'liked' : ''}`}
+        aria-label={optimisticPost.isLiked ? '取消点赞' : '点赞'}
+      &gt;
+        &lt;span className="icon"&gt;{optimisticPost.isLiked ? '❤️' : '🤍'}&lt;/span&gt;
+        &lt;span className="count"&gt;{optimisticPost.likes}&lt;/span&gt;
+      &lt;/button&gt;
+      
+      {isPending && (
+        &lt;div className="loading" aria-live="polite"&gt;
+          处理中...
+        &lt;/div&gt;
+      )}
+      
+      {error && (
+        &lt;div className="error" role="alert"&gt;
+          {error}
+          &lt;button onClick={handleLike}&gt;重试&lt;/button&gt;
+        &lt;/div&gt;
+      )}
+    &lt;/div&gt;
+  );
+}
+
+// 样式组件
+const styles = `
+.like-container {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.like-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 16px;
+  border: 2px solid #e0e0e0;
+  border-radius: 20px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 14px;
+}
+
+.like-button:hover:not(:disabled) {
+  border-color: #ff4757;
+  transform: translateY(-1px);
+}
+
+.like-button.liked {
+  border-color: #ff4757;
+  background: #fff5f5;
+}
+
+.like-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.like-button .icon {
+  font-size: 18px;
+}
+
+.like-button .count {
+  font-weight: 600;
+  color: #333;
+}
+
+.loading {
+  font-size: 12px;
+  color: #666;
+}
+
+.error {
+  color: #ff4757;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.error button {
+  padding: 2px 8px;
+  font-size: 12px;
+  background: #ff4757;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+`;</code></pre>
+                </div>
+
+                <h3>8.2 购物车商品数量更新</h3>
+                <p>电商应用购物车商品数量乐观更新：</p>
+                
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>购物车示例</span>
+                        <button class="copy-btn" onclick="copyCode(this)">复制代码</button>
+                    </div>
+                    <pre><code class="language-jsx">import { useOptimistic, useCallback } from 'react';
+
+interface CartItem {
+  id: number;
+  name: string;
+  price: number;
+  quantity: number;
+  image: string;
+}
+
+async function updateCartItemQuantity(itemId: number, quantity: number): Promise&lt;void&gt; {
+  const response = await fetch(`/api/cart/items/${itemId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ quantity })
+  });
+  
+  if (!response.ok) {
+    throw new Error('更新失败');
+  }
+}
+
+function CartItemComponent({ item }: { item: CartItem }) {
+  const [optimisticItem, addOptimisticUpdate] = useOptimistic(
+    item,
+    (currentItem, newQuantity) => ({
+      ...currentItem,
+      quantity: newQuantity
+    })
+  );
+  
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  const updateQuantity = useCallback(async (newQuantity: number) => {
+    if (newQuantity < 1 || newQuantity > 99) return;
+    
+    setIsUpdating(true);
+    addOptimisticUpdate(newQuantity);
+    
+    try {
+      await updateCartItemQuantity(item.id, newQuantity);
+    } catch (error) {
+      console.error('更新购物车失败:', error);
+      // 显示错误提示，状态会自动回滚
+    } finally {
+      setIsUpdating(false);
+    }
+  }, [item.id, addOptimisticUpdate]);
+
+  const increment = () => updateQuantity(optimisticItem.quantity + 1);
+  const decrement = () => updateQuantity(optimisticItem.quantity - 1);
+
+  return (
+    &lt;div className="cart-item"&gt;
+      &lt;img src={optimisticItem.image} alt={optimisticItem.name} /&gt;
+      
+      &lt;div className="item-details"&gt;
+        &lt;h3&gt;{optimisticItem.name}&lt;/h3&gt;
+        &lt;p className="price"&gt;¥{optimisticItem.price}&lt;/p&gt;
+      &lt;/div&gt;
+      
+      &lt;div className="quantity-controls"&gt;
+        &lt;button
+          onClick={decrement}
+          disabled={optimisticItem.quantity &lt;= 1 || isUpdating}
+          aria-label="减少数量"
+        &gt;
+          −
+        &lt;/button&gt;
+        
+        &lt;span className="quantity"&gt;
+          {isUpdating ? (
+            &lt;span className="updating"&gt;更新中...&lt;/span&gt;
+          ) : (
+            optimisticItem.quantity
+          )}
+        &lt;/span&gt;
+        
+        &lt;button
+          onClick={increment}
+          disabled={optimisticItem.quantity &gt;= 99 || isUpdating}
+          aria-label="增加数量"
+        &gt;
+          +
+        &lt;/button&gt;
+      &lt;/div&gt;
+      
+      &lt;div className="subtotal"&gt;
+        ¥{(optimisticItem.price * optimisticItem.quantity).toFixed(2)}
+      &lt;/div&gt;
+    &lt;/div&gt;
+  );
+}</code></pre>
+                </div>
+
+                <div class="note">
+                    <strong>📝 注意：</strong> 在实际项目中，考虑添加防抖、节流和批量更新等优化，特别是在购物车这种高频操作的场景中。
+                </div>
+            </div>
+
+            <div class="content-section">
+                <h2 id="常见问题与解决方案">九、常见问题与解决方案</h2>
+                <h3>9.1 常见问题</h3>
+                
+                <table class="comparison-table">
+                    <thead>
+                        <tr>
+                            <th>问题</th>
+                            <th>原因</th>
+                            <th>解决方案</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>状态闪烁</strong></td>
+                            <td>乐观更新太快回滚</td>
+                            <td>添加最小显示时间或过渡动画</td>
+                        </tr>
+                        <tr>
+                            <td><strong>并发操作冲突</strong></td>
+                            <td>用户快速连续操作</td>
+                            <td>添加防抖或禁用按钮</td>
+                        </tr>
+                        <tr>
+                            <td><strong>状态不一致</strong></td>
+                            <td>服务器状态与客户端不同</td>
+                            <td>定期同步或使用WebSocket</td>
+                        </tr>
+                        <tr>
+                            <td><strong>内存泄漏</strong></td>
+                            <td>未清理的乐观更新</td>
+                            <td>添加超时清理机制</td>
+                        </tr>
+                        <tr>
+                            <td><strong>用户体验差</strong></td>
+                            <td>错误处理不当</td>
+                            <td>提供清晰的错误提示和重试选项</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>9.2 解决方案示例</h3>
+                <h4>9.2.1 防止状态闪烁</h4>
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>防闪烁方案</span>
+                        <button class="copy-btn" onclick="copyCode(this)">复制代码</button>
+                    </div>
+                    <pre><code class="language-jsx">function useStableOptimistic(initialState, reducer) {
+  const [state, addOptimistic] = useOptimistic(initialState, reducer);
+  const [stableState, setStableState] = useState(initialState);
+  const [lastUpdateTime, setLastUpdateTime] = useState(0);
+  
+  // 更新稳定状态（避免过快回滚）
+  useEffect(() => {
+    const now = Date.now();
+    const timeSinceLastUpdate = now - lastUpdateTime;
+    const minDisplayTime = 300; // 最小显示时间300ms
+    
+    if (timeSinceLastUpdate >= minDisplayTime) {
+      setStableState(state);
+      setLastUpdateTime(now);
+    } else {
+      const timer = setTimeout(() => {
+        setStableState(state);
+        setLastUpdateTime(Date.now());
+      }, minDisplayTime - timeSinceLastUpdate);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [state, lastUpdateTime]);
+  
+  return [stableState, addOptimistic];
+}</code></pre>
+                </div>
+
+                <h4>9.2.2 处理并发冲突</h4>
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>并发冲突处理</span>
+                        <button class="copy-btn" onclick="copyCode(this)">复制代码</button>
+                    </div>
+                    <pre><code class="language-jsx">function useOptimisticWithQueue(initialState, reducer, asyncAction) {
+  const [state, addOptimistic] = useOptimistic(initialState, reducer);
+  const [queue, setQueue] = useState&lt;Array&lt;() =&gt; Promise&lt;void&gt;&gt;&gt;([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  
+  const processQueue = useCallback(async () => {
+    if (isProcessing || queue.length === 0) return;
+    
+    setIsProcessing(true);
+    const action = queue[0];
+    
+    try {
+      await action();
+      setQueue(prev => prev.slice(1));
+    } catch (error) {
+      console.error('操作失败:', error);
+      setQueue(prev => prev.slice(1));
+    } finally {
+      setIsProcessing(false);
+      // 处理下一个
+      setTimeout(() => processQueue(), 0);
+    }
+  }, [queue, isProcessing]);
+  
+  const enqueueAction = useCallback((value: any) => {
+    addOptimistic(value);
+    
+    const action = async () => {
+      await asyncAction(value);
+    };
+    
+    setQueue(prev => [...prev, action]);
+    processQueue();
+  }, [addOptimistic, asyncAction, processQueue]);
+  
+  return [state, enqueueAction];
+}</code></pre>
+                </div>
+
+                <div class="tip">
+                    <strong>💡 提示：</strong> 对于复杂场景，考虑使用状态机（如 XState）或专门的乐观更新库来管理状态和副作用。
+                </div>
+            </div>
+
+            <div class="content-section">
+                <h2 id="总结与未来展望">十、总结与未来展望</h2>
+                <h3>10.1 核心总结</h3>
+                <p>乐观更新和 useOptimistic Hook 为现代 Web 应用提供了重要的用户体验优化：</p>
+                
+                <ol>
+                    <li><strong>即时反馈</strong>：消除网络延迟带来的等待感</li>
+                    <li><strong>状态管理</strong>：自动处理状态更新和回滚</li>
+                    <li><strong>错误恢复</strong>：内置的错误处理和状态恢复机制</li>
+                    <li><strong>开发效率</strong>：简化乐观更新的实现复杂度</li>
+                    <li><strong>类型安全</strong>：完整的 TypeScript 支持</li>
+                </ol>
+
+                <h3>10.2 最佳实践回顾</h3>
+                <p>使用乐观更新时应遵循以下最佳实践：</p>
+                
+                <ol>
+                    <li><strong>选择合适的场景</strong>：高成功率、可回滚的操作</li>
+                    <li><strong>提供视觉反馈</strong>：让用户知道操作状态</li>
+                    <li><strong>处理错误优雅</strong>：清晰的错误提示和重试选项</li>
+                    <li><strong>防止滥用</strong>：重要操作谨慎使用乐观更新</li>
+                    <li><strong>性能优化</strong>：批量更新、防抖、内存管理</li>
+                </ol>
+
+                <h3>10.3 未来展望</h3>
+                <p>乐观更新技术的未来发展方向：</p>
+                
+                <ol>
+                    <li><strong>更智能的状态管理</strong>：自动冲突解决和状态同步</li>
+                    <li><strong>离线优先支持</strong>：更好的离线体验和数据同步</li>
+                    <li><strong>实时协作</strong>：多人协作场景的乐观更新优化</li>
+                    <li><strong>AI 增强</strong>：基于用户行为的预测性乐观更新</li>
+                    <li><strong>标准化 API</strong>：更统一、更强大的乐观更新 API</li>
+                </ol>
+
+                <div class="note">
+                    <strong>📝 最后建议：</strong> 乐观更新是提升用户体验的重要手段，但并非万能解决方案。在实际项目中，应根据具体场景和需求，合理选择和使用乐观更新技术。同时，关注 React 官方文档和社区动态，及时了解最新的最佳实践和工具更新。
+                </div>
+            </div>
+
+            <footer class="footer">
+                <p>© 2024 React 技术文档 | 生成时间: <span id="current-date"></span></p>
+                <p>本文档基于 React 官方文档和社区最佳实践编写</p>
+                <p><a href="#top">返回顶部</a></p>
+            </footer>
+        </main>
+    </div>
+
+    <a href="#top" class="back-to-top" id="back-to-top">↑</a>
+
+    <script>
+        // 设置当前日期
+        document.getElementById('current-date').textContent = new Date().toLocaleDateString('zh-CN');
+        
+        // 代码高亮
+        document.addEventListener('DOMContentLoaded', function() {
+            hljs.highlightAll();
+        });
+        
+        // 复制代码功能
+        function copyCode(button) {
+            const codeBlock = button.parentElement.nextElementSibling;
+            const codeText = codeBlock.textContent;
+            
+            navigator.clipboard.writeText(codeText).then(() => {
+                const originalText = button.textContent;
+                button.textContent = '已复制!';
+                button.style.background = 'var(--success-color)';
+                
+                setTimeout(() => {
+                    button.textContent = originalText;
+                    button.style.background = 'var(--primary-color)';
+                }, 2000);
+            }).catch(err => {
+                console.error('复制失败:', err);
+                button.textContent = '复制失败';
+                button.style.background = 'var(--danger-color)';
+                
+                setTimeout(() => {
+                    button.textContent = '复制代码';
+                    button.style.background = 'var(--primary-color)';
+                }, 2000);
+            });
+        }
+        
+        // 目录导航高亮
+        window.addEventListener('scroll', function() {
+            const sections = document.querySelectorAll('.content-section h2');
+            const tocLinks = document.querySelectorAll('.toc a');
+            
+            let currentSection = '';
+            
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                if (scrollY >= sectionTop - 100) {
+                    currentSection = section.getAttribute('id');
+                }
+            });
+            
+            tocLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href') === `#${currentSection}`) {
+                    link.classList.add('active');
+                }
+            });
+            
+            // 显示/隐藏返回顶部按钮
+            const backToTop = document.getElementById('back-to-top');
+            if (window.scrollY > 300) {
+                backToTop.style.display = 'flex';
+            } else {
+                backToTop.style.display = 'none';
+            }
+        });
+        
+        // 平滑滚动
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function(e) {
+                e.preventDefault();
+                
+                const targetId = this.getAttribute('href');
+                if (targetId === '#') return;
+                
+                const targetElement = document.querySelector(targetId);
+                if (targetElement) {
+                    window.scrollTo({
+                        top: targetElement.offsetTop - 20,
+                        behavior: 'smooth'
+                    });
+                }
+            });
+        });
+        
+        // 初始化显示返回顶部按钮
+        document.getElementById('back-to-top').style.display = 'none';
+    </script>
+</body>
+</html>

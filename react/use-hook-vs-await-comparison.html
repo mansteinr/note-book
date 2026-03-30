@@ -1,0 +1,1730 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>use Hook 与 await：React 异步处理双雄对比</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/typescript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/jsx.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-color: #007acc;
+            --secondary-color: #2d2d2d;
+            --accent-color: #61dafb;
+            --text-color: #333;
+            --light-bg: #f8f9fa;
+            --border-color: #e1e4e8;
+            --success-color: #28a745;
+            --warning-color: #ffc107;
+            --danger-color: #dc3545;
+            --info-color: #17a2b8;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            color: var(--text-color);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            display: flex;
+            gap: 30px;
+        }
+
+        .sidebar {
+            width: 280px;
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            position: sticky;
+            top: 20px;
+            height: fit-content;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+        }
+
+        .sidebar h2 {
+            color: var(--primary-color);
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--accent-color);
+            font-size: 1.5rem;
+        }
+
+        .toc {
+            list-style: none;
+        }
+
+        .toc li {
+            margin-bottom: 12px;
+            position: relative;
+        }
+
+        .toc a {
+            color: var(--text-color);
+            text-decoration: none;
+            display: block;
+            padding: 8px 12px;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .toc a:hover {
+            background: var(--light-bg);
+            color: var(--primary-color);
+            border-left-color: var(--accent-color);
+            transform: translateX(5px);
+        }
+
+        .toc a.active {
+            background: var(--primary-color);
+            color: white;
+            border-left-color: var(--accent-color);
+        }
+
+        .main-content {
+            flex: 1;
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid var(--border-color);
+        }
+
+        .header h1 {
+            color: var(--primary-color);
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, var(--primary-color), var(--accent-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header .subtitle {
+            color: #666;
+            font-size: 1.2rem;
+            font-weight: 300;
+        }
+
+        .section {
+            margin-bottom: 50px;
+            padding: 25px;
+            background: var(--light-bg);
+            border-radius: 10px;
+            border-left: 4px solid var(--primary-color);
+        }
+
+        .section h2 {
+            color: var(--primary-color);
+            margin-bottom: 20px;
+            font-size: 1.8rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .section h2::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: var(--accent-color);
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .section h3 {
+            color: var(--secondary-color);
+            margin: 25px 0 15px;
+            font-size: 1.4rem;
+            padding-left: 15px;
+            border-left: 3px solid var(--accent-color);
+        }
+
+        .section p {
+            margin-bottom: 15px;
+            line-height: 1.8;
+        }
+
+        .code-block {
+            background: #1e1e1e;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            overflow-x: auto;
+            position: relative;
+        }
+
+        .code-block pre {
+            margin: 0;
+        }
+
+        .code-block code {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+        }
+
+        .code-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            color: #999;
+            font-size: 0.9rem;
+        }
+
+        .copy-btn {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: background 0.3s;
+        }
+
+        .copy-btn:hover {
+            background: var(--accent-color);
+        }
+
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .comparison-table th {
+            background: var(--primary-color);
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        .comparison-table td {
+            padding: 15px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .comparison-table tr:hover {
+            background: var(--light-bg);
+        }
+
+        .comparison-table .use-hook {
+            background: rgba(97, 218, 251, 0.1);
+        }
+
+        .comparison-table .await {
+            background: rgba(40, 167, 69, 0.1);
+        }
+
+        .feature-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin-right: 8px;
+        }
+
+        .badge-use {
+            background: var(--accent-color);
+            color: #000;
+        }
+
+        .badge-await {
+            background: var(--success-color);
+            color: white;
+        }
+
+        .badge-both {
+            background: var(--warning-color);
+            color: #000;
+        }
+
+        .interactive-demo {
+            background: white;
+            border: 2px solid var(--border-color);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .demo-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .demo-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .demo-btn.use {
+            background: var(--accent-color);
+            color: #000;
+        }
+
+        .demo-btn.await {
+            background: var(--success-color);
+            color: white;
+        }
+
+        .demo-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .demo-output {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            min-height: 100px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-color);
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .nav-buttons {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .nav-btn {
+            padding: 10px 20px;
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s;
+        }
+
+        .nav-btn:hover {
+            background: var(--accent-color);
+            transform: translateY(-2px);
+        }
+
+        .nav-btn.prev::before {
+            content: '←';
+        }
+
+        .nav-btn.next::after {
+            content: '→';
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+                padding: 10px;
+            }
+            
+            .sidebar {
+                width: 100%;
+                position: static;
+                max-height: none;
+            }
+            
+            .main-content {
+                padding: 20px;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <aside class="sidebar">
+            <h2>📚 目录导航</h2>
+            <ul class="toc">
+                <li><a href="#section1">一、use Hook 深度解析</a></li>
+                <li><a href="#section2">二、await 关键字深度解析</a></li>
+                <li><a href="#section3">三、核心异同对比</a></li>
+                <li><a href="#section4">四、使用场景分析</a></li>
+                <li><a href="#section5">五、性能与内存管理</a></li>
+                <li><a href="#section6">六、错误处理策略</a></li>
+                <li><a href="#section7">七、TypeScript 集成</a></li>
+                <li><a href="#section8">八、最佳实践指南</a></li>
+                <li><a href="#section9">九、常见问题与解决方案</a></li>
+                <li><a href="#section10">十、总结与未来展望</a></li>
+            </ul>
+            
+            <div style="margin-top: 30px; padding: 15px; background: #f0f7ff; border-radius: 8px;">
+                <h3 style="color: var(--primary-color); margin-bottom: 10px; font-size: 1rem;">🔍 快速对比</h3>
+                <ul style="list-style: none; font-size: 0.9rem;">
+                    <li style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                        <span class="feature-badge badge-use">use</span>
+                        <span>React Hook</span>
+                    </li>
+                    <li style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                        <span class="feature-badge badge-await">await</span>
+                        <span>JavaScript 关键字</span>
+                    </li>
+                    <li style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                        <span class="feature-badge badge-both">两者</span>
+                        <span>处理异步操作</span>
+                    </li>
+                </ul>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <div class="header">
+                <h1>use Hook 与 await：React 异步处理双雄对比</h1>
+                <p class="subtitle">深入解析 React 19 的 use Hook 与 JavaScript await 关键字的异同与应用场景</p>
+                <div style="margin-top: 20px; display: flex; justify-content: center; gap: 15px;">
+                    <span class="feature-badge badge-use">React 19 实验性 Hook</span>
+                    <span class="feature-badge badge-await">ES2017 标准特性</span>
+                    <span class="feature-badge badge-both">异步处理方案</span>
+                </div>
+            </div>
+
+            <div id="section1" class="section">
+                <h2>一、use Hook 深度解析</h2>
+                
+                <h3>1.1 use Hook 的基本概念</h3>
+                <p><code>use</code> 是 React 19 引入的一个<strong>实验性 Hook</strong>，用于在组件中<strong>读取资源的值</strong>。它可以读取 Promise、Context 或其他符合特定协议的值。</p>
+                
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>use Hook 的基本语法</span>
+                        <button class="copy-btn" onclick="copyCode(this)">复制代码</button>
+                    </div>
+                    <pre><code class="language-jsx">// use Hook 的基本语法
+import { use } from 'react';
+
+function UserProfile({ userId }) {
+  // 使用 use 读取 Promise
+  const userData = use(fetchUserData(userId));
+  
+  // 使用 use 读取 Context
+  const theme = use(ThemeContext);
+  
+  return (
+    &lt;div style={{ color: theme.textColor }}>
+      &lt;h1>{userData.name}&lt;/h1>
+      &lt;p>{userData.email}&lt;/p>
+    &lt;/div>
+  );
+}</code></pre>
+                </div>
+
+                <h3>1.2 use Hook 的核心特性</h3>
+                
+                <h4>特性 1：Promise 自动解包</h4>
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>传统方式 vs use Hook 方式</span>
+                        <button class="copy-btn" onclick="copyCode(this)">复制代码</button>
+                    </div>
+                    <pre><code class="language-jsx">// 传统方式：需要 useEffect + useState
+function TraditionalComponent({ userId }) {
+  const [userData, setUserData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  
+  useEffect(() => {
+    fetchUserData(userId)
+      .then(data => {
+        setUserData(data);
+        setLoading(false);
+      })
+      .catch(err => {
+        setError(err);
+        setLoading(false);
+      });
+  }, [userId]);
+  
+  if (loading) return &lt;div>加载中...&lt;/div>;
+  if (error) return &lt;div>错误: {error.message}&lt;/div>;
+  return &lt;div>{userData.name}&lt;/div>;
+}
+
+// use Hook 方式：简洁明了
+function UseHookComponent({ userId }) {
+  try {
+    const userData = use(fetchUserData(userId));
+    return &lt;div>{userData.name}&lt;/div>;
+  } catch (error) {
+    return &lt;div>错误: {error.message}&lt;/div>;
+  }
+}</code></pre>
+                </div>
+
+                <h4>特性 2：与 Suspense 集成</h4>
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>配合 Suspense 实现优雅的加载状态</span>
+                        <button class="copy-btn" onclick="copyCode(this)">复制代码</button>
+                    </div>
+                    <pre><code class="language-jsx">// 配合 Suspense 实现优雅的加载状态
+function UserProfileWithSuspense({ userId }) {
+  const userData = use(fetchUserData(userId));
+  
+  return (
+    &lt;div>
+      &lt;h1>{userData.name}&lt;/h1>
+      &lt;p>{userData.bio}&lt;/p>
+    &lt;/div>
+  );
+}
+
+function App() {
+  return (
+    &lt;Suspense fallback={&lt;div>加载用户信息...&lt;/div>}>
+      &lt;UserProfileWithSuspense userId="123" />
+    &lt;/Suspense>
+  );
+}</code></pre>
+                </div>
+            </div>
+
+            <div id="section2" class="section">
+                <h2>二、await 关键字深度解析</h2>
+                
+                <h3>2.1 await 的基本概念</h3>
+                <p><code>await</code> 是 JavaScript 的关键字，用于在 <code>async</code> 函数中<strong>暂停执行</strong>，等待 Promise 解决。</p>
+                
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>await 的基本用法</span>
+                        <button class="copy-btn" onclick="copyCode(this)">复制代码</button>
+                    </div>
+                    <pre><code class="language-javascript">// await 的基本用法
+async function fetchData() {
+  try {
+    // 等待 Promise 解决
+    const response = await fetch('https://api.example.com/data');
+    const data = await response.json();
+    
+    console.log('数据:', data);
+    return data;
+  } catch (error) {
+    console.error('错误:', error);
+    throw error;
+  }
+}
+
+// 在 React 组件中的使用
+async function handleSubmit() {
+  setIsLoading(true);
+  try {
+    const result = await submitForm();
+    setSuccess(true);
+    setResult(result);
+  } catch (error) {
+    setError(error.message);
+  } finally {
+    setIsLoading(false);
+  }
+}</code></pre>
+                </div>
+
+                <h3>2.2 await 的核心特性</h3>
+                
+                <h4>特性 1：同步式异步编程</h4>
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>回调地狱 vs async/await</span>
+                        <button class="copy-btn" onclick="copyCode(this)">复制代码</button>
+                    </div>
+                    <pre><code class="language-javascript">// 回调地狱
+function callbackHell() {
+  getUser(userId, (user) => {
+    getPosts(user.id, (posts) => {
+      getComments(posts[0].id, (comments) => {
+        console.log('用户:', user.name);
+        console.log('第一篇帖子:', posts[0].title);
+        console.log('评论:', comments.length);
+      });
+    });
+  });
+}
+
+// async/await 方式
+async function asyncAwaitWay() {
+  const user = await getUser(userId);
+  const posts = await getPosts(user.id);
+  const comments = await getComments(posts[0].id);
+  
+  console.log('用户:', user.name);
+  console.log('第一篇帖子:', posts[0].title);
+  console.log('评论:', comments.length);
+}</code></pre>
+                </div>
+            </div>
+
+            <div id="section3" class="section">
+                <h2>三、核心异同对比</h2>
+                
+                <table class="comparison-table">
+                    <thead>
+                        <tr>
+                            <th>对比维度</th>
+                            <th>use Hook</th>
+                            <th>await</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>所属范畴</strong></td>
+                            <td class="use-hook">React Hook（React 19 实验性）</td>
+                            <td class="await">JavaScript 关键字（ES2017）</td>
+                        </tr>
+                        <tr>
+                            <td><strong>主要用途</strong></td>
+                            <td class="use-hook">读取资源值（Promise、Context 等）</td>
+                            <td class="await">等待 Promise 解决</td>
+                        </tr>
+                        <tr>
+                            <td><strong>使用位置</strong></td>
+                            <td class="use-hook">React 组件函数体顶部</td>
+                            <td class="await">async 函数内部</td>
+                        </tr>
+                        <tr>
+                            <td><strong>错误处理</strong></td>
+                            <td class="use-hook">try/catch 或 Error Boundary</td>
+                            <td class="await">try/catch</td>
+                        </tr>
+                        <tr>
+                            <td><strong>加载状态</strong></td>
+                            <td class="use-hook">Suspense 自动处理</td>
+                            <td class="await">手动管理（loading 状态）</td>
+                        </tr>
+                        <tr>
+                            <td><strong>并发支持</strong></td>
+                            <td class="use-hook">React 并发特性集成</td>
+                            <td class="await">Promise.all/Promise.race</td>
+                        </tr>
+                        <tr>
+                            <td><strong>TypeScript 支持</strong></td>
+                            <td class="use-hook">React 类型定义</td>
+                            <td class="await">原生 TypeScript 支持</td>
+                        </tr>
+                        <tr>
+                            <td><strong>代码风格</strong></td>
+                            <td class="use-hook">声明式、函数式</td>
+                            <td class="await">命令式、过程式</td>
+                        </tr>
+                        <tr>
+                            <td><strong>学习曲线</strong></td>
+                            <td class="use-hook">需要理解 React 生态</td>
+                            <td class="await">标准 JavaScript 语法</td>
+                        </tr>
+                        <tr>
+                            <td><strong>适用场景</strong></td>
+                            <td class="use-hook">React 组件中的数据获取</td>
+                            <td class="await">通用异步操作处理</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <h3>3.1 语法对比示例</h3>
+                
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>相同功能的两种实现方式</span>
+                        <button class="copy-btn" onclick="copyCode(this)">复制代码</button>
+                    </div>
+                    <pre><code class="language-jsx">// 使用 use Hook 获取用户数据
+function UserProfileUse({ userId }) {
+  try {
+    const userData = use(fetchUserData(userId));
+    const posts = use(fetchUserPosts(userId));
+    
+    return (
+      &lt;div>
+        &lt;h1>{userData.name}&lt;/h1>
+        &lt;p>帖子数量: {posts.length}&lt;/p>
+      &lt;/div>
+    );
+  } catch (error) {
+    return &lt;div>错误: {error.message}&lt;/div>;
+  }
+}
+
+// 使用 async/await 获取用户数据
+function UserProfileAsync({ userId }) {
+  const [userData, setUserData] = useState(null);
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        setLoading(true);
+        const [user, userPosts] = await Promise.all([
+          fetchUserData(userId),
+          fetchUserPosts(userId)
+        ]);
+        
+        setUserData(user);
+        setPosts(userPosts);
+      } catch (err) {
+        setError(err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    fetchData();
+  }, [userId]);
+  
+  if (loading) return &lt;div>加载中...&lt;/div>;
+  if (error) return &lt;div>错误: {error.message}&lt;/div>;
+  
+  return (
+    &lt;div>
+      &lt;h1>{userData.name}&lt;/h1>
+      &lt;p>帖子数量: {posts.length}&lt;/p>
+    &lt;/div>
+  );
+}</code></pre>
+                </div>
+                
+                <h3>3.2 选择建议</h3>
+                <div style="background: #f0f7ff; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                    <h4 style="color: var(--primary-color); margin-bottom: 15px;">🎯 何时选择 use Hook？</h4>
+                    <ul style="list-style: none; padding-left: 0;">
+                        <li style="margin-bottom: 10px; padding-left: 25px; position: relative;">
+                            <span style="position: absolute; left: 0; color: var(--accent-color);">✓</span>
+                            在 React 19+ 项目中
+                        </li>
+                        <li style="margin-bottom: 10px; padding-left: 25px; position: relative;">
+                            <span style="position: absolute; left: 0; color: var(--accent-color);">✓</span>
+                            需要与 Suspense 深度集成
+                        </li>
+                        <li style="margin-bottom: 10px; padding-left: 25px; position: relative;">
+                            <span style="position: absolute; left: 0; color: var(--accent-color);">✓</span>
+                            希望简化 Context 读取
+                        </li>
+                        <li style="margin-bottom: 10px; padding-left: 25px; position: relative;">
+                            <span style="position: absolute; left: 0; color: var(--accent-color);">✓</span>
+                            追求声明式编程风格
+                        </li>
+                    </ul>
+                    
+                    <h4 style="color: var(--success-color); margin: 25px 0 15px;">🎯 何时选择 await？</h4>
+                    <ul style="list-style: none; padding-left: 0;">
+                        <li style="margin-bottom: 10px; padding-left: 25px; position: relative;">
+                            <span style="position: absolute; left: 0; color: var(--success-color);">✓</span>
+                            需要兼容旧版 React
+                        </li>
+                        <li style="margin-bottom: 10px; padding-left: 25px; position: relative;">
+                            <span style="position: absolute; left: 0; color: var(--success-color);">✓</span>
+                            在非 React 环境中使用
+                        </li>
+                        <li style="margin-bottom: 10px; padding-left: 25px; position: relative;">
+                            <span style="position: absolute; left: 0; color: var(--success-color);">✓</span>
+                            需要精细控制异步流程
+                        </li>
+                        <li style="margin-bottom: 10px; padding-left: 25px; position: relative;">
+                            <span style="position: absolute; left: 0; color: var(--success-color);">✓</span>
+                            项目团队熟悉传统异步处理
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <div id="section4" class="section">
+                <h2>四、使用场景分析</h2>
+                
+                <h3>4.1 use Hook 的最佳使用场景</h3>
+                
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0;">
+                    <div style="background: white; border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                        <h4 style="color: var(--primary-color); margin-bottom: 10px;">📱 数据获取组件</h4>
+                        <p>在需要获取服务器数据的组件中，use Hook 配合 Suspense 可以提供最佳用户体验。</p>
+                        <div class="code-block" style="margin: 10px 0; font-size: 0.9rem;">
+                            <pre><code class="language-jsx">function ProductDetails({ productId }) {
+  const product = use(fetchProduct(productId));
+  const reviews = use(fetchReviews(productId));
+  
+  return (
+    &lt;div>
+      &lt;h1>{product.name}&lt;/h1>
+      &lt;p>{product.description}&lt;/p>
+      &lt;ReviewsList reviews={reviews} />
+    &lt;/div>
+  );
+}</code></pre>
+                        </div>
+                    </div>
+                    
+                    <div style="background: white; border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                        <h4 style="color: var(--primary-color); margin-bottom: 10px;">🎨 主题/配置管理</h4>
+                        <p>简化多个 Context 的读取，特别是在需要同时读取多个配置的场景。</p>
+                        <div class="code-block" style="margin: 10px 0; font-size: 0.9rem;">
+                            <pre><code class="language-jsx">function ThemedComponent() {
+  const theme = use(ThemeContext);
+  const user = use(UserContext);
+  const settings = use(SettingsContext);
+  
+  return (
+    &lt;div style={{ 
+      color: theme.textColor,
+      background: theme.background 
+    }}>
+      &lt;h1>欢迎, {user.name}&lt;/h1>
+      &lt;p>当前语言: {settings.language}&lt;/p>
+    &lt;/div>
+  );
+}</code></pre>
+                        </div>
+                    </div>
+                    
+                    <div style="background: white; border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                        <h4 style="color: var(--primary-color); margin-bottom: 10px;">⚡ 并发数据加载</h4>
+                        <p>在需要同时加载多个相关数据的场景，use Hook 可以简化并发处理。</p>
+                        <div class="code-block" style="margin: 10px 0; font-size: 0.9rem;">
+                            <pre><code class="language-jsx">function Dashboard() {
+  const user = use(fetchUser());
+  const notifications = use(fetchNotifications());
+  const analytics = use(fetchAnalytics());
+  
+  return (
+    &lt;div>
+      &lt;UserProfile user={user} />
+      &lt;NotificationsList items={notifications} />
+      &lt;AnalyticsChart data={analytics} />
+    &lt;/div>
+  );
+}</code></pre>
+                        </div>
+                    </div>
+                </div>
+                
+                <h3>4.2 await 的最佳使用场景</h3>
+                
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0;">
+                    <div style="background: white; border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                        <h4 style="color: var(--success-color); margin-bottom: 10px;">🔄 表单提交处理</h4>
+                        <p>在表单提交等需要精细控制异步流程的场景。</p>
+                        <div class="code-block" style="margin: 10px 0; font-size: 0.9rem;">
+                            <pre><code class="language-javascript">async function handleSubmit(formData) {
+  setIsSubmitting(true);
+  try {
+    // 验证数据
+    await validateForm(formData);
+    
+    // 提交数据
+    const result = await submitForm(formData);
+    
+    // 处理结果
+    await processResult(result);
+    
+    // 显示成功消息
+    showSuccess('提交成功！');
+    
+    // 重置表单
+    resetForm();
+  } catch (error) {
+    // 错误处理
+    showError(error.message);
+  } finally {
+    setIsSubmitting(false);
+  }
+}</code></pre>
+                        </div>
+                    </div>
+                    
+                    <div style="background: white; border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                        <h4 style="color: var(--success-color); margin-bottom: 10px;">📊 批量数据处理</h4>
+                        <p>需要处理大量数据或复杂业务逻辑的场景。</p>
+                        <div class="code-block" style="margin: 10px 0; font-size: 0.9rem;">
+                            <pre><code class="language-javascript">async function processBatchData(items) {
+  const results = [];
+  
+  for (const item of items) {
+    try {
+      // 处理每个项目
+      const processed = await processItem(item);
+      
+      // 验证结果
+      const validated = await validateResult(processed);
+      
+      // 保存结果
+      const saved = await saveResult(validated);
+      
+      results.push(saved);
+    } catch (error) {
+      console.error(`处理项目失败: ${item.id}`, error);
+      results.push({ error: error.message });
+    }
+  }
+  
+  return results;
+}</code></pre>
+                        </div>
+                    </div>
+                    
+                    <div style="background: white; border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                        <h4 style="color: var(--success-color); margin-bottom: 10px;">🔧 工具函数/库开发</h4>
+                        <p>在开发通用工具函数或库时，使用 await 确保兼容性。</p>
+                        <div class="code-block" style="margin: 10px 0; font-size: 0.9rem;">
+                            <pre><code class="language-javascript">// 通用数据获取工具函数
+async function fetchWithRetry(url, options = {}, maxRetries = 3) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const response = await fetch(url, options);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      if (i === maxRetries - 1) throw error;
+      
+      // 等待后重试
+      await new Promise(resolve => 
+        setTimeout(resolve, 1000 * Math.pow(2, i))
+      );
+    }
+  }
+}</code></pre>
+                        </div>
+                    </div>
+                </div>
+                
+                <h3>4.3 混合使用场景</h3>
+                <p>在实际项目中，use Hook 和 await 可以结合使用，发挥各自的优势：</p>
+                
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>use Hook 和 await 的结合使用</span>
+                        <button class="copy-btn" onclick="copyCode(this)">复制代码</button>
+                    </div>
+                    <pre><code class="language-jsx">function ComplexComponent() {
+  // 使用 use Hook 获取组件依赖的数据
+  const user = use(fetchUser());
+  const config = use(AppConfigContext);
+  
+  // 使用 async 函数处理用户交互
+  const handleAction = async (actionType, data) => {
+    try {
+      // 使用 await 处理复杂的异步逻辑
+      const validation = await validateData(data);
+      
+      if (!validation.valid) {
+        throw new Error(validation.message);
+      }
+      
+      // 并行执行多个操作
+      const [result, audit] = await Promise.all([
+        performAction(actionType, data),
+        logAuditTrail(actionType, data)
+      ]);
+      
+      // 更新本地状态
+      setLastAction(result);
+      
+      // 显示通知
+      showNotification(`操作 ${actionType} 成功`);
+      
+      return result;
+    } catch (error) {
+      // 错误处理
+      showError(error.message);
+      throw error;
+    }
+  };
+  
+  return (
+    &lt;div>
+      &lt;h1>欢迎, {user.name}&lt;/h1>
+      &lt;button onClick={() => handleAction('save', user)}>
+        保存数据
+      &lt;/button>
+    &lt;/div>
+  );
+}</code></pre>
+                </div>
+            </div>
+
+            <div id="section5" class="section">
+                <h2>五、性能与内存管理</h2>
+                
+                <h3>5.1 性能对比分析</h3>
+                
+                <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                    <h4 style="color: var(--primary-color); margin-bottom: 15px;">📈 性能指标对比</h4>
+                    
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                        <div style="text-align: center; padding: 15px; background: white; border-radius: 6px;">
+                            <div style="font-size: 2rem; color: var(--accent-color); font-weight: bold;">⚡</div>
+                            <div style="font-weight: bold; margin: 10px 0;">首次渲染速度</div>
+                            <div style="color: #666; font-size: 0.9rem;">
+                                use Hook: <span style="color: var(--success-color);">更快</span><br>
+                                await: 标准
+                            </div>
+                        </div>
+                        
+                        <div style="text-align: center; padding: 15px; background: white; border-radius: 6px;">
+                            <div style="font-size: 2rem; color: var(--success-color); font-weight: bold;">💾</div>
+                            <div style="font-weight: bold; margin: 10px 0;">内存占用</div>
+                            <div style="color: #666; font-size: 0.9rem;">
+                                use Hook: <span style="color: var(--success-color);">更低</span><br>
+                                await: 标准
+                            </div>
+                        </div>
+                        
+                        <div style="text-align: center; padding: 15px; background: white; border-radius: 6px;">
+                            <div style="font-size: 2rem; color: var(--warning-color); font-weight: bold;">🔄</div>
+                            <div style="font-weight: bold; margin: 10px 0;">更新性能</div>
+                            <div style="color: #666; font-size: 0.9rem;">
+                                use Hook: <span style="color: var(--success-color);">优秀</span><br>
+                                await: 良好
+                            </div>
+                        </div>
+                        
+                        <div style="text-align: center; padding: 15px; background: white; border-radius: 6px;">
+                            <div style="font-size: 2rem; color: var(--info-color); font-weight: bold;">📊</div>
+                            <div style="font-weight: bold; margin: 10px 0;">并发处理</div>
+                            <div style="color: #666; font-size: 0.9rem;">
+                                use Hook: <span style="color: var(--success-color);">原生支持</span><br>
+                                await: 需要 Promise.all
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <h3>5.2 内存管理策略</h3>
+                
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>use Hook 的内存优化示例</span>
+                        <button class="copy-btn" onclick="copyCode(this)">复制代码</button>
+                    </div>
+                    <pre><code class="language-jsx">// 使用 use Hook 实现高效的内存管理
+function OptimizedComponent({ resourceId }) {
+  // use Hook 会自动管理 Promise 缓存
+  const resource = use(fetchResource(resourceId));
+  
+  // 配合 useMemo 避免不必要的重新计算
+  const processedData = useMemo(() => {
+    return processResource(resource);
+  }, [resource]);
+  
+  // 使用 useCallback 避免函数重新创建
+  const handleAction = useCallback(async (action) => {
+    // 在事件处理函数中使用 await
+    const result = await performAction(action, resource);
+    return result;
+  }, [resource]);
+  
+  return (
+    &lt;div>
+      &lt;DataView data={processedData} />
+      &lt;ActionButton onClick={handleAction} />
+    &lt;/div>
+  );
+}
+
+// 传统 await 方式的内存管理
+function TraditionalComponent({ resourceId }) {
+  const [resource, setResource] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  
+  // 需要手动管理缓存和清理
+  useEffect(() => {
+    let isMounted = true;
+    
+    async function loadResource() {
+      try {
+        setIsLoading(true);
+        const data = await fetchResource(resourceId);
+        
+        if (isMounted) {
+          setResource(data);
+        }
+      } catch (error) {
+        if (isMounted) {
+          console.error('加载失败:', error);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    }
+    
+    loadResource();
+    
+    // 清理函数
+    return () => {
+      isMounted = false;
+    };
+  }, [resourceId]);
+  
+  // 需要手动管理衍生状态
+  const processedData = useMemo(() => {
+    if (!resource) return null;
+    return processResource(resource);
+  }, [resource]);
+  
+  if (isLoading) return &lt;div>加载中...&lt;/div>;
+  if (!resource) return &lt;div>数据加载失败&lt;/div>;
+  
+  return &lt;DataView data={processedData} />;
+}</code></pre>
+                </div>
+            </div>
+
+            <div class="interactive-demo">
+                <h3>🎯 交互式演示</h3>
+                <p>点击下面的按钮查看不同异步处理方式的效果：</p>
+                
+                <div class="demo-controls">
+                    <button class="demo-btn use" onclick="runUseDemo()">运行 use Hook 示例</button>
+                    <button class="demo-btn await" onclick="runAwaitDemo()">运行 await 示例</button>
+                    <button class="demo-btn" onclick="clearDemo()" style="background: #666; color: white;">清除输出</button>
+                </div>
+                
+                <div class="demo-output" id="demoOutput">
+                    点击上方按钮查看示例输出...
+                </div>
+            </div>
+
+            <div id="section6" class="section">
+                <h2>六、错误处理策略</h2>
+                
+                <h3>6.1 use Hook 的错误处理</h3>
+                
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0;">
+                    <div style="background: white; border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                        <h4 style="color: var(--primary-color); margin-bottom: 10px;">🛡️ try/catch 方式</h4>
+                        <p>在组件内部使用 try/catch 捕获 use Hook 抛出的错误。</p>
+                        <div class="code-block" style="margin: 10px 0; font-size: 0.9rem;">
+                            <pre><code class="language-jsx">function SafeComponent({ resourceId }) {
+  try {
+    const data = use(fetchResource(resourceId));
+    
+    return (
+      &lt;div>
+        &lt;h1>{data.title}&lt;/h1>
+        &lt;p>{data.description}&lt;/p>
+      &lt;/div>
+    );
+  } catch (error) {
+    // 组件级错误处理
+    return (
+      &lt;div className="error">
+        &lt;h2>加载失败&lt;/h2>
+        &lt;p>{error.message}&lt;/p>
+        &lt;button onClick={() => window.location.reload()}>
+          重试
+        &lt;/button>
+      &lt;/div>
+    );
+  }
+}</code></pre>
+                        </div>
+                    </div>
+                    
+                    <div style="background: white; border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                        <h4 style="color: var(--primary-color); margin-bottom: 10px;">🛡️ Error Boundary 方式</h4>
+                        <p>使用 React Error Boundary 捕获组件树中的错误。</p>
+                        <div class="code-block" style="margin: 10px 0; font-size: 0.9rem;">
+                            <pre><code class="language-jsx">class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  
+  componentDidCatch(error, errorInfo) {
+    // 可以在这里记录错误日志
+    console.error('组件错误:', error, errorInfo);
+  }
+  
+  render() {
+    if (this.state.hasError) {
+      return (
+        &lt;div className="error-boundary">
+          &lt;h2>出错了！&lt;/h2>
+          &lt;p>{this.state.error.message}&lt;/p>
+          &lt;button onClick={() => this.setState({ hasError: false })}>
+            重试
+          &lt;/button>
+        &lt;/div>
+      );
+    }
+    
+    return this.props.children;
+  }
+}
+
+// 使用方式
+function App() {
+  return (
+    &lt;ErrorBoundary>
+      &lt;UserProfile userId="123" />
+    &lt;/ErrorBoundary>
+  );
+}</code></pre>
+                        </div>
+                    </div>
+                    
+                    <div style="background: white; border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                        <h4 style="color: var(--primary-color); margin-bottom: 10px;">🛡️ Suspense 集成</h4>
+                        <p>配合 Suspense 和 Error Boundary 实现完整的错误处理。</p>
+                        <div class="code-block" style="margin: 10px 0; font-size: 0.9rem;">
+                            <pre><code class="language-jsx">function AppWithErrorHandling() {
+  return (
+    &lt;ErrorBoundary
+      fallback={&lt;ErrorFallback />}
+    >
+      &lt;Suspense fallback={&lt;LoadingSpinner />}>
+        &lt;UserProfile userId="123" />
+        &lt;Dashboard />
+      &lt;/Suspense>
+    &lt;/ErrorBoundary>
+  );
+}
+
+function ErrorFallback({ error, resetErrorBoundary }) {
+  return (
+    &lt;div className="error-fallback">
+      &lt;h2>应用程序出错&lt;/h2>
+      &lt;pre>{error.message}&lt;/pre>
+      &lt;button onClick={resetErrorBoundary}>
+        重新加载
+      &lt;/button>
+    &lt;/div>
+  );
+}</code></pre>
+                        </div>
+                    </div>
+                </div>
+                
+                <h3>6.2 await 的错误处理</h3>
+                
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0;">
+                    <div style="background: white; border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                        <h4 style="color: var(--success-color); margin-bottom: 10px;">🛡️ 基本 try/catch</h4>
+                        <p>在 async 函数中使用 try/catch 捕获错误。</p>
+                        <div class="code-block" style="margin: 10px 0; font-size: 0.9rem;">
+                            <pre><code class="language-javascript">async function fetchDataWithRetry(url, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`尝试 ${i + 1} 失败:`, error);
+      
+      if (i === retries - 1) {
+        // 最后一次尝试失败，抛出错误
+        throw new Error(`获取数据失败，已重试 ${retries} 次`);
+      }
+      
+      // 等待后重试
+      await new Promise(resolve => 
+        setTimeout(resolve, 1000 * Math.pow(2, i))
+      );
+    }
+  }
+}</code></pre>
+                        </div>
+                    </div>
+                    
+                    <div style="background: white; border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                        <h4 style="color: var(--success-color); margin-bottom: 10px;">🛡️ 错误边界处理</h4>
+                        <p>在 React 组件中结合 useState 管理错误状态。</p>
+                        <div class="code-block" style="margin: 10px 0; font-size: 0.9rem;">
+                            <pre><code class="language-jsx">function DataFetcher({ url }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        const result = await fetchDataWithRetry(url);
+        setData(result);
+      } catch (err) {
+        setError(err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    fetchData();
+  }, [url]);
+  
+  if (loading) return &lt;div>加载中...&lt;/div>;
+  if (error) return &lt;div>错误: {error.message}&lt;/div>;
+  
+  return &lt;DataDisplay data={data} />;
+}</code></pre>
+                        </div>
+                    </div>
+                    
+                    <div style="background: white; border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                        <h4 style="color: var(--success-color); margin-bottom: 10px;">🛡️ 自定义错误处理 Hook</h4>
+                        <p>创建可重用的错误处理 Hook。</p>
+                        <div class="code-block" style="margin: 10px 0; font-size: 0.9rem;">
+                            <pre><code class="language-jsx">function useAsync(asyncFunction, immediate = true) {
+  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  
+  const execute = useCallback(async (...args) => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const result = await asyncFunction(...args);
+      setData(result);
+      return result;
+    } catch (err) {
+      setError(err);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [asyncFunction]);
+  
+  useEffect(() => {
+    if (immediate) {
+      execute();
+    }
+  }, [execute, immediate]);
+  
+  return {
+    execute,
+    loading,
+    data,
+    error
+  };
+}
+
+// 使用示例
+function UserProfile({ userId }) {
+  const { loading, data: user, error } = useAsync(
+    () => fetchUser(userId),
+    true
+  );
+  
+  if (loading) return &lt;div>加载中...&lt;/div>;
+  if (error) return &lt;div>错误: {error.message}&lt;/div>;
+  
+  return (
+    &lt;div>
+      &lt;h1>{user.name}&lt;/h1>
+      &lt;p>{user.email}&lt;/p>
+    &lt;/div>
+  );
+}</code></pre>
+                        </div>
+                    </div>
+                </div>
+                
+                <h3>6.3 错误处理最佳实践</h3>
+                
+                <div style="background: #fff8e1; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid var(--warning-color);">
+                    <h4 style="color: var(--warning-color); margin-bottom: 15px;">📋 错误处理检查清单</h4>
+                    
+                    <ul style="list-style: none; padding-left: 0;">
+                        <li style="margin-bottom: 10px; padding-left: 25px; position: relative;">
+                            <span style="position: absolute; left: 0; color: var(--warning-color);">✓</span>
+                            <strong>用户友好的错误消息</strong>：避免显示技术性错误信息给用户
+                        </li>
+                        <li style="margin-bottom: 10px; padding-left: 25px; position: relative;">
+                            <span style="position: absolute; left: 0; color: var(--warning-color);">✓</span>
+                            <strong>重试机制</strong>：为网络请求等可恢复错误提供重试按钮
+                        </li>
+                        <li style="margin-bottom: 10px; padding-left: 25px; position: relative;">
+                            <span style="position: absolute; left: 0; color: var(--warning-color);">✓</span>
+                            <strong>错误日志记录</strong>：将错误信息记录到服务器或监控系统
+                        </li>
+                        <li style="margin-bottom: 10px; padding-left: 25px; position: relative;">
+                            <span style="position: absolute; left: 0; color: var(--warning-color);">✓</span>
+                            <strong>降级方案</strong>：当主要功能失败时提供替代方案
+                        </li>
+                        <li style="margin-bottom: 10px; padding-left: 25px; position: relative;">
+                            <span style="position: absolute; left: 0; color: var(--warning-color);">✓</span>
+                            <strong>错误分类</strong>：区分网络错误、验证错误、服务器错误等
+                        </li>
+                        <li style="margin-bottom: 10px; padding-left: 25px; position: relative;">
+                            <span style="position: absolute; left: 0; color: var(--warning-color);">✓</span>
+                            <strong>错误边界</strong>：使用 Error Boundary 防止整个应用崩溃
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <div id="section7" class="section">
+                <h2>七、TypeScript 集成</h2>
+                
+                <h3>7.1 use Hook 的 TypeScript 类型</h3>
+                
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>use Hook 的类型定义</span>
+                        <button class="copy-btn" onclick="copyCode(this)">复制代码</button>
+                    </div>
+                    <pre><code class="language-typescript">// React 中 use Hook 的类型定义
+declare function use&lt;T>(promise: Promise&lt;T>): T;
+declare function use&lt;T>(context: React.Context&lt;T>): T;
+
+// 使用示例
+import { use, useState, useEffect } from 'react';
+
+// 定义类型
+interface User {
+  id: string;
+  name: string;
+  email: string;
+}
+
+interface Theme {
+  textColor: string;
+  backgroundColor: string;
+}
+
+// 创建 Context 类型
+const ThemeContext = React.createContext&lt;Theme | null>(null);
+
+// 异步数据获取函数
+async function fetchUser(userId: string): Promise&lt;User> {
+  const response = await fetch(`/api/users/${userId}`);
+  if (!response.ok) {
+    throw new Error('用户数据获取失败');
+  }
+  return response.json();
+}
+
+// 使用 use Hook 的组件
+function UserProfile({ userId }: { userId: string }) {
+  // TypeScript 会自动推断 user 的类型为 User
+  const user = use(fetchUser(userId));
+  
+  // TypeScript 会自动推断 theme 的类型为 Theme | null
+  const theme = use(ThemeContext);
+  
+  if (!theme) {
+    return &lt;div>主题未设置&lt;/div>;
+  }
+  
+  return (
+    &lt;div style={{ color: theme.textColor }}>
+      &lt;h1>{user.name}&lt;/h1>
+      &lt;p>{user.email}&lt;/p>
+    &lt;/div>
+  );
+}
+
+// 错误处理的类型安全
+function SafeUserProfile({ userId }: { userId: string }) {
+  try {
+    const user = use(fetchUser(userId));
+    return &lt;div>{user.name}&lt;/div>;
+  } catch (error) {
+    // TypeScript 知道 error 的类型是 unknown
+    if (error instanceof Error) {
+      return &lt;div>错误: {error.message}&lt;/div>;
+    }
+    return &lt;div>未知错误&lt;/div>;
+  }
+}</code></pre>
+                </div>
+                
+                <h3>7.2 await 的 TypeScript 类型</h3>
+                
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>async/await 的类型安全</span>
+                        <button class="copy-btn" onclick="copyCode(this)">复制代码</button>
+                    </div>
+                    <pre><code class="language-typescript">// 定义类型
+interface ApiResponse&lt;T> {
+  data: T;
+  status: number;
+  message: string;
+}
+
+interface Product {
+  id: string;
+  name: string;
+  price: number;
+  category: string;
+}
+
+// 类型安全的异步函数
+async function fetchProduct(productId: string): Promise&lt;ApiResponse&lt;Product>> {
+  const response = await fetch(`/api/products/${productId}`);
+  
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: 产品数据获取失败`);
+  }
+  
+  const data: ApiResponse&lt;Product> = await response.json();
+  return data;
+}
+
+// 在 React 组件中使用
+function ProductDetails({ productId }: { productId: string }) {
+  const [product, setProduct] = useState&lt;Product | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState&lt;string | null>(null);
+  
+  useEffect(() => {
+    async function loadProduct() {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // TypeScript 知道 response 的类型是 ApiResponse&lt;Product>
+        const response = await fetchProduct(productId);
+        
+        // TypeScript 知道 response.data 的类型是 Product
+        setProduct(response.data);
+      } catch (err) {
+        // 类型安全的错误处理
+        if (err instanceof Error) {
+          setError(err.message);
+        } else {
+          setError('未知错误');
+        }
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    loadProduct();
+  }, [productId]);
+  
+  if (loading) return &lt;div>加载中...&lt;/div>;
+  if (error) return &lt;div>错误: {error}&lt;/div>;
+  if (!product) return &lt;div>产品不存在&lt;/div>;
+  
+  return (
+    &lt;div>
+      &lt;h1>{product.name}&lt;/h1>
+      &lt;p>价格: ${product.price}&lt;/p>
+      &lt;p>分类: {product.category}&lt;/p>
+    &lt;/div>
+  );
+}
+
+// 泛型异步工具函数
+async function withRetry&lt;T>(
+  fn: () => Promise&lt;T>,
+  maxRetries: number = 3
+): Promise&lt;T> {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (i === maxRetries - 1) throw error;
+      
+      // 等待后重试
+      await new Promise(resolve => 
+        setTimeout(resolve, 1000 * Math.pow(2, i))
+      );
+    }
+  }
+  
+  // TypeScript 知道这里永远不会执行，但需要返回类型
+  throw new Error('重试失败');
+}
+
+// 使用泛型工具函数
+async function getProductWithRetry(productId: string): Promise&lt;Product> {
+  return withRetry(() => fetchProduct(productId).then(res => res.data));
+}</code></pre>
+                </div>
+            </div>
+
+            <div class="nav-buttons">
+                <a href="#section5" class="nav-btn prev">上一节：性能与内存管理</a>
+                <a href="#section8" class="nav-btn next">下一节：最佳实践指南</a>
+            </div>
+
+            <div class="footer">
+                <p>📖 本文档基于 React 19 和 JavaScript ES2023 标准编写</p>
+                <p>⏱️ 最后更新：2025年3月27日</p>
+                <p>📧 如有问题或建议，请联系开发者</p>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // 初始化代码高亮
+        document.addEventListener('DOMContentLoaded', function() {
+            hljs.highlightAll();
+            
+            // 目录导航高亮
+            const sections = document.querySelectorAll('.section');
+            const navLinks = document.querySelectorAll('.toc a');
+            
+            function highlightNav() {
+                let current = '';
+                
+                sections.forEach(section => {
+                    const sectionTop = section.offsetTop;
+                    const sectionHeight = section.clientHeight;
+                    
+                    if (scrollY >= (sectionTop - 100)) {
+                        current = section.getAttribute('id');
+                    }
+                });
+                
+                navLinks.forEach(link => {
+                    link.classList.remove('active');
+                    if (link.getAttribute('href') === `#${current}`) {
+                        link.classList.add('active');
+                    }
+                });
+            }
+            
+            window.addEventListener('scroll', highlightNav);
+            highlightNav();
+        });
+        
+        // 复制代码功能
+        function copyCode(button) {
+            const codeBlock = button.parentElement.nextElementSibling;
+            const code = codeBlock.textContent;
+            
+            navigator.clipboard.writeText(code).then(() => {
+                const originalText = button.textContent;
+                button.textContent = '已复制！';
+                button.style.background = 'var(--success-color)';
+                
+                setTimeout(() => {
+                    button.textContent = originalText;
+                    button.style.background = 'var(--primary-color)';
+                }, 2000);
+            });
+        }
+        
+        // 交互式演示功能
+        function runUseDemo() {
+            const output = document.getElementById('demoOutput');
+            output.innerHTML = `🚀 运行 use Hook 示例：
+            
+📊 模拟数据获取中...
+⏳ 使用 Suspense 处理加载状态...
+✅ 数据获取成功！
+
+📋 示例代码：
+const userData = use(fetchUserData('123'));
+// 自动解包 Promise，配合 Suspense 处理加载状态
+
+🎯 特点：
+• 声明式异步处理
+• 与 React 生态深度集成
+• 自动错误边界处理
+• 支持并发渲染`;
+        }
+        
+        function runAwaitDemo() {
+            const output = document.getElementById('demoOutput');
+            output.innerHTML = `🚀 运行 await 示例：
+            
+📊 开始异步操作...
+⏳ 等待 Promise 解决...
+✅ 操作完成！
+
+📋 示例代码：
+async function fetchData() {
+  const response = await fetch('/api/data');
+  const data = await response.json();
+  return data;
+}
+
+🎯 特点：
+• 命令式异步处理
+• 标准 JavaScript 语法
+• 灵活的错误处理
+• 支持并行执行（Promise.all）`;
+        }
+        
+        function clearDemo() {
+            document.getElementById('demoOutput').innerHTML = '点击上方按钮查看示例输出...';
+        }
+        
+        // 平滑滚动
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function(e) {
+                e.preventDefault();
+                
+                const targetId = this.getAttribute('href');
+                if (targetId === '#') return;
+                
+                const targetElement = document.querySelector(targetId);
+                if (targetElement) {
+                    window.scrollTo({
+                        top: targetElement.offsetTop - 80,
+                        behavior: 'smooth'
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

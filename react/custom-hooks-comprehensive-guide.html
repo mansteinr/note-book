@@ -1,0 +1,1918 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>自定义 Hook 深度解析：概念、创建与最佳实践</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/typescript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/jsx.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-color: #007acc;
+            --secondary-color: #2d2d2d;
+            --accent-color: #61dafb;
+            --text-color: #333;
+            --light-bg: #f8f9fa;
+            --border-color: #e1e4e8;
+            --success-color: #28a745;
+            --warning-color: #ffc107;
+            --danger-color: #dc3545;
+            --info-color: #17a2b8;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            color: var(--text-color);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            display: flex;
+            gap: 30px;
+        }
+
+        .sidebar {
+            width: 280px;
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            position: sticky;
+            top: 20px;
+            height: fit-content;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+        }
+
+        .sidebar h2 {
+            color: var(--primary-color);
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--accent-color);
+            font-size: 1.5rem;
+        }
+
+        .toc {
+            list-style: none;
+        }
+
+        .toc li {
+            margin-bottom: 12px;
+            position: relative;
+        }
+
+        .toc a {
+            color: var(--text-color);
+            text-decoration: none;
+            display: block;
+            padding: 8px 12px;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .toc a:hover {
+            background: var(--light-bg);
+            color: var(--primary-color);
+            border-left-color: var(--accent-color);
+            transform: translateX(5px);
+        }
+
+        .toc a.active {
+            background: var(--primary-color);
+            color: white;
+            border-left-color: var(--accent-color);
+        }
+
+        .main-content {
+            flex: 1;
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 3px solid var(--accent-color);
+        }
+
+        .header h1 {
+            color: var(--primary-color);
+            font-size: 2.5rem;
+            margin-bottom: 15px;
+            background: linear-gradient(45deg, var(--primary-color), var(--accent-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header .subtitle {
+            color: var(--secondary-color);
+            font-size: 1.2rem;
+            opacity: 0.8;
+        }
+
+        .content-section {
+            margin-bottom: 40px;
+        }
+
+        .content-section h2 {
+            color: var(--primary-color);
+            font-size: 1.8rem;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--light-bg);
+            position: relative;
+        }
+
+        .content-section h2::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            width: 60px;
+            height: 2px;
+            background: var(--accent-color);
+        }
+
+        .content-section h3 {
+            color: var(--secondary-color);
+            font-size: 1.4rem;
+            margin: 25px 0 15px;
+        }
+
+        .content-section h4 {
+            color: var(--secondary-color);
+            font-size: 1.2rem;
+            margin: 20px 0 10px;
+        }
+
+        .content-section p {
+            margin-bottom: 15px;
+            font-size: 1.1rem;
+        }
+
+        .content-section ul, .content-section ol {
+            margin: 15px 0 15px 25px;
+        }
+
+        .content-section li {
+            margin-bottom: 8px;
+            font-size: 1.1rem;
+        }
+
+        .code-block {
+            background: var(--secondary-color);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            overflow-x: auto;
+            position: relative;
+        }
+
+        .code-block pre {
+            margin: 0;
+        }
+
+        .code-block code {
+            font-family: 'Fira Code', 'Consolas', 'Monaco', 'Andale Mono', 'Ubuntu Mono', monospace;
+            font-size: 0.95rem;
+        }
+
+        .code-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            color: #ccc;
+            font-size: 0.9rem;
+        }
+
+        .copy-btn {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: background 0.3s;
+        }
+
+        .copy-btn:hover {
+            background: var(--accent-color);
+        }
+
+        .note {
+            background: #e7f3ff;
+            border-left: 4px solid var(--primary-color);
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+
+        .note strong {
+            color: var(--primary-color);
+        }
+
+        .warning {
+            background: #fff3cd;
+            border-left: 4px solid var(--warning-color);
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+
+        .warning strong {
+            color: var(--warning-color);
+        }
+
+        .tip {
+            background: #d4edda;
+            border-left: 4px solid var(--success-color);
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+
+        .tip strong {
+            color: var(--success-color);
+        }
+
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .comparison-table th {
+            background: var(--primary-color);
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        .comparison-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .comparison-table tr:hover {
+            background: var(--light-bg);
+        }
+
+        .comparison-table .good {
+            color: var(--success-color);
+            font-weight: 600;
+        }
+
+        .comparison-table .bad {
+            color: var(--danger-color);
+            font-weight: 600;
+        }
+
+        .comparison-table .neutral {
+            color: var(--warning-color);
+            font-weight: 600;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-color);
+            color: var(--secondary-color);
+            font-size: 0.9rem;
+        }
+
+        .footer a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                position: static;
+                max-height: none;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .main-content {
+                padding: 20px;
+            }
+        }
+
+        .back-to-top {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: var(--primary-color);
+            color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+            font-size: 1.5rem;
+            box-shadow: 0 4px 15px rgba(0, 122, 204, 0.3);
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .back-to-top:hover {
+            background: var(--accent-color);
+            transform: translateY(-5px);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <aside class="sidebar">
+            <h2>📚 目录</h2>
+            <ul class="toc" id="toc">
+                <li><a href="#目录">目录</a></li>
+                <li><a href="#一什么是自定义-hook">一、什么是自定义 Hook？</a></li>
+                <li><a href="#二自定义-hook-的核心优势">二、自定义 Hook 的核心优势</a></li>
+                <li><a href="#三创建自定义-hook-的基本原则">三、创建自定义 Hook 的基本原则</a></li>
+                <li><a href="#四常用自定义-hook-模式">四、常用自定义 Hook 模式</a></li>
+                <li><a href="#五状态管理自定义-hook">五、状态管理自定义 Hook</a></li>
+                <li><a href="#六副作用管理自定义-hook">六、副作用管理自定义 Hook</a></li>
+                <li><a href="#七表单处理自定义-hook">七、表单处理自定义 Hook</a></li>
+                <li><a href="#八api-请求自定义-hook">八、API 请求自定义 Hook</a></li>
+                <li><a href="#九性能优化自定义-hook">九、性能优化自定义 Hook</a></li>
+                <li><a href="#十测试与调试自定义-hook">十、测试与调试自定义 Hook</a></li>
+                <li><a href="#十一最佳实践与常见陷阱">十一、最佳实践与常见陷阱</a></li>
+                <li><a href="#十二实战案例与完整示例">十二、实战案例与完整示例</a></li>
+                <li><a href="#十三总结与进阶建议">十三、总结与进阶建议</a></li>
+            </ul>
+        </aside>
+
+        <main class="main-content">
+            <header class="header">
+                <h1>自定义 Hook 深度解析：概念、创建与最佳实践</h1>
+                <p class="subtitle">React 技术文档 - 详细解析与最佳实践</p>
+            </header>
+
+            <div id="content">
+                <h1>自定义 Hook 深度解析：概念、创建与最佳实践</h1>
+
+<h2 id="目录">目录</h2>
+
+<p>1. [什么是自定义 Hook？](#什么是自定义-hook) 2. [自定义 Hook 的核心优势](#自定义-hook-的核心优势) 3. [创建自定义 Hook 的基本原则](#创建自定义-hook-的基本原则) 4. [常用自定义 Hook 模式](#常用自定义-hook-模式) 5. [状态管理自定义 Hook](#状态管理自定义-hook) 6. [副作用管理自定义 Hook](#副作用管理自定义-hook) 7. [表单处理自定义 Hook](#表单处理自定义-hook) 8. [API 请求自定义 Hook](#api-请求自定义-hook) 9. [性能优化自定义 Hook](#性能优化自定义-hook) 10. [测试与调试自定义 Hook](#测试与调试自定义-hook) 11. [最佳实践与常见陷阱](#最佳实践与常见陷阱) 12. [实战案例与完整示例](#实战案例与完整示例) 13. [总结与进阶建议](#总结与进阶建议)</p>
+
+<h2 id="一、什么是自定义 Hook？">一、什么是自定义 Hook？</h2>
+
+<h3>1.1 自定义 Hook 的定义</h3>
+
+<p>自定义 Hook 是 <strong>React 开发者自己创建的、用于封装和复用组件逻辑的 JavaScript 函数</strong>。它遵循 React Hook 的规则，可以调用其他 Hook（如 useState、useEffect 等）。</p>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// 自定义 Hook 的基本结构
+<p>function useCustomHook(initialValue) {   // 可以调用其他 Hook   const [state, setState] = useState(initialValue);</p>
+
+<p>  // 自定义逻辑   const customFunction = () => {     // 处理逻辑   };</p>
+
+<p>  // 返回需要暴露的值和函数   return { state, customFunction }; }</p>
+
+<p>// 在组件中使用自定义 Hook function MyComponent() {   const { state, customFunction } = useCustomHook('初始值');</p>
+
+<p>  return <div>{state}</div>; }</code></pre></div></p>
+
+<h3>1.2 自定义 Hook 的核心特征</h3>
+
+<p>1. <strong>以 <code>use</code> 开头</strong>：这是 React 的约定，方便识别和工具检查 2. <strong>可以调用其他 Hook</strong>：可以在自定义 Hook 中使用任何 React 内置 Hook 3. <strong>逻辑复用</strong>：封装可复用的状态逻辑和副作用 4. <strong>独立状态</strong>：每次调用自定义 Hook 都会获得独立的状态副本</p>
+
+<h3>1.3 与普通函数的区别</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// ❌ 普通函数：不能使用 React Hook
+<p>function regularFunction() {   // 这里不能调用 useState、useEffect 等 Hook   return someValue; }</p>
+
+<p>// ✅ 自定义 Hook：可以使用 React Hook function useCustomHook() {   // 这里可以调用任何 React Hook   const [state, setState] = useState();   useEffect(() => { /<em> ... </em>/ });</p>
+
+<p>  return state; }</code></pre></div></p>
+
+<h3>1.4 与高阶组件（HOC）和渲染属性（Render Props）的对比</h3>
+
+<p>| 特性 | 自定义 Hook | 高阶组件（HOC） | 渲染属性（Render Props） | |------|------------|----------------|-------------------------| | <strong>代码结构</strong> | 函数调用 | 组件包装 | 属性传递 | | <strong>逻辑复用</strong> | 直接复用逻辑 | 通过组件包装复用 | 通过属性复用 | | <strong>嵌套问题</strong> | 无嵌套 | 可能产生深层嵌套 | 可能产生深层嵌套 | | <strong>性能影响</strong> | 较小 | 可能增加组件层级 | 可能增加渲染次数 | | <strong>学习曲线</strong> | 较低 | 中等 | 中等 | | <strong>TypeScript</strong> | 类型推断好 | 类型定义复杂 | 类型定义中等 |</p>
+
+<h2 id="二、自定义 Hook 的核心优势">二、自定义 Hook 的核心优势</h2>
+
+<h3>2.1 逻辑复用</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// 问题：多个组件需要相同的逻辑
+<p>function ComponentA() {   const [count, setCount] = useState(0);</p>
+
+<p>  const increment = () => setCount(prev => prev + 1);   const decrement = () => setCount(prev => prev - 1);   const reset = () => setCount(0);</p>
+
+<p>  return (     <div>       <button onClick={decrement}>-</button>       <span>{count}</span>       <button onClick={increment}>+</button>       <button onClick={reset}>重置</button>     </div>   ); }</p>
+
+<p>// 同样的逻辑在 ComponentB 中重复... function ComponentB() {   const [count, setCount] = useState(0);</p>
+
+<p>  const increment = () => setCount(prev => prev + 1);   const decrement = () => setCount(prev => prev - 1);   const reset = () => setCount(0);</p>
+
+<p>  return (     <div>       <button onClick={decrement}>-</button>       <span>{count}</span>       <button onClick={increment}>+</button>       <button onClick={reset}>重置</button>     </div>   ); }</p>
+
+<p>// 解决方案：创建自定义 Hook function useCounter(initialValue = 0) {   const [count, setCount] = useState(initialValue);</p>
+
+<p>  const increment = () => setCount(prev => prev + 1);   const decrement = () => setCount(prev => prev - 1);   const reset = () => setCount(initialValue);</p>
+
+<p>  return { count, increment, decrement, reset }; }</p>
+
+<p>// 简化后的组件 function ComponentA() {   const { count, increment, decrement, reset } = useCounter();</p>
+
+<p>  return (     <div>       <button onClick={decrement}>-</button>       <span>{count}</span>       <button onClick={increment}>+</button>       <button onClick={reset}>重置</button>     </div>   ); }</p>
+
+<p>function ComponentB() {   const { count, increment, decrement, reset } = useCounter(10);</p>
+
+<p>  return (     <div>       <button onClick={decrement}>-</button>       <span>{count}</span>       <button onClick={increment}>+</button>       <button onClick={reset}>重置</button>     </div>   ); }</code></pre></div></p>
+
+<h3>2.2 关注点分离</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// 问题：组件混合了多个关注点
+<p>function ComplexComponent({ userId }) {   // 关注点1：用户数据管理   const [user, setUser] = useState(null);   const [loading, setLoading] = useState(true);   const [error, setError] = useState(null);</p>
+
+<p>  // 关注点2：用户设置管理   const [settings, setSettings] = useState({});   const [saving, setSaving] = useState(false);</p>
+
+<p>  // 关注点3：用户活动记录   const [activities, setActivities] = useState([]);   const [page, setPage] = useState(1);</p>
+
+<p>  // 混合的副作用   useEffect(() => {     fetchUser(userId);   }, [userId]);</p>
+
+<p>  useEffect(() => {     fetchSettings(userId);   }, [userId]);</p>
+
+<p>  useEffect(() => {     fetchActivities(userId, page);   }, [userId, page]);</p>
+
+<p>  // 混合的业务逻辑   const fetchUser = async (id) => {     setLoading(true);     try {       const response = await fetch(<code>/api/users/${id}</code>);       const data = await response.json();       setUser(data);     } catch (err) {       setError(err.message);     } finally {       setLoading(false);     }   };</p>
+
+<p>  // ... 更多混合的逻辑</p>
+
+<p>  return (     <div>       {/<em> 混合的 UI 渲染 </em>/}     </div>   ); }</p>
+
+<p>// 解决方案：使用自定义 Hook 分离关注点 function useUser(userId) {   const [user, setUser] = useState(null);   const [loading, setLoading] = useState(true);   const [error, setError] = useState(null);</p>
+
+<p>  useEffect(() => {     fetchUser(userId);   }, [userId]);</p>
+
+<p>  const fetchUser = async (id) => {     setLoading(true);     try {       const response = await fetch(<code>/api/users/${id}</code>);       const data = await response.json();       setUser(data);     } catch (err) {       setError(err.message);     } finally {       setLoading(false);     }   };</p>
+
+<p>  return { user, loading, error, refetch: () => fetchUser(userId) }; }</p>
+
+<p>function useUserSettings(userId) {   const [settings, setSettings] = useState({});   const [saving, setSaving] = useState(false);</p>
+
+<p>  // ... 设置相关逻辑</p>
+
+<p>  return { settings, saving, updateSettings }; }</p>
+
+<p>function useUserActivities(userId) {   const [activities, setActivities] = useState([]);   const [page, setPage] = useState(1);</p>
+
+<p>  // ... 活动相关逻辑</p>
+
+<p>  return { activities, page, setPage, loadMore }; }</p>
+
+<p>// 简化后的组件 function SimplifiedComponent({ userId }) {   const { user, loading, error } = useUser(userId);   const { settings, saving } = useUserSettings(userId);   const { activities, page, setPage } = useUserActivities(userId);</p>
+
+<p>  if (loading) return <div>加载中...</div>;   if (error) return <div>错误: {error}</div>;</p>
+
+<p>  return (     <div>       <UserProfile user={user} settings={settings} />       <ActivitiesList activities={activities} />       <Pagination page={page} setPage={setPage} />     </div>   ); }</code></pre></div></p>
+
+<h3>2.3 可测试性</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// 自定义 Hook 可以独立测试
+<p>import { renderHook, act } from '@testing-library/react'; import { useCounter } from './useCounter';</p>
+
+<p>test('useCounter 应该正常工作', () => {   const { result } = renderHook(() => useCounter(0));</p>
+
+<p>  // 测试初始值   expect(result.current.count).toBe(0);</p>
+
+<p>  // 测试 increment   act(() => {     result.current.increment();   });   expect(result.current.count).toBe(1);</p>
+
+<p>  // 测试 decrement   act(() => {     result.current.decrement();   });   expect(result.current.count).toBe(0);</p>
+
+<p>  // 测试 reset   act(() => {     result.current.increment();     result.current.increment();     result.current.reset();   });   expect(result.current.count).toBe(0); });</code></pre></div></p>
+
+<h3>2.4 代码可维护性</h3>
+
+<p>1. <strong>单一职责</strong>：每个自定义 Hook 专注于一个特定功能 2. <strong>易于理解</strong>：通过 Hook 名称即可了解其功能 3. <strong>易于修改</strong>：修改逻辑只需在一个地方进行 4. <strong>易于删除</strong>：删除功能只需移除对应的 Hook 调用</p>
+
+<h2 id="三、创建自定义 Hook 的基本原则">三、创建自定义 Hook 的基本原则</h2>
+
+<h3>3.1 命名约定</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// ✅ 正确：以 "use" 开头，使用驼峰命名
+<p>function useCounter() { /<em> ... </em>/ } function useFetchData() { /<em> ... </em>/ } function useLocalStorage() { /<em> ... </em>/ }</p>
+
+<p>// ❌ 错误：不以 "use" 开头 function counter() { /<em> ... </em>/ } function fetchDataHook() { /<em> ... </em>/ }</p>
+
+<p>// ✅ 正确：描述性名称 function useUserAuthentication() { /<em> ... </em>/ } function useFormValidation() { /<em> ... </em>/ } function useInfiniteScroll() { /<em> ... </em>/ }</code></pre></div></p>
+
+<h3>3.2 参数设计</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// ✅ 正确：清晰的参数设计
+<p>function useFetch(url, options = {}) {   const { method = 'GET', headers = {} } = options;   // ... }</p>
+
+<p>// ✅ 正确：使用配置对象 function useTimer(config = {}) {   const {     initialTime = 0,     interval = 1000,     autoStart = false   } = config;   // ... }</p>
+
+<p>// ❌ 错误：参数过多 function useComplexHook(param1, param2, param3, param4, param5) {   // 难以使用和维护 }</p>
+
+<p>// ✅ 正确：使用对象参数 function useComplexHook(options) {   const { param1, param2, param3, param4, param5 } = options;   // 更清晰 }</code></pre></div></p>
+
+<h3>3.3 返回值设计</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// ✅ 正确：返回对象，便于解构
+<p>function useCounter(initialValue = 0) {   const [count, setCount] = useState(initialValue);</p>
+
+<p>  const increment = () => setCount(prev => prev + 1);   const decrement = () => setCount(prev => prev - 1);   const reset = () => setCount(initialValue);</p>
+
+<p>  return {     count,     increment,     decrement,     reset,     setCount // 暴露原始 setter 以供灵活使用   }; }</p>
+
+<p>// ✅ 正确：返回数组，模仿 useState function useToggle(initialValue = false) {   const [value, setValue] = useState(initialValue);</p>
+
+<p>  const toggle = () => setValue(prev => !prev);</p>
+
+<p>  return [value, toggle, setValue]; }</p>
+
+<p>// 使用示例 const [isOn, toggleIsOn] = useToggle(false);</p>
+
+<p>// ❌ 错误：返回不一致的类型 function useInconsistentHook() {   const [value, setValue] = useState('');   const [count, setCount] = useState(0);</p>
+
+<p>  // 返回混合类型，难以使用   return [value, setValue, count, setCount]; }</code></pre></div></p>
+
+<h3>3.4 依赖管理</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// ✅ 正确：正确处理依赖
+<p>function useFetch(url, options) {   const [data, setData] = useState(null);   const [loading, setLoading] = useState(true);   const [error, setError] = useState(null);</p>
+
+<p>  useEffect(() => {     let isMounted = true;</p>
+
+<p>    const fetchData = async () => {       setLoading(true);       try {         const response = await fetch(url, options);         const result = await response.json();</p>
+
+<p>        if (isMounted) {           setData(result);         }       } catch (err) {         if (isMounted) {           setError(err.message);         }       } finally {         if (isMounted) {           setLoading(false);         }       }     };</p>
+
+<p>    fetchData();</p>
+
+<p>    return () => {       isMounted = false;     };   }, [url, options]); // 正确声明依赖</p>
+
+<p>  return { data, loading, error }; }</p>
+
+<p>// ❌ 错误：遗漏依赖 function useProblematicFetch(url) {   const [data, setData] = useState(null);</p>
+
+<p>  useEffect(() => {     fetch(url)       .then(res => res.json())       .then(setData);   }, []); // 遗漏了 url 依赖，url 变化时不会重新获取</p>
+
+<p>  return data; }</code></pre></div></p>
+
+<h3>3.5 错误处理</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// ✅ 正确：完善的错误处理
+<p>function useSafeFetch(url) {   const [state, setState] = useState({     data: null,     loading: true,     error: null   });</p>
+
+<p>  useEffect(() => {     let isMounted = true;</p>
+
+<p>    const fetchData = async () => {       try {         setState(prev => ({ ...prev, loading: true, error: null }));</p>
+
+<p>        const response = await fetch(url);</p>
+
+<p>        if (!response.ok) {           throw new Error(<code>HTTP ${response.status}: ${response.statusText}</code>);         }</p>
+
+<p>        const data = await response.json();</p>
+
+<p>        if (isMounted) {           setState({             data,             loading: false,             error: null           });         }       } catch (error) {         if (isMounted) {           setState({             data: null,             loading: false,             error: error.message           });         }       }     };</p>
+
+<p>    fetchData();</p>
+
+<p>    return () => {       isMounted = false;     };   }, [url]);</p>
+
+<p>  return state; }</code></pre></div></p>
+
+<h2 id="四、常用自定义 Hook 模式">四、常用自定义 Hook 模式</h2>
+
+<h3>4.1 状态管理 Hook</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// useToggle：切换布尔值
+<p>function useToggle(initialValue = false) {   const [value, setValue] = useState(initialValue);</p>
+
+<p>  const toggle = useCallback(() => {     setValue(prev => !prev);   }, []);</p>
+
+<p>  const setOn = useCallback(() => {     setValue(true);   }, []);</p>
+
+<p>  const setOff = useCallback(() => {     setValue(false);   }, []);</p>
+
+<p>  return [value, toggle, setOn, setOff]; }</p>
+
+<p>// 使用示例 function ToggleComponent() {   const [isDarkMode, toggleDarkMode] = useToggle(false);</p>
+
+<p>  return (     <button onClick={toggleDarkMode}>       {isDarkMode ? '切换到浅色模式' : '切换到深色模式'}     </button>   ); }</code></pre></div></p>
+
+<h3>4.2 表单处理 Hook</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// useForm：表单状态管理
+<p>function useForm(initialValues = {}, validate) {   const [values, setValues] = useState(initialValues);   const [errors, setErrors] = useState({});   const [touched, setTouched] = useState({});   const [isSubmitting, setIsSubmitting] = useState(false);</p>
+
+<p>  // 处理字段变化   const handleChange = useCallback((name, value) => {     setValues(prev => ({       ...prev,       [name]: value     }));</p>
+
+<p>    // 实时验证     if (validate) {       const error = validate[name] ? validate[name](value) : null;       setErrors(prev => ({         ...prev,         [name]: error       }));     }   }, [validate]);</p>
+
+<p>  // 处理字段失去焦点   const handleBlur = useCallback((name) => {     setTouched(prev => ({       ...prev,       [name]: true     }));   }, []);</p>
+
+<p>  // 处理表单提交   const handleSubmit = useCallback((onSubmit) => async (event) => {     event.preventDefault();</p>
+
+<p>    setIsSubmitting(true);</p>
+
+<p>    // 验证所有字段     if (validate) {       const newErrors = {};       Object.keys(values).forEach(key => {         const validator = validate[key];         if (validator) {           const error = validator(values[key]);           if (error) newErrors[key] = error;         }       });</p>
+
+<p>      setErrors(newErrors);       setTouched(         Object.keys(values).reduce((acc, key) => {           acc[key] = true;           return acc;         }, {})       );</p>
+
+<p>      if (Object.keys(newErrors).length > 0) {         setIsSubmitting(false);         return;       }     }</p>
+
+<p>    try {       await onSubmit(values);     } finally {       setIsSubmitting(false);     }   }, [values, validate]);</p>
+
+<p>  // 重置表单   const resetForm = useCallback(() => {     setValues(initialValues);     setErrors({});     setTouched({});     setIsSubmitting(false);   }, [initialValues]);</p>
+
+<p>  return {     values,     errors,     touched,     isSubmitting,     handleChange,     handleBlur,     handleSubmit,     resetForm,     setValues   }; }</p>
+
+<p>// 使用示例 function LoginForm() {   const { values, errors, touched, handleChange, handleBlur, handleSubmit } = useForm(     { email: '', password: '' },     {       email: (value) => !value ? '邮箱不能为空' : !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? '邮箱格式不正确' : null,       password: (value) => !value ? '密码不能为空' : value.length < 6 ? '密码至少6位' : null     }   );</p>
+
+<p>  const onSubmit = async (formValues) => {     console.log('提交:', formValues);     // 调用 API   };</p>
+
+<p>  return (     <form onSubmit={handleSubmit(onSubmit)}>       <div>         <input           type="email"           name="email"           value={values.email}           onChange={(e) => handleChange('email', e.target.value)}           onBlur={() => handleBlur('email')}           placeholder="邮箱"         />         {touched.email && errors.email && <span>{errors.email}</span>}       </div></p>
+
+<p>      <div>         <input           type="password"           name="password"           value={values.password}           onChange={(e) => handleChange('password', e.target.value)}           onBlur={() => handleBlur('password')}           placeholder="密码"         />         {touched.password && errors.password && <span>{errors.password}</span>}       </div></p>
+
+<p>      <button type="submit">登录</button>     </form>   ); }</code></pre></div></p>
+
+<h3>4.3 副作用管理 Hook</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// useInterval：定时器 Hook
+<p>function useInterval(callback, delay) {   const savedCallback = useRef();</p>
+
+<p>  // 保存最新的回调函数   useEffect(() => {     savedCallback.current = callback;   }, [callback]);</p>
+
+<p>  // 设置定时器   useEffect(() => {     function tick() {       savedCallback.current?.();     }</p>
+
+<p>    if (delay !== null) {       const id = setInterval(tick, delay);       return () => clearInterval(id);     }   }, [delay]); }</p>
+
+<p>// 使用示例 function Timer() {   const [count, setCount] = useState(0);</p>
+
+<p>  useInterval(() => {     setCount(count + 1);   }, 1000);</p>
+
+<p>  return <div>计时: {count} 秒</div>; }</p>
+
+<p>// useDebounce：防抖 Hook function useDebounce(value, delay) {   const [debouncedValue, setDebouncedValue] = useState(value);</p>
+
+<p>  useEffect(() => {     const timer = setTimeout(() => {       setDebouncedValue(value);     }, delay);</p>
+
+<p>    return () => {       clearTimeout(timer);     };   }, [value, delay]);</p>
+
+<p>  return debouncedValue; }</p>
+
+<p>// 使用示例 function SearchInput() {   const [query, setQuery] = useState('');   const debouncedQuery = useDebounce(query, 500);</p>
+
+<p>  // debouncedQuery 会在用户停止输入 500ms 后更新   useEffect(() => {     if (debouncedQuery) {       // 执行搜索       search(debouncedQuery);     }   }, [debouncedQuery]);</p>
+
+<p>  return (     <input       type="text"       value={query}       onChange={(e) => setQuery(e.target.value)}       placeholder="搜索..."     />   ); }</code></pre></div></p>
+
+<h3>4.4 浏览器 API Hook</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// useLocalStorage：本地存储 Hook
+<p>function useLocalStorage(key, initialValue) {   // 从 localStorage 读取初始值   const readValue = useCallback(() => {     if (typeof window === 'undefined') {       return initialValue;     }</p>
+
+<p>    try {       const item = window.localStorage.getItem(key);       return item ? JSON.parse(item) : initialValue;     } catch (error) {       console.warn(<code>读取 localStorage 键 "${key}" 时出错:</code>, error);       return initialValue;     }   }, [key, initialValue]);</p>
+
+<p>  const [storedValue, setStoredValue] = useState(readValue);</p>
+
+<p>  // 设置 localStorage 值   const setValue = useCallback((value) => {     try {       // 允许值是一个函数（像 useState 一样）       const valueToStore = value instanceof Function ? value(storedValue) : value;</p>
+
+<p>      setStoredValue(valueToStore);</p>
+
+<p>      if (typeof window !== 'undefined') {         window.localStorage.setItem(key, JSON.stringify(valueToStore));       }     } catch (error) {       console.warn(<code>设置 localStorage 键 "${key}" 时出错:</code>, error);     }   }, [key, storedValue]);</p>
+
+<p>  // 监听其他标签页的更改   useEffect(() => {     const handleStorageChange = (event) => {       if (event.key === key && event.storageArea === localStorage) {         setStoredValue(readValue());       }     };</p>
+
+<p>    window.addEventListener('storage', handleStorageChange);     return () => window.removeEventListener('storage', handleStorageChange);   }, [key, readValue]);</p>
+
+<p>  return [storedValue, setValue]; }</p>
+
+<p>// 使用示例 function ThemeToggle() {   const [theme, setTheme] = useLocalStorage('theme', 'light');</p>
+
+<p>  const toggleTheme = () => {     setTheme(prev => prev === 'light' ? 'dark' : 'light');   };</p>
+
+<p>  return (     <button onClick={toggleTheme}>       切换到 {theme === 'light' ? '深色' : '浅色'} 主题     </button>   ); }</p>
+
+<p>// useMediaQuery：媒体查询 Hook function useMediaQuery(query) {   const [matches, setMatches] = useState(false);</p>
+
+<p>  useEffect(() => {     const mediaQuery = window.matchMedia(query);</p>
+
+<p>    // 初始检查     setMatches(mediaQuery.matches);</p>
+
+<p>    // 监听变化     const handler = (event) => {       setMatches(event.matches);     };</p>
+
+<p>    mediaQuery.addEventListener('change', handler);</p>
+
+<p>    return () => {       mediaQuery.removeEventListener('change', handler);     };   }, [query]);</p>
+
+<p>  return matches; }</p>
+
+<p>// 使用示例 function ResponsiveComponent() {   const isMobile = useMediaQuery('(max-width: 768px)');   const isTablet = useMediaQuery('(min-width: 769px) and (max-width: 1024px)');   const isDesktop = useMediaQuery('(min-width: 1025px)');</p>
+
+<p>  if (isMobile) return <MobileLayout />;   if (isTablet) return <TabletLayout />;   return <DesktopLayout />; }</code></pre></div></p>
+
+<h2 id="五、状态管理自定义 Hook">五、状态管理自定义 Hook</h2>
+
+<h3>5.1 useReducer 增强 Hook</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// useReducerWithMiddleware：支持中间件的 useReducer
+<p>function useReducerWithMiddleware(reducer, initialState, middlewares = []) {   const [state, setState] = useState(initialState);</p>
+
+<p>  const dispatch = useCallback((action) => {     // 应用中间件     const chain = middlewares.map(middleware => middleware({ getState: () => state }));</p>
+
+<p>    // 创建增强的 dispatch     let enhancedDispatch = (action) => {       const newState = reducer(state, action);       setState(newState);       return action;     };</p>
+
+<p>    // 从右到左组合中间件     for (let i = chain.length - 1; i >= 0; i--) {       enhancedDispatch = chain[i](enhancedDispatch);     }</p>
+
+<p>    // 执行 action     return enhancedDispatch(action);   }, [reducer, state, middlewares]);</p>
+
+<p>  return [state, dispatch]; }</p>
+
+<p>// 使用示例 const loggerMiddleware = ({ getState }) => next => action => {   console.log('即将执行:', action);   console.log('当前状态:', getState());</p>
+
+<p>  const result = next(action);</p>
+
+<p>  console.log('执行后状态:', getState());   return result; };</p>
+
+<p>const thunkMiddleware = ({ getState }) => next => action => {   if (typeof action === 'function') {     return action(next, getState);   }   return next(action); };</p>
+
+<p>function counterReducer(state, action) {   switch (action.type) {     case 'INCREMENT':       return { count: state.count + 1 };     case 'DECREMENT':       return { count: state.count - 1 };     case 'RESET':       return { count: 0 };     default:       return state;   } }</p>
+
+<p>function CounterWithMiddleware() {   const [state, dispatch] = useReducerWithMiddleware(     counterReducer,     { count: 0 },     [loggerMiddleware, thunkMiddleware]   );</p>
+
+<p>  // 可以 dispatch 普通 action   const increment = () => dispatch({ type: 'INCREMENT' });</p>
+
+<p>  // 也可以 dispatch 函数（thunk）   const incrementAsync = () => dispatch((dispatch, getState) => {     setTimeout(() => {       dispatch({ type: 'INCREMENT' });     }, 1000);   });</p>
+
+<p>  return (     <div>       <p>计数: {state.count}</p>       <button onClick={increment}>增加</button>       <button onClick={incrementAsync}>异步增加</button>     </div>   ); }</code></pre></div></p>
+
+<h3>5.2 全局状态管理 Hook</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// createGlobalState：创建全局状态 Hook
+<p>function createGlobalState(initialState) {   let state = initialState;   const listeners = new Set();</p>
+
+<p>  const setState = (newState) => {     // 支持函数更新     if (typeof newState === 'function') {       state = newState(state);     } else {       state = newState;     }</p>
+
+<p>    // 通知所有监听器     listeners.forEach(listener => listener(state));   };</p>
+
+<p>  const useGlobalState = () => {     const [localState, setLocalState] = useState(state);</p>
+
+<p>    useEffect(() => {       const listener = (newState) => {         setLocalState(newState);       };</p>
+
+<p>      listeners.add(listener);</p>
+
+<p>      return () => {         listeners.delete(listener);       };     }, []);</p>
+
+<p>    return [localState, setState];   };</p>
+
+<p>  return useGlobalState; }</p>
+
+<p>// 使用示例 const useCounterState = createGlobalState({ count: 0 });</p>
+
+<p>function CounterA() {   const [state, setState] = useCounterState();</p>
+
+<p>  return (     <div>       <p>CounterA: {state.count}</p>       <button onClick={() => setState({ count: state.count + 1 })}>         增加       </button>     </div>   ); }</p>
+
+<p>function CounterB() {   const [state] = useCounterState();</p>
+
+<p>  return (     <div>       <p>CounterB: {state.count}</p>       {/<em> 共享同一个状态 </em>/}     </div>   ); }</p>
+
+<p>function App() {   return (     <div>       <CounterA />       <CounterB />     </div>   ); }</code></pre></div></p>
+
+<h3>5.3 状态持久化 Hook</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// usePersistedState：持久化状态 Hook
+<p>function usePersistedState(key, initialValue, storage = localStorage) {   const [state, setState] = useState(() => {     try {       const item = storage.getItem(key);       return item ? JSON.parse(item) : initialValue;     } catch (error) {       console.error(<code>读取存储键 "${key}" 时出错:</code>, error);       return initialValue;     }   });</p>
+
+<p>  // 状态变化时保存到存储   useEffect(() => {     try {       storage.setItem(key, JSON.stringify(state));     } catch (error) {       console.error(<code>保存存储键 "${key}" 时出错:</code>, error);     }   }, [key, state, storage]);</p>
+
+<p>  // 监听存储变化（其他标签页）   useEffect(() => {     const handleStorageChange = (event) => {       if (event.key === key && event.storageArea === storage) {         try {           const newValue = event.newValue ? JSON.parse(event.newValue) : initialValue;           setState(newValue);         } catch (error) {           console.error(<code>解析存储键 "${key}" 时出错:</code>, error);         }       }     };</p>
+
+<p>    window.addEventListener('storage', handleStorageChange);     return () => window.removeEventListener('storage', handleStorageChange);   }, [key, initialValue, storage]);</p>
+
+<p>  return [state, setState]; }</p>
+
+<p>// 使用示例 function UserPreferences() {   const [theme, setTheme] = usePersistedState('theme', 'light');   const [language, setLanguage] = usePersistedState('language', 'zh-CN');   const [notifications, setNotifications] = usePersistedState('notifications', true);</p>
+
+<p>  return (     <div>       <h2>用户偏好设置</h2></p>
+
+<p>      <div>         <label>           主题:           <select value={theme} onChange={(e) => setTheme(e.target.value)}>             <option value="light">浅色</option>             <option value="dark">深色</option>             <option value="auto">自动</option>           </select>         </label>       </div></p>
+
+<p>      <div>         <label>           语言:           <select value={language} onChange={(e) => setLanguage(e.target.value)}>             <option value="zh-CN">简体中文</option>             <option value="en-US">English</option>             <option value="ja-JP">日本語</option>           </select>         </label>       </div></p>
+
+<p>      <div>         <label>           <input             type="checkbox"             checked={notifications}             onChange={(e) => setNotifications(e.target.checked)}           />           接收通知         </label>       </div>     </div>   ); }</code></pre></div></p>
+
+<h2 id="六、副作用管理自定义 Hook">六、副作用管理自定义 Hook</h2>
+
+<h3>6.1 网络请求 Hook</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// useFetch：增强版网络请求 Hook
+<p>function useFetch(url, options = {}) {   const {     method = 'GET',     headers = {},     body = null,     immediate = true,     onSuccess,     onError   } = options;</p>
+
+<p>  const [state, setState] = useState({     data: null,     loading: false,     error: null,     status: null   });</p>
+
+<p>  const [trigger, setTrigger] = useState(0);</p>
+
+<p>  const execute = useCallback(async (overrides = {}) => {     setState(prev => ({ ...prev, loading: true, error: null }));</p>
+
+<p>    try {       const finalUrl = overrides.url || url;       const finalMethod = overrides.method || method;       const finalHeaders = { ...headers, ...overrides.headers };       const finalBody = overrides.body !== undefined ? overrides.body : body;</p>
+
+<p>      const response = await fetch(finalUrl, {         method: finalMethod,         headers: finalHeaders,         body: finalBody ? JSON.stringify(finalBody) : null       });</p>
+
+<p>      const data = await response.json();</p>
+
+<p>      setState({         data,         loading: false,         error: null,         status: response.status       });</p>
+
+<p>      if (onSuccess) {         onSuccess(data, response);       }</p>
+
+<p>      return { data, response };     } catch (error) {       setState({         data: null,         loading: false,         error: error.message,         status: null       });</p>
+
+<p>      if (onError) {         onError(error);       }</p>
+
+<p>      throw error;     }   }, [url, method, headers, body, onSuccess, onError]);</p>
+
+<p>  // 手动触发请求   const refetch = useCallback((overrides = {}) => {     setTrigger(prev => prev + 1);     return execute(overrides);   }, [execute]);</p>
+
+<p>  // 自动执行请求   useEffect(() => {     if (immediate) {       execute();     }   }, [execute, immediate, trigger]);</p>
+
+<p>  return {     ...state,     execute,     refetch,     setData: (data) => setState(prev => ({ ...prev, data }))   }; }</p>
+
+<p>// 使用示例 function UserProfile({ userId }) {   const { data: user, loading, error, refetch } = useFetch(     <code>/api/users/${userId}</code>,     {       onSuccess: (data) => {         console.log('用户数据加载成功:', data);       },       onError: (error) => {         console.error('用户数据加载失败:', error);       }     }   );</p>
+
+<p>  if (loading) return <div>加载中...</div>;   if (error) return <div>错误: {error}</div>;   if (!user) return <div>无用户数据</div>;</p>
+
+<p>  return (     <div>       <h2>{user.name}</h2>       <p>邮箱: {user.email}</p>       <p>角色: {user.role}</p>       <button onClick={refetch}>刷新数据</button>     </div>   ); }</code></pre></div></p>
+
+<h3>6.2 WebSocket Hook</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// useWebSocket：WebSocket 连接 Hook
+<p>function useWebSocket(url, options = {}) {   const {     reconnect = true,     reconnectInterval = 3000,     reconnectAttempts = 5,     onOpen,     onMessage,     onClose,     onError   } = options;</p>
+
+<p>  const [socket, setSocket] = useState(null);   const [isConnected, setIsConnected] = useState(false);   const [reconnectCount, setReconnectCount] = useState(0);</p>
+
+<p>  const connect = useCallback(() => {     const ws = new WebSocket(url);</p>
+
+<p>    ws.onopen = (event) => {       setIsConnected(true);       setReconnectCount(0);       if (onOpen) onOpen(event);     };</p>
+
+<p>    ws.onmessage = (event) => {       if (onMessage) onMessage(event);     };</p>
+
+<p>    ws.onclose = (event) => {       setIsConnected(false);       if (onClose) onClose(event);</p>
+
+<p>      // 自动重连       if (reconnect && reconnectCount < reconnectAttempts) {         setTimeout(() => {           setReconnectCount(prev => prev + 1);           connect();         }, reconnectInterval);       }     };</p>
+
+<p>    ws.onerror = (event) => {       if (onError) onError(event);     };</p>
+
+<p>    setSocket(ws);</p>
+
+<p>    return ws;   }, [url, reconnect, reconnectInterval, reconnectAttempts, onOpen, onMessage, onClose, onError, reconnectCount]);</p>
+
+<p>  // 发送消息   const send = useCallback((data) => {     if (socket && socket.readyState === WebSocket.OPEN) {       socket.send(typeof data === 'string' ? data : JSON.stringify(data));       return true;     }     return false;   }, [socket]);</p>
+
+<p>  // 关闭连接   const disconnect = useCallback(() => {     if (socket) {       socket.close();     }   }, [socket]);</p>
+
+<p>  // 初始连接   useEffect(() => {     const ws = connect();</p>
+
+<p>    return () => {       ws.close();     };   }, [connect]);</p>
+
+<p>  return {     socket,     isConnected,     send,     disconnect,     reconnectCount   }; }</p>
+
+<p>// 使用示例 function ChatRoom({ roomId }) {   const [messages, setMessages] = useState([]);   const [input, setInput] = useState('');</p>
+
+<p>  const { isConnected, send } = useWebSocket(     <code>wss://api.example.com/chat/${roomId}</code>,     {       onMessage: (event) => {         const message = JSON.parse(event.data);         setMessages(prev => [...prev, message]);       },       onOpen: () => {         console.log('已连接到聊天室');       },       onClose: () => {         console.log('已断开连接');       }     }   );</p>
+
+<p>  const handleSend = () => {     if (input.trim() && send) {       send({         type: 'message',         content: input,         timestamp: new Date().toISOString()       });       setInput('');     }   };</p>
+
+<p>  return (     <div>       <div>连接状态: {isConnected ? '已连接' : '连接中...'}</div></p>
+
+<p>      <div className="messages">         {messages.map((msg, index) => (           <div key={index} className="message">             <span>{msg.content}</span>           </div>         ))}       </div></p>
+
+<p>      <div className="input-area">         <input           type="text"           value={input}           onChange={(e) => setInput(e.target.value)}           onKeyPress={(e) => e.key === 'Enter' && handleSend()}           placeholder="输入消息..."         />         <button onClick={handleSend} disabled={!isConnected}>           发送         </button>       </div>     </div>   ); }</code></pre></div></p>
+
+<h3>6.3 定时器与动画 Hook</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// useAnimationFrame：动画帧 Hook
+<p>function useAnimationFrame(callback) {   const requestRef = useRef();   const previousTimeRef = useRef();</p>
+
+<p>  const animate = useCallback((time) => {     if (previousTimeRef.current !== undefined) {       const deltaTime = time - previousTimeRef.current;       callback(deltaTime);     }</p>
+
+<p>    previousTimeRef.current = time;     requestRef.current = requestAnimationFrame(animate);   }, [callback]);</p>
+
+<p>  useEffect(() => {     requestRef.current = requestAnimationFrame(animate);</p>
+
+<p>    return () => {       cancelAnimationFrame(requestRef.current);     };   }, [animate]); }</p>
+
+<p>// 使用示例：平滑滚动动画 function SmoothScroll({ targetY, duration = 500 }) {   const [position, setPosition] = useState(0);</p>
+
+<p>  useAnimationFrame((deltaTime) => {     const progress = Math.min(1, (Date.now() - startTime) / duration);     const easedProgress = easeInOutCubic(progress);</p>
+
+<p>    const newPosition = startPosition + (targetY - startPosition) * easedProgress;     setPosition(newPosition);</p>
+
+<p>    if (progress >= 1) {       // 动画完成     }   });</p>
+
+<p>  return (     <div style={{ transform: <code>translateY(${position}px)</code> }}>       {/<em> 内容 </em>/}     </div>   ); }</p>
+
+<p>// useCountdown：倒计时 Hook function useCountdown(initialSeconds, onComplete) {   const [seconds, setSeconds] = useState(initialSeconds);   const [isActive, setIsActive] = useState(false);</p>
+
+<p>  useEffect(() => {     let interval = null;</p>
+
+<p>    if (isActive && seconds > 0) {       interval = setInterval(() => {         setSeconds(prev => {           if (prev <= 1) {             setIsActive(false);             if (onComplete) onComplete();             return 0;           }           return prev - 1;         });       }, 1000);     } else if (!isActive && seconds !== 0) {       clearInterval(interval);     }</p>
+
+<p>    return () => clearInterval(interval);   }, [isActive, seconds, onComplete]);</p>
+
+<p>  const start = useCallback(() => {     setIsActive(true);   }, []);</p>
+
+<p>  const pause = useCallback(() => {     setIsActive(false);   }, []);</p>
+
+<p>  const reset = useCallback(() => {     setIsActive(false);     setSeconds(initialSeconds);   }, [initialSeconds]);</p>
+
+<p>  const resume = useCallback(() => {     setIsActive(true);   }, []);</p>
+
+<p>  return {     seconds,     isActive,     start,     pause,     reset,     resume,     formatted: <code>${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, '0')}</code>   }; }</p>
+
+<p>// 使用示例 function CountdownTimer() {   const { seconds, isActive, start, pause, reset, formatted } = useCountdown(     300, // 5分钟     () => {       console.log('倒计时结束!');     }   );</p>
+
+<p>  return (     <div>       <h2>倒计时: {formatted}</h2></p>
+
+<p>      <div>         {!isActive ? (           <button onClick={start}>开始</button>         ) : (           <button onClick={pause}>暂停</button>         )}</p>
+
+<p>        <button onClick={reset} disabled={seconds === 300}>           重置         </button>       </div>     </div>   ); }</code></pre></div></p>
+
+<h2 id="七、表单处理自定义 Hook">七、表单处理自定义 Hook</h2>
+
+<h3>7.1 复杂表单验证 Hook</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// useFormValidation：增强表单验证 Hook
+<p>function useFormValidation(initialValues, validationSchema, options = {}) {   const {     validateOnChange = true,     validateOnBlur = true,     validateOnSubmit = true   } = options;</p>
+
+<p>  const [values, setValues] = useState(initialValues);   const [errors, setErrors] = useState({});   const [touched, setTouched] = useState({});   const [isSubmitting, setIsSubmitting] = useState(false);   const [submitCount, setSubmitCount] = useState(0);</p>
+
+<p>  // 验证单个字段   const validateField = useCallback((name, value) => {     if (!validationSchema || !validationSchema[name]) {       return null;     }</p>
+
+<p>    const validator = validationSchema[name];</p>
+
+<p>    // 支持同步和异步验证器     if (typeof validator === 'function') {       return validator(value, values);     }</p>
+
+<p>    // 支持验证规则对象     if (typeof validator === 'object') {       const rules = validator;       let error = null;</p>
+
+<p>      // 必填验证       if (rules.required && !value) {         error = rules.requiredMessage || '此字段为必填项';       }</p>
+
+<p>      // 最小长度验证       if (!error && rules.minLength && value.length < rules.minLength) {         error = rules.minLengthMessage || <code>至少需要 ${rules.minLength} 个字符</code>;       }</p>
+
+<p>      // 最大长度验证       if (!error && rules.maxLength && value.length > rules.maxLength) {         error = rules.maxLengthMessage || <code>不能超过 ${rules.maxLength} 个字符</code>;       }</p>
+
+<p>      // 正则表达式验证       if (!error && rules.pattern && !rules.pattern.test(value)) {         error = rules.patternMessage || '格式不正确';       }</p>
+
+<p>      // 自定义验证函数       if (!error && rules.validate) {         const customError = rules.validate(value, values);         if (customError) error = customError;       }</p>
+
+<p>      return error;     }</p>
+
+<p>    return null;   }, [validationSchema, values]);</p>
+
+<p>  // 验证所有字段   const validateAll = useCallback(async () => {     const newErrors = {};</p>
+
+<p>    for (const [name, value] of Object.entries(values)) {       const error = validateField(name, value);</p>
+
+<p>      if (error && typeof error.then === 'function') {         // 异步验证         try {           const asyncError = await error;           if (asyncError) newErrors[name] = asyncError;         } catch (err) {           newErrors[name] = err.message;         }       } else if (error) {         // 同步验证         newErrors[name] = error;       }     }</p>
+
+<p>    setErrors(newErrors);     return newErrors;   }, [values, validateField]);</p>
+
+<p>  // 处理字段变化   const handleChange = useCallback((name, value) => {     setValues(prev => ({       ...prev,       [name]: value     }));</p>
+
+<p>    // 标记为已触摸     setTouched(prev => ({       ...prev,       [name]: true     }));</p>
+
+<p>    // 实时验证     if (validateOnChange) {       const error = validateField(name, value);       setErrors(prev => ({         ...prev,         [name]: error       }));     }   }, [validateField, validateOnChange]);</p>
+
+<p>  // 处理字段失去焦点   const handleBlur = useCallback((name) => {     setTouched(prev => ({       ...prev,       [name]: true     }));</p>
+
+<p>    // 失去焦点时验证     if (validateOnBlur) {       const error = validateField(name, values[name]);       setErrors(prev => ({         ...prev,         [name]: error       }));     }   }, [validateField, validateOnBlur, values]);</p>
+
+<p>  // 处理表单提交   const handleSubmit = useCallback((onSubmit) => async (event) => {     if (event) event.preventDefault();</p>
+
+<p>    setIsSubmitting(true);     setSubmitCount(prev => prev + 1);</p>
+
+<p>    // 标记所有字段为已触摸     const allTouched = Object.keys(values).reduce((acc, key) => {       acc[key] = true;       return acc;     }, {});     setTouched(allTouched);</p>
+
+<p>    // 验证所有字段     let validationErrors = {};     if (validateOnSubmit) {       validationErrors = await validateAll();     }</p>
+
+<p>    // 如果有错误，停止提交     if (Object.keys(validationErrors).length > 0) {       setIsSubmitting(false);       return { success: false, errors: validationErrors };     }</p>
+
+<p>    // 执行提交     try {       const result = await onSubmit(values);       setIsSubmitting(false);       return { success: true, data: result, errors: {} };     } catch (error) {       setIsSubmitting(false);       return { success: false, error: error.message, errors: {} };     }   }, [values, validateOnSubmit, validateAll]);</p>
+
+<p>  // 重置表单   const resetForm = useCallback((newValues = initialValues) => {     setValues(newValues);     setErrors({});     setTouched({});     setIsSubmitting(false);   }, [initialValues]);</p>
+
+<p>  // 设置字段值（用于编程式设置）   const setFieldValue = useCallback((name, value) => {     handleChange(name, value);   }, [handleChange]);</p>
+
+<p>  // 设置字段错误（用于服务器验证错误）   const setFieldError = useCallback((name, error) => {     setErrors(prev => ({       ...prev,       [name]: error     }));   }, []);</p>
+
+<p>  // 检查表单是否有效   const isValid = Object.keys(errors).length === 0;</p>
+
+<p>  // 检查表单是否被修改过   const isDirty = !deepEqual(values, initialValues);</p>
+
+<p>  return {     // 状态     values,     errors,     touched,     isSubmitting,     submitCount,</p>
+
+<p>    // 验证状态     isValid,     isDirty,</p>
+
+<p>    // 操作方法     handleChange,     handleBlur,     handleSubmit,     resetForm,     setFieldValue,     setFieldError,     validateField,     validateAll,</p>
+
+<p>    // 原始 setter（高级用法）     setValues,     setErrors,     setTouched   }; }</p>
+
+<p>// 使用示例：注册表单 function RegistrationForm() {   const {     values,     errors,     touched,     isSubmitting,     handleChange,     handleBlur,     handleSubmit   } = useFormValidation(     {       username: '',       email: '',       password: '',       confirmPassword: '',       agreeToTerms: false     },     {       username: {         required: true,         minLength: 3,         maxLength: 20,         pattern: /^[a-zA-Z0-9_]+$/,         patternMessage: '只能包含字母、数字和下划线'       },       email: {         required: true,         pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,         patternMessage: '请输入有效的邮箱地址'       },       password: {         required: true,         minLength: 8,         validate: (value) => {           if (!/(?=.<em>[a-z])(?=.</em>[A-Z])(?=.*\d)/.test(value)) {             return '必须包含大小写字母和数字';           }           return null;         }       },       confirmPassword: {         required: true,         validate: (value, values) => {           if (value !== values.password) {             return '两次输入的密码不一致';           }           return null;         }       },       agreeToTerms: {         required: true,         validate: (value) => {           if (!value) {             return '必须同意服务条款';           }           return null;         }       }     },     {       validateOnChange: true,       validateOnBlur: true     }   );</p>
+
+<p>  const onSubmit = async (formValues) => {     console.log('提交注册:', formValues);     // 调用注册 API     const response = await fetch('/api/register', {       method: 'POST',       headers: { 'Content-Type': 'application/json' },       body: JSON.stringify(formValues)     });</p>
+
+<p>    if (!response.ok) {       throw new Error('注册失败');     }</p>
+
+<p>    return response.json();   };</p>
+
+<p>  return (     <form onSubmit={handleSubmit(onSubmit)}>       <div className="form-group">         <label>用户名</label>         <input           type="text"           name="username"           value={values.username}           onChange={(e) => handleChange('username', e.target.value)}           onBlur={() => handleBlur('username')}           className={touched.username && errors.username ? 'error' : ''}         />         {touched.username && errors.username && (           <div className="error-message">{errors.username}</div>         )}       </div></p>
+
+<p>      <div className="form-group">         <label>邮箱</label>         <input           type="email"           name="email"           value={values.email}           onChange={(e) => handleChange('email', e.target.value)}           onBlur={() => handleBlur('email')}           className={touched.email && errors.email ? 'error' : ''}         />         {touched.email && errors.email && (           <div className="error-message">{errors.email}</div>         )}       </div></p>
+
+<p>      <div className="form-group">         <label>密码</label>         <input           type="password"           name="password"           value={values.password}           onChange={(e) => handleChange('password', e.target.value)}           onBlur={() => handleBlur('password')}           className={touched.password && errors.password ? 'error' : ''}         />         {touched.password && errors.password && (           <div className="error-message">{errors.password}</div>         )}       </div></p>
+
+<p>      <div className="form-group">         <label>确认密码</label>         <input           type="password"           name="confirmPassword"           value={values.confirmPassword}           onChange={(e) => handleChange('confirmPassword', e.target.value)}           onBlur={() => handleBlur('confirmPassword')}           className={touched.confirmPassword && errors.confirmPassword ? 'error' : ''}         />         {touched.confirmPassword && errors.confirmPassword && (           <div className="error-message">{errors.confirmPassword}</div>         )}       </div></p>
+
+<p>      <div className="form-group">         <label>           <input             type="checkbox"             name="agreeToTerms"             checked={values.agreeToTerms}             onChange={(e) => handleChange('agreeToTerms', e.target.checked)}           />           我同意服务条款         </label>         {touched.agreeToTerms && errors.agreeToTerms && (           <div className="error-message">{errors.agreeToTerms}</div>         )}       </div></p>
+
+<p>      <button type="submit" disabled={isSubmitting}>         {isSubmitting ? '注册中...' : '注册'}       </button>     </form>   ); }</code></pre></div></p>
+
+<h3>7.2 动态表单 Hook</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// useDynamicForm：动态表单字段管理
+<p>function useDynamicForm(initialFields = []) {   const [fields, setFields] = useState(initialFields);   const [values, setValues] = useState({});   const [errors, setErrors] = useState({});</p>
+
+<p>  // 初始化值   useEffect(() => {     const initialValues = {};     fields.forEach(field => {       initialValues[field.name] = field.initialValue || '';     });     setValues(initialValues);   }, [fields]);</p>
+
+<p>  // 添加字段   const addField = useCallback((field) => {     setFields(prev => [...prev, field]);     setValues(prev => ({       ...prev,       [field.name]: field.initialValue || ''     }));   }, []);</p>
+
+<p>  // 移除字段   const removeField = useCallback((fieldName) => {     setFields(prev => prev.filter(field => field.name !== fieldName));     setValues(prev => {       const newValues = { ...prev };       delete newValues[fieldName];       return newValues;     });     setErrors(prev => {       const newErrors = { ...prev };       delete newErrors[fieldName];       return newErrors;     });   }, []);</p>
+
+<p>  // 更新字段   const updateField = useCallback((fieldName, updates) => {     setFields(prev => prev.map(field =>        field.name === fieldName ? { ...field, ...updates } : field     ));   }, []);</p>
+
+<p>  // 处理字段值变化   const handleChange = useCallback((fieldName, value) => {     setValues(prev => ({       ...prev,       [fieldName]: value     }));</p>
+
+<p>    // 清除该字段的错误     setErrors(prev => {       const newErrors = { ...prev };       delete newErrors[fieldName];       return newErrors;     });   }, []);</p>
+
+<p>  // 验证字段   const validateField = useCallback((fieldName, value) => {     const field = fields.find(f => f.name === fieldName);     if (!field || !field.validate) return null;</p>
+
+<p>    const error = field.validate(value, values);     setErrors(prev => ({       ...prev,       [fieldName]: error     }));</p>
+
+<p>    return error;   }, [fields, values]);</p>
+
+<p>  // 验证所有字段   const validateAll = useCallback(() => {     const newErrors = {};</p>
+
+<p>    fields.forEach(field => {       if (field.validate) {         const error = field.validate(values[field.name], values);         if (error) {           newErrors[field.name] = error;         }       }     });</p>
+
+<p>    setErrors(newErrors);     return newErrors;   }, [fields, values]);</p>
+
+<p>  // 获取表单数据   const getFormData = useCallback(() => {     return values;   }, [values]);</p>
+
+<p>  // 重置表单   const resetForm = useCallback(() => {     const initialValues = {};     fields.forEach(field => {       initialValues[field.name] = field.initialValue || '';     });     setValues(initialValues);     setErrors({});   }, [fields]);</p>
+
+<p>  return {     // 状态     fields,     values,     errors,</p>
+
+<p>    // 字段操作     addField,     removeField,     updateField,</p>
+
+<p>    // 值操作     handleChange,     setValues,</p>
+
+<p>    // 验证     validateField,     validateAll,</p>
+
+<p>    // 工具方法     getFormData,     resetForm,</p>
+
+<p>    // 状态检查     isValid: Object.keys(errors).length === 0,     isDirty: !deepEqual(values, fields.reduce((acc, field) => {       acc[field.name] = field.initialValue || '';       return acc;     }, {}))   }; }</p>
+
+<p>// 使用示例：动态调查问卷 function DynamicSurvey() {   const questionTypes = [     { value: 'text', label: '文本输入' },     { value: 'textarea', label: '多行文本' },     { value: 'radio', label: '单选' },     { value: 'checkbox', label: '多选' },     { value: 'select', label: '下拉选择' }   ];</p>
+
+<p>  const {     fields,     values,     errors,     addField,     removeField,     updateField,     handleChange,     validateAll   } = useDynamicForm([     {       name: 'name',       type: 'text',       label: '姓名',       placeholder: '请输入您的姓名',       required: true,       validate: (value) => !value ? '姓名不能为空' : null     },     {       name: 'email',       type: 'text',       label: '邮箱',       placeholder: '请输入您的邮箱',       required: true,       validate: (value) => {         if (!value) return '邮箱不能为空';         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return '邮箱格式不正确';         return null;       }     }   ]);</p>
+
+<p>  const addQuestion = () => {     const questionNumber = fields.filter(f => f.type !== 'text').length + 1;</p>
+
+<p>    addField({       name: <code>question_${questionNumber}</code>,       type: 'text',       label: <code>问题 ${questionNumber}</code>,       placeholder: '请输入问题内容',       required: true,       validate: (value) => !value ? '问题不能为空' : null     });   };</p>
+
+<p>  const handleSubmit = (e) => {     e.preventDefault();</p>
+
+<p>    const errors = validateAll();     if (Object.keys(errors).length > 0) {       alert('请检查表单错误');       return;     }</p>
+
+<p>    console.log('提交调查问卷:', values);     // 提交逻辑   };</p>
+
+<p>  return (     <div className="dynamic-survey">       <h2>调查问卷</h2></p>
+
+<p>      <form onSubmit={handleSubmit}>         {fields.map((field) => (           <div key={field.name} className="form-field">             <label>               {field.label}               {field.required && <span className="required">*</span>}             </label></p>
+
+<p>            {field.type === 'text' && (               <input                 type="text"                 value={values[field.name] || ''}                 onChange={(e) => handleChange(field.name, e.target.value)}                 placeholder={field.placeholder}                 className={errors[field.name] ? 'error' : ''}               />             )}</p>
+
+<p>            {field.type === 'textarea' && (               <textarea                 value={values[field.name] || ''}                 onChange={(e) => handleChange(field.name, e.target.value)}                 placeholder={field.placeholder}                 className={errors[field.name] ? 'error' : ''}                 rows={4}               />             )}</p>
+
+<p>            {field.type === 'select' && field.options && (               <select                 value={values[field.name] || ''}                 onChange={(e) => handleChange(field.name, e.target.value)}                 className={errors[field.name] ? 'error' : ''}               >                 <option value="">请选择</option>                 {field.options.map(option => (                   <option key={option.value} value={option.value}>                     {option.label}                   </option>                 ))}               </select>             )}</p>
+
+<p>            {errors[field.name] && (               <div className="error-message">{errors[field.name]}</div>             )}</p>
+
+<p>            {!field.name.startsWith('question_') && (               <button                 type="button"                 onClick={() => removeField(field.name)}                 className="remove-btn"               >                 删除               </button>             )}</p>
+
+<p>            {field.name.startsWith('question_') && (               <div className="question-options">                 <select                   value={field.type}                   onChange={(e) => updateField(field.name, { type: e.target.value })}                 >                   {questionTypes.map(type => (                     <option key={type.value} value={type.value}>                       {type.label}                     </option>                   ))}                 </select>               </div>             )}           </div>         ))}</p>
+
+<p>        <div className="form-actions">           <button type="button" onClick={addQuestion}>             添加问题           </button></p>
+
+<p>          <button type="submit">             提交问卷           </button>         </div>       </form>     </div>   ); }</code></pre></div></p>
+
+<h2 id="八、API 请求自定义 Hook">八、API 请求自定义 Hook</h2>
+
+<h3>8.1 数据获取与缓存 Hook</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// useQuery：数据查询 Hook（类似 React Query）
+<p>function useQuery(key, fetcher, options = {}) {   const {     enabled = true,     staleTime = 0,     cacheTime = 5 <em> 60 </em> 1000, // 5分钟     retry = 3,     retryDelay = 1000,     onSuccess,     onError,     onSettled   } = options;</p>
+
+<p>  const [state, setState] = useState({     data: null,     error: null,     status: 'idle', // 'idle' | 'loading' | 'success' | 'error'     isFetching: false,     isStale: true   });</p>
+
+<p>  const cache = useRef(new Map());   const retryCount = useRef(0);</p>
+
+<p>  const fetchData = useCallback(async () => {     // 检查缓存     const cached = cache.current.get(key);     const now = Date.now();</p>
+
+<p>    if (cached && now - cached.timestamp < staleTime) {       setState({         data: cached.data,         error: null,         status: 'success',         isFetching: false,         isStale: false       });       return;     }</p>
+
+<p>    // 开始获取     setState(prev => ({       ...prev,       status: 'loading',       isFetching: true     }));</p>
+
+<p>    try {       const data = await fetcher();</p>
+
+<p>      // 更新缓存       cache.current.set(key, {         data,         timestamp: now       });</p>
+
+<p>      // 设置清理定时器       setTimeout(() => {         cache.current.delete(key);       }, cacheTime);</p>
+
+<p>      setState({         data,         error: null,         status: 'success',         isFetching: false,         isStale: false       });</p>
+
+<p>      if (onSuccess) onSuccess(data);       if (onSettled) onSettled(data, null);</p>
+
+<p>      retryCount.current = 0;     } catch (error) {       // 重试逻辑       if (retryCount.current < retry) {         retryCount.current += 1;</p>
+
+<p>        setTimeout(() => {           fetchData();         }, retryDelay * retryCount.current);</p>
+
+<p>        return;       }</p>
+
+<p>      setState({         data: null,         error: error.message,         status: 'error',         isFetching: false,         isStale: true       });</p>
+
+<p>      if (onError) onError(error);       if (onSettled) onSettled(null, error);     }   }, [key, fetcher, staleTime, cacheTime, retry, retryDelay, onSuccess, onError, onSettled]);</p>
+
+<p>  // 手动重新获取   const refetch = useCallback(() => {     fetchData();   }, [fetchData]);</p>
+
+<p>  // 设置数据（乐观更新）   const setData = useCallback((newData) => {     setState(prev => ({       ...prev,       data: typeof newData === 'function' ? newData(prev.data) : newData     }));</p>
+
+<p>    // 更新缓存     cache.current.set(key, {       data: newData,       timestamp: Date.now()     });   }, [key]);</p>
+
+<p>  // 自动获取   useEffect(() => {     if (enabled) {       fetchData();     }   }, [enabled, fetchData]);</p>
+
+<p>  return {     ...state,     refetch,     setData,     isIdle: state.status === 'idle',     isLoading: state.status === 'loading',     isError: state.status === 'error',     isSuccess: state.status === 'success'   }; }</p>
+
+<p>// 使用示例 function UserProfile({ userId }) {   const { data: user, isLoading, error, refetch } = useQuery(     ['user', userId],     () => fetch(<code>/api/users/${userId}</code>).then(res => res.json()),     {       staleTime: 1000 * 60, // 1分钟       onSuccess: (data) => {         console.log('用户数据加载成功:', data);       },       onError: (error) => {         console.error('用户数据加载失败:', error);       }     }   );</p>
+
+<p>  if (isLoading) return <div>加载中...</div>;   if (error) return <div>错误: {error}</div>;</p>
+
+<p>  return (     <div>       <h2>{user.name}</h2>       <p>邮箱: {user.email}</p>       <button onClick={refetch}>刷新</button>     </div>   ); }</code></pre></div></p>
+
+<h3>8.2 数据变更 Hook</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// useMutation：数据变更 Hook
+<p>function useMutation(mutator, options = {}) {   const {     onSuccess,     onError,     onSettled,     onMutate   } = options;</p>
+
+<p>  const [state, setState] = useState({     data: null,     error: null,     status: 'idle', // 'idle' | 'loading' | 'success' | 'error'     isIdle: true,     isLoading: false,     isError: false,     isSuccess: false   });</p>
+
+<p>  const mutate = useCallback(async (variables, context) => {     setState({       data: null,       error: null,       status: 'loading',       isIdle: false,       isLoading: true,       isError: false,       isSuccess: false     });</p>
+
+<p>    let optimisticData = null;</p>
+
+<p>    // 乐观更新回调     if (onMutate) {       optimisticData = onMutate(variables);     }</p>
+
+<p>    try {       const data = await mutator(variables);</p>
+
+<p>      setState({         data,         error: null,         status: 'success',         isIdle: false,         isLoading: false,         isError: false,         isSuccess: true       });</p>
+
+<p>      if (onSuccess) onSuccess(data, variables, context);       if (onSettled) onSettled(data, null, variables, context);</p>
+
+<p>      return data;     } catch (error) {       setState({         data: null,         error: error.message,         status: 'error',         isIdle: false,         isLoading: false,         isError: true,         isSuccess: false       });</p>
+
+<p>      if (onError) onError(error, variables, context, optimisticData);       if (onSettled) onSettled(null, error, variables, context);</p>
+
+<p>      throw error;     }   }, [mutator, onSuccess, onError, onSettled, onMutate]);</p>
+
+<p>  const reset = useCallback(() => {     setState({       data: null,       error: null,       status: 'idle',       isIdle: true,       isLoading: false,       isError: false,       isSuccess: false     });   }, []);</p>
+
+<p>  return {     ...state,     mutate,     reset   }; }</p>
+
+<p>// 使用示例：创建用户 function CreateUserForm() {   const createUserMutation = useMutation(     (userData) => fetch('/api/users', {       method: 'POST',       headers: { 'Content-Type': 'application/json' },       body: JSON.stringify(userData)     }).then(res => res.json()),     {       onMutate: (userData) => {         // 乐观更新：立即在 UI 中显示新用户         console.log('即将创建用户:', userData);         return userData;       },       onSuccess: (data) => {         console.log('用户创建成功:', data);         alert('用户创建成功!');       },       onError: (error) => {         console.error('用户创建失败:', error);         alert('用户创建失败: ' + error.message);       }     }   );</p>
+
+<p>  const handleSubmit = (e) => {     e.preventDefault();</p>
+
+<p>    const formData = new FormData(e.target);     const userData = {       name: formData.get('name'),       email: formData.get('email'),       role: formData.get('role')     };</p>
+
+<p>    createUserMutation.mutate(userData);   };</p>
+
+<p>  return (     <form onSubmit={handleSubmit}>       <div>         <label>姓名:</label>         <input type="text" name="name" required />       </div></p>
+
+<p>      <div>         <label>邮箱:</label>         <input type="email" name="email" required />       </div></p>
+
+<p>      <div>         <label>角色:</label>         <select name="role">           <option value="user">普通用户</option>           <option value="admin">管理员</option>           <option value="editor">编辑</option>         </select>       </div></p>
+
+<p>      <button type="submit" disabled={createUserMutation.isLoading}>         {createUserMutation.isLoading ? '创建中...' : '创建用户'}       </button></p>
+
+<p>      {createUserMutation.isError && (         <div className="error">错误: {createUserMutation.error}</div>       )}</p>
+
+<p>      {createUserMutation.isSuccess && (         <div className="success">用户创建成功!</div>       )}     </form>   ); }</p>
+
+<p>// 组合使用 useQuery 和 useMutation function UserManagement() {   const { data: users, isLoading, refetch } = useQuery(     'users',     () => fetch('/api/users').then(res => res.json())   );</p>
+
+<p>  const deleteUserMutation = useMutation(     (userId) => fetch(<code>/api/users/${userId}</code>, { method: 'DELETE' }),     {       onSuccess: () => {         // 用户删除成功后重新获取用户列表         refetch();       }     }   );</p>
+
+<p>  if (isLoading) return <div>加载用户列表...</div>;</p>
+
+<p>  return (     <div>       <h2>用户管理</h2></p>
+
+<p>      <table>         <thead>           <tr>             <th>ID</th>             <th>姓名</th>             <th>邮箱</th>             <th>操作</th>           </tr>         </thead>         <tbody>           {users.map(user => (             <tr key={user.id}>               <td>{user.id}</td>               <td>{user.name}</td>               <td>{user.email}</td>               <td>                 <button                   onClick={() => deleteUserMutation.mutate(user.id)}                   disabled={deleteUserMutation.isLoading}                 >                   {deleteUserMutation.isLoading ? '删除中...' : '删除'}                 </button>               </td>             </tr>           ))}         </tbody>       </table>     </div>   ); }</p>
+
+<h2 id="九、性能优化自定义 Hook">九、性能优化自定义 Hook</h2>
+
+<h3>9.1 记忆化 Hook</h3>
+<p></code></pre></div>javascript // useMemoizedCallback：记忆化回调函数 function useMemoizedCallback(callback, deps) {   const callbackRef = useRef(callback);   const memoizedCallback = useRef();</p>
+
+<p>  // 更新回调引用   useEffect(() => {     callbackRef.current = callback;   }, [callback]);</p>
+
+<p>  // 创建记忆化回调   if (!memoizedCallback.current) {     memoizedCallback.current = (...args) => {       return callbackRef.current(...args);     };   }</p>
+
+<p>  // 依赖变化时重新创建   useEffect(() => {     memoizedCallback.current = (...args) => {       return callbackRef.current(...args);     };   }, deps);</p>
+
+<p>  return memoizedCallback.current; }</p>
+
+<p>// 使用示例 function ExpensiveComponent({ data, onUpdate }) {   const memoizedOnUpdate = useMemoizedCallback(onUpdate, [data]);</p>
+
+<p>  return (     <div>       <button onClick={() => memoizedOnUpdate(data)}>         更新数据       </button>     </div>   ); }</p>
+<div class="code-block"><div class="code-header"></div><pre><code class="language-">
+<h3>9.2 防抖与节流 Hook</h3>
+<p></code></pre></div>javascript // useThrottle：节流 Hook function useThrottle(value, limit) {   const [throttledValue, setThrottledValue] = useState(value);   const lastRan = useRef(Date.now());</p>
+
+<p>  useEffect(() => {     const handler = setTimeout(() => {       if (Date.now() - lastRan.current >= limit) {         setThrottledValue(value);         lastRan.current = Date.now();       }     }, limit - (Date.now() - lastRan.current));</p>
+
+<p>    return () => {       clearTimeout(handler);     };   }, [value, limit]);</p>
+
+<p>  return throttledValue; }</p>
+
+<p>// useDebounce：防抖 Hook（增强版） function useDebounce(value, delay, options = {}) {   const {     maxWait,     leading = false,     trailing = true   } = options;</p>
+
+<p>  const [debouncedValue, setDebouncedValue] = useState(value);   const timeoutRef = useRef();   const maxTimeoutRef = useRef();   const leadingCallRef = useRef(false);</p>
+
+<p>  useEffect(() => {     const shouldCallLeading = leading && !leadingCallRef.current;</p>
+
+<p>    if (shouldCallLeading) {       setDebouncedValue(value);       leadingCallRef.current = true;     }</p>
+
+<p>    // 清除之前的定时器     if (timeoutRef.current) {       clearTimeout(timeoutRef.current);     }</p>
+
+<p>    if (maxWait && !maxTimeoutRef.current) {       maxTimeoutRef.current = setTimeout(() => {         if (trailing) {           setDebouncedValue(value);         }         leadingCallRef.current = false;         maxTimeoutRef.current = null;       }, maxWait);     }</p>
+
+<p>    timeoutRef.current = setTimeout(() => {       if (trailing) {         setDebouncedValue(value);       }       leadingCallRef.current = false;</p>
+
+<p>      if (maxTimeoutRef.current) {         clearTimeout(maxTimeoutRef.current);         maxTimeoutRef.current = null;       }     }, delay);</p>
+
+<p>    return () => {       if (timeoutRef.current) {         clearTimeout(timeoutRef.current);       }       if (maxTimeoutRef.current) {         clearTimeout(maxTimeoutRef.current);       }     };   }, [value, delay, maxWait, leading, trailing]);</p>
+
+<p>  return debouncedValue; }</p>
+
+<p>// 使用示例：搜索输入 function SearchInput() {   const [query, setQuery] = useState('');   const debouncedQuery = useDebounce(query, 500, {     leading: true,     maxWait: 2000   });</p>
+
+<p>  useEffect(() => {     if (debouncedQuery) {       performSearch(debouncedQuery);     }   }, [debouncedQuery]);</p>
+
+<p>  return (     <input       type="text"       value={query}       onChange={(e) => setQuery(e.target.value)}       placeholder="搜索..."     />   ); }</p>
+<div class="code-block"><div class="code-header"></div><pre><code class="language-">
+<h3>9.3 虚拟列表 Hook</h3>
+<p></code></pre></div>javascript // useVirtualList：虚拟列表 Hook function useVirtualList(items, options = {}) {   const {     itemHeight = 50,     overscan = 5,     containerRef   } = options;</p>
+
+<p>  const [scrollTop, setScrollTop] = useState(0);   const [containerHeight, setContainerHeight] = useState(0);</p>
+
+<p>  // 计算可见项   const totalHeight = items.length * itemHeight;   const startIndex = Math.floor(scrollTop / itemHeight);   const visibleCount = Math.ceil(containerHeight / itemHeight);</p>
+
+<p>  const endIndex = Math.min(     items.length - 1,     startIndex + visibleCount + overscan   );</p>
+
+<p>  const visibleItems = items.slice(     Math.max(0, startIndex - overscan),     endIndex + 1   );</p>
+
+<p>  const offsetY = Math.max(0, (startIndex - overscan) * itemHeight);</p>
+
+<p>  // 滚动处理   const handleScroll = useCallback(() => {     if (containerRef.current) {       setScrollTop(containerRef.current.scrollTop);     }   }, [containerRef]);</p>
+
+<p>  // 容器尺寸变化处理   const handleResize = useCallback(() => {     if (containerRef.current) {       setContainerHeight(containerRef.current.clientHeight);     }   }, [containerRef]);</p>
+
+<p>  // 初始化和监听   useEffect(() => {     if (containerRef.current) {       handleResize();       containerRef.current.addEventListener('scroll', handleScroll);</p>
+
+<p>      const resizeObserver = new ResizeObserver(handleResize);       resizeObserver.observe(containerRef.current);</p>
+
+<p>      return () => {         containerRef.current?.removeEventListener('scroll', handleScroll);         resizeObserver.disconnect();       };     }   }, [containerRef, handleScroll, handleResize]);</p>
+
+<p>  return {     visibleItems,     totalHeight,     offsetY,     startIndex,     endIndex   }; }</p>
+
+<p>// 使用示例 function VirtualList({ items }) {   const containerRef = useRef();   const { visibleItems, totalHeight, offsetY } = useVirtualList(items, {     itemHeight: 60,     overscan: 3,     containerRef   });</p>
+
+<p>  return (     <div       ref={containerRef}       style={{         height: '500px',         overflow: 'auto',         position: 'relative'       }}     >       <div style={{ height: <code>${totalHeight}px</code> }}>         <div style={{ transform: <code>translateY(${offsetY}px)</code> }}>           {visibleItems.map((item, index) => (             <div               key={item.id}               style={{                 height: '60px',                 borderBottom: '1px solid #eee',                 padding: '10px'               }}             >               {item.content}             </div>           ))}         </div>       </div>     </div>   ); }</p>
+<div class="code-block"><div class="code-header"></div><pre><code class="language-">
+<h2 id="十、测试与调试自定义 Hook">十、测试与调试自定义 Hook</h2>
+
+<h3>10.1 测试自定义 Hook</h3>
+<p></code></pre></div>javascript // 测试 useCounter Hook import { renderHook, act } from '@testing-library/react'; import { useCounter } from './useCounter';</p>
+
+<p>describe('useCounter', () => {   test('应该使用初始值', () => {     const { result } = renderHook(() => useCounter(10));     expect(result.current.count).toBe(10);   });</p>
+
+<p>  test('应该增加计数', () => {     const { result } = renderHook(() => useCounter(0));</p>
+
+<p>    act(() => {       result.current.increment();     });</p>
+
+<p>    expect(result.current.count).toBe(1);   });</p>
+
+<p>  test('应该减少计数', () => {     const { result } = renderHook(() => useCounter(5));</p>
+
+<p>    act(() => {       result.current.decrement();     });</p>
+
+<p>    expect(result.current.count).toBe(4);   });</p>
+
+<p>  test('应该重置计数', () => {     const { result } = renderHook(() => useCounter(0));</p>
+
+<p>    act(() => {       result.current.increment();       result.current.increment();       result.current.reset();     });</p>
+
+<p>    expect(result.current.count).toBe(0);   }); });</p>
+
+<p>// 测试异步 Hook import { waitFor } from '@testing-library/react'; import { useFetch } from './useFetch';</p>
+
+<p>describe('useFetch', () => {   beforeEach(() => {     global.fetch = jest.fn();   });</p>
+
+<p>  test('应该加载数据', async () => {     const mockData = { id: 1, name: 'Test' };     global.fetch.mockResolvedValue({       ok: true,       json: () => Promise.resolve(mockData)     });</p>
+
+<p>    const { result } = renderHook(() => useFetch('/api/test'));</p>
+
+<p>    expect(result.current.loading).toBe(true);</p>
+
+<p>    await waitFor(() => {       expect(result.current.loading).toBe(false);     });</p>
+
+<p>    expect(result.current.data).toEqual(mockData);     expect(result.current.error).toBeNull();   });</p>
+
+<p>  test('应该处理错误', async () => {     global.fetch.mockRejectedValue(new Error('Network error'));</p>
+
+<p>    const { result } = renderHook(() => useFetch('/api/test'));</p>
+
+<p>    await waitFor(() => {       expect(result.current.loading).toBe(false);     });</p>
+
+<p>    expect(result.current.data).toBeNull();     expect(result.current.error).toBe('Network error');   }); });</p>
+<div class="code-block"><div class="code-header"></div><pre><code class="language-">
+<h3>10.2 调试自定义 Hook</h3>
+<p></code></pre></div>javascript // useDebugValue：React 内置调试 Hook function useComplexState(initialState) {   const [state, setState] = useState(initialState);</p>
+
+<p>  // 在 React DevTools 中显示调试信息   useDebugValue(state, state =>      <code>状态: ${JSON.stringify(state)}</code>   );</p>
+
+<p>  return [state, setState]; }</p>
+
+<p>// 自定义调试 Hook function useDebugHook(hook, label) {   const result = hook();</p>
+
+<p>  useEffect(() => {     console.log(<code>[${label}] 状态变化:</code>, result);   }, [result, label]);</p>
+
+<p>  return result; }</p>
+
+<p>// 使用示例 function MyComponent() {   const counter = useDebugHook(     () => useCounter(0),     'useCounter'   );</p>
+
+<p>  const { count, increment } = counter;</p>
+
+<p>  return (     <div>       <p>计数: {count}</p>       <button onClick={increment}>增加</button>     </div>   ); }</p>
+
+<p>// 性能调试 Hook function usePerformanceDebug(label) {   const renderCount = useRef(0);   const lastRenderTime = useRef(Date.now());</p>
+
+<p>  renderCount.current += 1;</p>
+
+<p>  useEffect(() => {     const now = Date.now();     const timeSinceLastRender = now - lastRenderTime.current;</p>
+
+<p>    console.log(<code>[${label}] 第 ${renderCount.current} 次渲染</code>);     console.log(<code>[${label}] 距离上次渲染: ${timeSinceLastRender}ms</code>);</p>
+
+<p>    lastRenderTime.current = now;   });</p>
+
+<p>  return {     renderCount: renderCount.current   }; }</p>
+
+<p>// 使用示例 function OptimizedComponent() {   usePerformanceDebug('OptimizedComponent');</p>
+
+<p>  // 组件逻辑...   return <div>优化组件</div>; }</p>
+<div class="code-block"><div class="code-header"></div><pre><code class="language-">
+<h3>10.3 错误边界与错误处理 Hook</h3>
+<p></code></pre></div>javascript // useErrorBoundary：错误边界 Hook function useErrorBoundary() {   const [error, setError] = useState(null);</p>
+
+<p>  const ErrorBoundary = useCallback(({ children, fallback }) => {     if (error) {       return fallback ? fallback(error) : (         <div>           <h2>出错了!</h2>           <p>{error.message}</p>           <button onClick={() => setError(null)}>重试</button>         </div>       );     }</p>
+
+<p>    return children;   }, [error]);</p>
+
+<p>  const withErrorBoundary = useCallback((Component, fallback) => {     return (props) => (       <ErrorBoundary fallback={fallback}>         <Component {...props} />       </ErrorBoundary>     );   }, [ErrorBoundary]);</p>
+
+<p>  return {     error,     setError,     ErrorBoundary,     withErrorBoundary,     clearError: () => setError(null)   }; }</p>
+
+<p>// 使用示例 function BuggyComponent() {   const { setError } = useErrorBoundary();</p>
+
+<p>  const handleClick = () => {     try {       // 可能抛出错误的代码       throw new Error('测试错误');     } catch (error) {       setError(error);     }   };</p>
+
+<p>  return (     <button onClick={handleClick}>       触发错误     </button>   ); }</p>
+
+<p>function App() {   const { ErrorBoundary } = useErrorBoundary();</p>
+
+<p>  return (     <ErrorBoundary fallback={(error) => (       <div>         <h2>应用程序错误</h2>         <p>{error.message}</p>       </div>     )}>       <BuggyComponent />     </ErrorBoundary>   ); }</p>
+<div class="code-block"><div class="code-header"></div><pre><code class="language-">
+<h2 id="十一、最佳实践与常见陷阱">十一、最佳实践与常见陷阱</h2>
+
+<h3>11.1 最佳实践</h3>
+
+<p>1. <strong>单一职责原则</strong></code></pre></div>javascript // ✅ 正确：每个 Hook 只做一件事 function useCounter() { /<em> 只管理计数 </em>/ } function useTimer() { /<em> 只管理计时器 </em>/ } function useForm() { /<em> 只管理表单 </em>/ }</p>
+
+<p>// ❌ 错误：一个 Hook 做太多事 function useEverything() { /<em> 管理计数、计时器、表单... </em>/ }</p>
+<div class="code-block"><div class="code-header"></div><pre><code class="language-">
+<p>2. <strong>清晰的命名</strong></code></pre></div>javascript // ✅ 正确：描述性名称 function useUserAuthentication() { /<em> ... </em>/ } function useInfiniteScroll() { /<em> ... </em>/ } function useLocalStorageState() { /<em> ... </em>/ }</p>
+
+<p>// ❌ 错误：模糊的命名 function useHook() { /<em> ... </em>/ } function useStuff() { /<em> ... </em>/ } function useMyLogic() { /<em> ... </em>/ }</p>
+<div class="code-block"><div class="code-header"></div><pre><code class="language-">
+<p>3. <strong>适当的抽象层级</strong></code></pre></div>javascript // ✅ 正确：适当的抽象 function useFetch(url) { /<em> 通用数据获取 </em>/ } function useUser(userId) { /<em> 用户特定逻辑 </em>/ }</p>
+
+<p>// ❌ 错误：过度抽象或不足 function useFetchUserProfileAndSettingsAndActivities(userId) { /<em> 太具体 </em>/ } function useGenericHook(config) { /<em> 太通用 </em>/ }</p>
+<div class="code-block"><div class="code-header"></div><pre><code class="language-">
+<p>4. <strong>完善的错误处理</strong></code></pre></div>javascript // ✅ 正确：完善的错误处理 function useSafeHook() {   const [error, setError] = useState(null);</p>
+
+<p>  const execute = useCallback(async () => {     try {       // 操作...     } catch (err) {       setError(err);       console.error('Hook 执行失败:', err);     }   }, []);</p>
+
+<p>  return { execute, error }; }</p>
+<div class="code-block"><div class="code-header"></div><pre><code class="language-">
+<p>5. <strong>性能考虑</strong></code></pre></div>javascript // ✅ 正确：性能优化 function useOptimizedHook(deps) {   const memoizedValue = useMemo(() => {     // 昂贵的计算     return computeExpensiveValue(deps);   }, [deps]);</p>
+
+<p>  const memoizedCallback = useCallback(() => {     // 回调函数   }, [deps]);</p>
+
+<p>  return { memoizedValue, memoizedCallback }; }</p>
+<div class="code-block"><div class="code-header"></div><pre><code class="language-">
+<h3>11.2 常见陷阱</h3>
+
+<p>1. <strong>无限循环</strong></code></pre></div>javascript // ❌ 错误：导致无限循环 function useProblematicHook(value) {   const [state, setState] = useState(value);</p>
+
+<p>  useEffect(() => {     // 每次渲染都设置状态，导致无限循环     setState(value);   }); // 缺少依赖数组</p>
+
+<p>  return state; }</p>
+
+<p>// ✅ 正确：正确处理依赖 function useCorrectHook(value) {   const [state, setState] = useState(value);</p>
+
+<p>  useEffect(() => {     setState(value);   }, [value]); // 正确声明依赖</p>
+
+<p>  return state; }</p>
+<div class="code-block"><div class="code-header"></div><pre><code class="language-">
+<p>2. <strong>过时的闭包</strong></code></pre></div>javascript // ❌ 错误：过时的闭包 function useStaleClosure() {   const [count, setCount] = useState(0);</p>
+
+<p>  const increment = useCallback(() => {     // count 总是初始值 0     setCount(count + 1);   }, []); // 缺少 count 依赖</p>
+
+<p>  return { count, increment }; }</p>
+
+<p>// ✅ 正确：使用函数更新 function useCorrectClosure() {   const [count, setCount] = useState(0);</p>
+
+<p>  const increment = useCallback(() => {     setCount(prev => prev + 1); // 使用函数更新   }, []); // 不需要 count 依赖</p>
+
+<p>  return { count, increment }; }</p>
+<div class="code-block"><div class="code-header"></div><pre><code class="language-">
+<p>3. <strong>条件调用 Hook</strong></code></pre></div>javascript // ❌ 错误：条件调用 Hook function useConditionalHook(shouldUse) {   if (shouldUse) {     const [state, setState] = useState(); // 违反规则   }</p>
+
+<p>  return null; }</p>
+
+<p>// ✅ 正确：无条件调用 Hook function useUnconditionalHook(shouldUse) {   const [state, setState] = useState();</p>
+
+<p>  // 条件逻辑放在 Hook 调用之后   const actualState = shouldUse ? state : null;</p>
+
+<p>  return actualState; }</p>
+<div class="code-block"><div class="code-header"></div><pre><code class="language-">
+<p>4. <strong>循环中调用 Hook</strong></code></pre></div>javascript // ❌ 错误：循环中调用 Hook function useLoopHook(items) {   const results = [];</p>
+
+<p>  for (let item of items) {     const [state, setState] = useState(item); // 违反规则     results.push(state);   }</p>
+
+<p>  return results; }</p>
+
+<p>// ✅ 正确：使用数组管理状态 function useArrayHook(items) {   const [states, setStates] = useState(items);</p>
+
+<p>  // 操作整个数组   const updateItem = useCallback((index, newValue) => {     setStates(prev => {       const newStates = [...prev];       newStates[index] = newValue;       return newStates;     });   }, []);</p>
+
+<p>  return { states, updateItem }; }</p>
+<div class="code-block"><div class="code-header"></div><pre><code class="language-">
+<p>5. <strong>忘记清理副作用</strong></code></pre></div>javascript // ❌ 错误：忘记清理 function useUncleanHook() {   useEffect(() => {     const interval = setInterval(() => {       console.log('tick');     }, 1000);</p>
+
+<p>    // 忘记清理 interval   }, []); }</p>
+
+<p>// ✅ 正确：清理副作用 function useCleanHook() {   useEffect(() => {     const interval = setInterval(() => {       console.log('tick');     }, 1000);</p>
+
+<p>    return () => {       clearInterval(interval); // 清理     };   }, []); }</p>
+<div class="code-block"><div class="code-header"></div><pre><code class="language-">
+<h2 id="十二、实战案例与完整示例">十二、实战案例与完整示例</h2>
+
+<h3>12.1 电商购物车 Hook</h3>
+<p></code></pre></div>javascript // useShoppingCart：电商购物车 Hook function useShoppingCart(initialItems = []) {   const [items, setItems] = useState(initialItems);   const [isLoading, setIsLoading] = useState(false);   const [error, setError] = useState(null);</p>
+
+<p>  // 计算总价   const totalPrice = useMemo(() => {     return items.reduce((sum, item) => {       return sum + (item.price * item.quantity);     }, 0);   }, [items]);</p>
+
+<p>  // 计算总数量   const totalQuantity = useMemo(() => {     return items.reduce((sum, item) => sum + item.quantity, 0);   }, [items]);</p>
+
+<p>  // 添加商品   const addItem = useCallback(async (product, quantity = 1) => {     setIsLoading(true);     setError(null);</p>
+
+<p>    try {       // 模拟 API 调用       await new Promise(resolve => setTimeout(resolve, 500));</p>
+
+<p>      setItems(prev => {         const existingItemIndex = prev.findIndex(           item => item.id === product.id         );</p>
+
+<p>        if (existingItemIndex >= 0) {           // 更新现有商品数量           const newItems = [...prev];           newItems[existingItemIndex] = {             ...newItems[existingItemIndex],             quantity: newItems[existingItemIndex].quantity + quantity           };           return newItems;         } else {           // 添加新商品           return [...prev, {             ...product,             quantity,             addedAt: new Date().toISOString()           }];         }       });     } catch (err) {       setError(err.message);       throw err;     } finally {       setIsLoading(false);     }   }, []);</p>
+
+<p>  // 移除商品   const removeItem = useCallback((itemId) => {     setItems(prev => prev.filter(item => item.id !== itemId));   }, []);</p>
+
+<p>  // 更新商品数量   const updateQuantity = useCallback((itemId, quantity) => {     if (quantity <= 0) {       removeItem(itemId);       return;     }</p>
+
+<p>    setItems(prev => prev.map(item =>        item.id === itemId ? { ...item, quantity } : item     ));   }, [removeItem]);</p>
+
+<p>  // 清空购物车   const clearCart = useCallback(() => {     setItems([]);   }, []);</p>
+
+<p>  // 保存到本地存储   const saveToLocalStorage = useCallback(() => {     try {       localStorage.setItem('shoppingCart', JSON.stringify(items));     } catch (err) {       console.error('保存购物车失败:', err);     }   }, [items]);</p>
+
+<p>  // 从本地存储加载   const loadFromLocalStorage = useCallback(() => {     try {       const saved = localStorage.getItem('shoppingCart');       if (saved) {         setItems(JSON.parse(saved));       }     } catch (err) {       console.error('加载购物车失败:', err);     }   }, []);</p>
+
+<p>  // 自动保存到本地存储   useEffect(() => {     saveToLocalStorage();   }, [items, saveToLocalStorage]);</p>
+
+<p>  return {     // 状态     items,     isLoading,     error,     totalPrice,     totalQuantity,</p>
+
+<p>    // 操作方法     addItem,     removeItem,     updateQuantity,     clearCart,     loadFromLocalStorage,</p>
+
+<p>    // 状态检查     isEmpty: items.length === 0,     hasItem: (itemId) => items.some(item => item.id === itemId),     getItem: (itemId) => items.find(item => item.id === itemId)   }; }</p>
+
+<p>// 使用示例 function ShoppingCart() {   const {     items,     totalPrice,     totalQuantity,     addItem,     removeItem,     updateQuantity,     clearCart,     isLoading   } = useShoppingCart();</p>
+
+<p>  const products = [     { id: 1, name: '商品A', price: 100, stock: 10 },     { id: 2, name: '商品B', price: 200, stock: 5 },     { id: 3, name: '商品C', price: 300, stock: 3 }   ];</p>
+
+<p>  return (     <div className="shopping-cart">       <h2>购物车 ({totalQuantity} 件商品)</h2></p>
+
+<p>      <div className="cart-items">         {items.length === 0 ? (           <p>购物车为空</p>         ) : (           items.map(item => (             <div key={item.id} className="cart-item">               <span className="item-name">{item.name}</span>               <span className="item-price">¥{item.price}</span></p>
+
+<p>              <div className="quantity-controls">                 <button                   onClick={() => updateQuantity(item.id, item.quantity - 1)}                   disabled={item.quantity <= 1}                 >                   -                 </button>                 <span>{item.quantity}</span>                 <button                   onClick={() => updateQuantity(item.id, item.quantity + 1)}                   disabled={item.quantity >= item.stock}                 >                   +                 </button>               </div></p>
+
+<p>              <span className="item-total">                 ¥{item.price * item.quantity}               </span></p>
+
+<p>              <button                 onClick={() => removeItem(item.id)}                 className="remove-btn"               >                 删除               </button>             </div>           ))         )}       </div></p>
+
+<p>      <div className="cart-summary">         <div className="total">           总计: <strong>¥{totalPrice.toFixed(2)}</strong>         </div></p>
+
+<p>        <div className="actions">           <button             onClick={clearCart}             disabled={items.length === 0}             className="clear-btn"           >             清空购物车           </button></p>
+
+<p>          <button             disabled={items.length === 0 || isLoading}             className="checkout-btn"           >             {isLoading ? '处理中...' : '去结算'}           </button>         </div>       </div></p>
+
+<p>      <div className="product-list">         <h3>推荐商品</h3>         {products.map(product => (           <div key={product.id} className="product">             <span>{product.name} - ¥{product.price}</span>             <button               onClick={() => addItem(product)}               disabled={isLoading}             >               加入购物车             </button>           </div>         ))}       </div>     </div>   ); }</p>
+<div class="code-block"><div class="code-header"></div><pre><code class="language-">
+<h3>12.2 实时聊天应用 Hook</h3>
+<p></code></pre></div>javascript // useChat：实时聊天 Hook function useChat(roomId, userId) {   const [messages, setMessages] = useState([]);   const [users, setUsers] = useState([]);   const [isConnected, setIsConnected] = useState(false);   const [isTyping, setIsTyping] = useState(false);</p>
+
+<p>  const socketRef = useRef();   const typingTimeoutRef = useRef();</p>
+
+<p>  // 连接 WebSocket   const connect = useCallback(() => {     const socket = new WebSocket(<code>wss://chat.example.com/ws/${roomId}</code>);</p>
+
+<p>    socket.onopen = () => {       setIsConnected(true);</p>
+
+<p>      // 发送加入消息       socket.send(JSON.stringify({         type: 'join',         userId,         timestamp: new Date().toISOString()       }));     };</p>
+
+<p>    socket.onmessage = (event) => {       const data = JSON.parse(event.data);</p>
+
+<p>      switch (data.type) {         case 'message':           setMessages(prev => [...prev, data]);           break;</p>
+
+<p>        case 'user_joined':           setUsers(prev => [...prev, data.user]);           break;</p>
+
+<p>        case 'user_left':           setUsers(prev => prev.filter(user => user.id !== data.userId));           break;</p>
+
+<p>        case 'typing_start':           if (data.userId !== userId) {             setIsTyping(true);           }           break;</p>
+
+<p>        case 'typing_stop':           if (data.userId !== userId) {             setIsTyping(false);           }           break;</p>
+
+<p>        case 'users_list':           setUsers(data.users);           break;</p>
+
+<p>        case 'history':           setMessages(data.messages);           break;       }     };</p>
+
+<p>    socket.onclose = () => {       setIsConnected(false);</p>
+
+<p>      // 尝试重连       setTimeout(() => {         connect();       }, 3000);     };</p>
+
+<p>    socket.onerror = (error) => {       console.error('WebSocket 错误:', error);     };</p>
+
+<p>    socketRef.current = socket;</p>
+
+<p>    return socket;   }, [roomId, userId]);</p>
+
+<p>  // 发送消息   const sendMessage = useCallback((content) => {     if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {       throw new Error('WebSocket 未连接');     }</p>
+
+<p>    const message = {       type: 'message',       content,       userId,       timestamp: new Date().toISOString()     };</p>
+
+<p>    socketRef.current.send(JSON.stringify(message));     return message;   }, [userId]);</p>
+
+<p>  // 发送输入状态   const sendTyping = useCallback(() => {     if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {       return;     }</p>
+
+<p>    // 清除之前的定时器     if (typingTimeoutRef.current) {       clearTimeout(typingTimeoutRef.current);     }</p>
+
+<p>    // 发送开始输入     socketRef.current.send(JSON.stringify({       type: 'typing_start',       userId,       timestamp: new Date().toISOString()     }));</p>
+
+<p>    // 设置停止输入的定时器     typingTimeoutRef.current = setTimeout(() => {       socketRef.current.send(JSON.stringify({         type: 'typing_stop',         userId,         timestamp: new Date().toISOString()       }));     }, 3000);   }, [userId]);</p>
+
+<p>  // 获取消息历史   const fetchHistory = useCallback(async (limit = 50) => {     try {       const response = await fetch(         <code>https://chat.example.com/api/rooms/${roomId}/messages?limit=${limit}</code>       );       const data = await response.json();       setMessages(data.messages);     } catch (error) {       console.error('获取消息历史失败:', error);     }   }, [roomId]);</p>
+
+<p>  // 断开连接   const disconnect = useCallback(() => {     if (socketRef.current) {       socketRef.current.close();     }</p>
+
+<p>    if (typingTimeoutRef.current) {       clearTimeout(typingTimeoutRef.current);     }   }, []);</p>
+
+<p>  // 初始连接   useEffect(() => {     const socket = connect();</p>
+
+<p>    return () => {       disconnect();     };   }, [connect, disconnect]);</p>
+
+<p>  return {     // 状态     messages,     users,     isConnected,     isTyping,</p>
+
+<p>    // 操作方法     sendMessage,     sendTyping,     fetchHistory,     disconnect,</p>
+
+<p>    // 工具方法     getUnreadCount: (lastReadId) => {       const lastReadIndex = messages.findIndex(msg => msg.id === lastReadId);       return lastReadIndex === -1 ? messages.length : messages.length - lastReadIndex - 1;     },</p>
+
+<p>    getUser: (userId) => users.find(user => user.id === userId)   }; }</p>
+
+<p>// 使用示例 function ChatRoom({ roomId, userId, userName }) {   const [input, setInput] = useState('');   const {     messages,     users,     isConnected,     isTyping,     sendMessage,     sendTyping,     fetchHistory   } = useChat(roomId, userId);</p>
+
+<p>  const handleSend = () => {     if (input.trim()) {       sendMessage(input);       setInput('');     }   };</p>
+
+<p>  const handleInputChange = (e) => {     setInput(e.target.value);     sendTyping();   };</p>
+
+<p>  const handleKeyPress = (e) => {     if (e.key === 'Enter' && !e.shiftKey) {       e.preventDefault();       handleSend();     }   };</p>
+
+<p>  return (     <div className="chat-room">       <div className="chat-header">         <h2>聊天室: {roomId}</h2>         <div className="connection-status">           状态: {isConnected ? '已连接' : '连接中...'}         </div>       </div></p>
+
+<p>      <div className="chat-layout">         <div className="users-panel">           <h3>在线用户 ({users.length})</h3>           <ul>             {users.map(user => (               <li key={user.id}>                 {user.name} {user.id === userId && '(你)'}               </li>             ))}           </ul>         </div></p>
+
+<p>        <div className="chat-main">           <div className="messages-container">             {messages.map((message, index) => {               const isOwn = message.userId === userId;               const showAvatar = index === 0 ||                  messages[index - 1].userId !== message.userId;</p>
+
+<p>              return (                 <div                   key={message.id || index}                   className={<code>message ${isOwn ? 'own' : 'other'} ${showAvatar ? 'show-avatar' : ''}</code>}                 >                   {showAvatar && !isOwn && (                     <div className="avatar">                       {message.userName?.charAt(0) || 'U'}                     </div>                   )}</p>
+
+<p>                  <div className="message-content">                     {showAvatar && !isOwn && (                       <div className="sender-name">                         {message.userName || '未知用户'}                       </div>                     )}</p>
+
+<p>                    <div className="message-text">                       {message.content}                     </div></p>
+
+<p>                    <div className="message-time">                       {new Date(message.timestamp).toLocaleTimeString()}                     </div>                   </div>                 </div>               );             })}</p>
+
+<p>            {isTyping && (               <div className="typing-indicator">                 <span>对方正在输入...</span>               </div>             )}           </div></p>
+
+<p>          <div className="input-area">             <textarea               value={input}               onChange={handleInputChange}               onKeyPress={handleKeyPress}               placeholder="输入消息..."               rows={3}             /></p>
+
+<p>            <div className="input-actions">               <button                 onClick={() => fetchHistory()}                 className="history-btn"               >                 历史消息               </button></p>
+
+<p>              <button                 onClick={handleSend}                 disabled={!input.trim() || !isConnected}                 className="send-btn"               >                 发送               </button>             </div>           </div>         </div>       </div>     </div>   ); }</p>
+<div class="code-block"><div class="code-header"></div><pre><code class="language-">
+<h3>12.3 拖拽排序 Hook</h3>
+<p></code></pre></div>javascript // useDragAndDrop：拖拽排序 Hook function useDragAndDrop(items, onReorder) {   const [draggingId, setDraggingId] = useState(null);   const [dragOverId, setDragOverId] = useState(null);   const [dragPosition, setDragPosition] = useState(null); // 'above' | 'below'</p>
+
+<p>  const dragStart = useCallback((id) => {     setDraggingId(id);   }, []);</p>
+
+<p>  const dragOver = useCallback((id, position) => {     if (id !== draggingId) {       setDragOverId(id);       setDragPosition(position);     }   }, [draggingId]);</p>
+
+<p>  const dragLeave = useCallback(() => {     setDragOverId(null);     setDragPosition(null);   }, []);</p>
+
+<p>  const drop = useCallback(() => {     if (draggingId && dragOverId && draggingId !== dragOverId) {       // 计算新顺序       const oldIndex = items.findIndex(item => item.id === draggingId);       const newIndex = items.findIndex(item => item.id === dragOverId);</p>
+
+<p>      let adjustedNewIndex = newIndex;       if (dragPosition === 'below') {         adjustedNewIndex = newIndex + 1;       }</p>
+
+<p>      // 调整索引（如果拖拽到后面，且目标在拖拽项前面）       if (oldIndex < adjustedNewIndex) {         adjustedNewIndex -= 1;       }</p>
+
+<p>      // 重新排序       const newItems = [...items];       const [draggedItem] = newItems.splice(oldIndex, 1);       newItems.splice(adjustedNewIndex, 0, draggedItem);</p>
+
+<p>      // 调用回调       onReorder(newItems);     }</p>
+
+<p>    // 重置状态     setDraggingId(null);     setDragOverId(null);     setDragPosition(null);   }, [draggingId, dragOverId, dragPosition, items, onReorder]);</p>
+
+<p>  const dragEnd = useCallback(() => {     setDraggingId(null);     setDragOverId(null);     setDragPosition(null);   }, []);</p>
+
+<p>  return {     draggingId,     dragOverId,     dragPosition,     dragStart,     dragOver,     dragLeave,     drop,     dragEnd,</p>
+
+<p>    // 工具方法     isDragging: (id) => id === draggingId,     isDragOver: (id) => id === dragOverId,     getDragStyle: (id) => {       if (id === draggingId) {         return { opacity: 0.5 };       }</p>
+
+<p>      if (id === dragOverId) {         return {           borderTop: dragPosition === 'above' ? '2px solid #007bff' : undefined,           borderBottom: dragPosition === 'below' ? '2px solid #007bff' : undefined         };       }</p>
+
+<p>      return {};     }   }; }</p>
+
+<p>// 使用示例 function SortableList({ items: initialItems, onSort }) {   const [items, setItems] = useState(initialItems);</p>
+
+<p>  const {     dragStart,     dragOver,     dragLeave,     drop,     dragEnd,     getDragStyle   } = useDragAndDrop(items, (newItems) => {     setItems(newItems);     onSort(newItems);   });</p>
+
+<p>  return (     <div className="sortable-list">       {items.map((item, index) => (         <div           key={item.id}           className="sortable-item"           draggable           style={getDragStyle(item.id)}           onDragStart={() => dragStart(item.id)}           onDragOver={(e) => {             e.preventDefault();</p>
+
+<p>            const rect = e.currentTarget.getBoundingClientRect();             const mouseY = e.clientY;             const middleY = rect.top + rect.height / 2;</p>
+
+<p>            dragOver(item.id, mouseY < middleY ? 'above' : 'below');           }}           onDragLeave={dragLeave}           onDrop={drop}           onDragEnd={dragEnd}         >           <div className="drag-handle">☰</div>           <div className="item-content">             <h4>{item.title}</h4>             <p>{item.description}</p>           </div>           <div className="item-index">{index + 1}</div>         </div>       ))}     </div>   ); }</p>
+
+<p>// 使用示例：任务管理 function TaskManager() {   const [tasks, setTasks] = useState([     { id: 1, title: '设计登录页面', description: '完成UI设计', status: 'todo' },     { id: 2, title: '开发API接口', description: '用户认证接口', status: 'in-progress' },     { id: 3, title: '编写测试用例', description: '单元测试和集成测试', status: 'todo' },     { id: 4, title: '部署到生产', description: '配置服务器和部署', status: 'done' }   ]);</p>
+
+<p>  const handleSort = (sortedTasks) => {     setTasks(sortedTasks);     console.log('任务重新排序:', sortedTasks);   };</p>
+
+<p>  return (     <div className="task-manager">       <h2>任务管理</h2>       <SortableList items={tasks} onSort={handleSort} />     </div>   ); }</p>
+<div class="code-block"><div class="code-header"></div><pre><code class="language-">
+<h2 id="十三、总结与进阶建议">十三、总结与进阶建议</h2>
+
+<h3>13.1 自定义 Hook 的核心价值</h3>
+
+<p>1. <strong>逻辑复用</strong>：将通用逻辑封装成可重用的 Hook 2. <strong>关注点分离</strong>：使组件更专注于渲染，逻辑由 Hook 管理 3. <strong>可测试性</strong>：Hook 可以独立测试，提高代码质量 4. <strong>可维护性</strong>：逻辑集中管理，便于修改和维护 5. <strong>可组合性</strong>：多个 Hook 可以组合使用，构建复杂功能</p>
+
+<h3>13.2 进阶学习方向</h3>
+
+<p>1. <strong>TypeScript 类型安全</strong></code></pre></div>typescript // 类型安全的自定义 Hook interface UseCounterReturn {   count: number;   increment: () => void;   decrement: () => void;   reset: () => void; }</p>
+
+<p>function useCounter(initialValue: number = 0): UseCounterReturn {   const [count, setCount] = useState<number>(initialValue);</p>
+
+<p>  const increment = useCallback(() => {     setCount(prev => prev + 1);   }, []);</p>
+
+<p>  const decrement = useCallback(() => {     setCount(prev => prev - 1);   }, []);</p>
+
+<p>  const reset = useCallback(() => {     setCount(initialValue);   }, [initialValue]);</p>
+
+<p>  return { count, increment, decrement, reset }; }</p>
+<div class="code-block"><div class="code-header"></div><pre><code class="language-">
+<p>2. <strong>性能优化模式</strong></code></pre></div>javascript // 使用 React.memo 和 useMemo 优化 const OptimizedComponent = React.memo(function OptimizedComponent({ data }) {   const processedData = useMemo(() => {     return expensiveProcessing(data);   }, [data]);</p>
+
+<p>  return <div>{processedData}</div>; });</p>
+
+<p>// 使用 useCallback 避免不必要的重渲染 function ParentComponent() {   const handleClick = useCallback(() => {     console.log('点击');   }, []);</p>
+
+<p>  return <ChildComponent onClick={handleClick} />; }</p>
+<div class="code-block"><div class="code-header"></div><pre><code class="language-">
+<p>3. <strong>错误边界与 Suspense</strong></code></pre></div>javascript // 结合错误边界 function useErrorBoundary() {   const [error, setError] = useState(null);</p>
+
+<p>  if (error) {     throw error;   }</p>
+
+<p>  return { setError }; }</p>
+
+<p>// 结合 Suspense function useSuspenseFetch(url) {   const [data, setData] = useState(null);   const [error, setError] = useState(null);</p>
+
+<p>  useEffect(() => {     fetch(url)       .then(res => res.json())       .then(setData)       .catch(setError);   }, [url]);</p>
+
+<p>  if (error) throw error;   if (!data) throw new Promise(resolve => setTimeout(resolve, 100));</p>
+
+<p>  return data; }</p>
+<div class="code-block"><div class="code-header"></div><pre><code class="language-">
+<p>4. <strong>并发特性支持</strong></code></pre></div>javascript // 使用 useTransition 处理并发更新 function useOptimisticUpdate(initialState) {   const [state, setState] = useState(initialState);   const [isPending, startTransition] = useTransition();</p>
+
+<p>  const optimisticUpdate = useCallback((newState) => {     // 立即更新 UI（乐观更新）     setState(newState);</p>
+
+<p>    // 在后台执行实际更新     startTransition(async () => {       try {         await api.update(newState);       } catch (error) {         // 回滚到之前的状态         setState(initialState);       }     });   }, [initialState, startTransition]);</p>
+
+<p>  return { state, optimisticUpdate, isPending }; } ``<code></p>
+
+<h3>13.3 最佳实践总结</h3>
+
+<p>1. <strong>始终以 </code>use` 开头命名</strong>：遵循 React 约定 2. <strong>保持 Hook 的纯粹性</strong>：避免副作用，保持可预测性 3. <strong>正确处理依赖</strong>：避免无限循环和过时闭包 4. <strong>提供清晰的 API</strong>：易于理解和使用 5. <strong>考虑性能影响</strong>：使用记忆化优化性能 6. <strong>完善的错误处理</strong>：提供错误恢复机制 7. <strong>编写测试用例</strong>：确保 Hook 的可靠性 8. <strong>文档化</strong>：提供使用示例和 API 文档</p>
+
+<h3>13.4 资源推荐</h3>
+
+<p>1. <strong>官方文档</strong>    - [React Hooks 官方文档](https://reactjs.org/docs/hooks-intro.html)    - [自定义 Hook 指南](https://reactjs.org/docs/hooks-custom.html)</p>
+
+<p>2. <strong>优秀开源 Hook 库</strong>    - [React Use](https://github.com/streamich/react-use)：丰富的自定义 Hook 集合    - [ahooks](https://github.com/alibaba/hooks)：阿里巴巴的高质量 React Hooks 库    - [SWR](https://swr.vercel.app/)：数据获取 Hook 库    - [React Query](https://tanstack.com/query)：强大的异步状态管理</p>
+
+<p>3. <strong>学习资源</strong>    - [React Hooks 完整指南](https://overreacted.io/zh-hans/a-complete-guide-to-useeffect/)    - [自定义 Hook 设计模式](https://kentcdodds.com/blog/custom-hooks-patterns)    - [Hook 测试最佳实践](https://testing-library.com/docs/react-testing-library/example-intro)</p>
+
+<h3>13.5 未来展望</h3>
+
+<p>随着 React 的不断发展，自定义 Hook 将在以下方面继续演进：</p>
+
+<p>1. <strong>React Compiler 集成</strong>：编译器将自动优化 Hook 性能 2. <strong>并发特性支持</strong>：更好地支持并发渲染和 Suspense 3. <strong>服务器组件</strong>：在服务器端使用 Hook 的能力 4. <strong>类型系统增强</strong>：更好的 TypeScript 支持 5. <strong>开发工具改进</strong>：更强大的调试和性能分析工具</p>
+
+<h3>结语</h3>
+
+<p>自定义 Hook 是 React 生态系统中强大的工具，它改变了我们构建 React 应用的方式。通过将逻辑封装成可重用的 Hook，我们可以创建更清晰、更可维护、更可测试的代码。掌握自定义 Hook 的创建和使用，将使你成为更高效的 React 开发者。</p>
+
+<p>记住，好的自定义 Hook 应该是： - <strong>专注的</strong>：每个 Hook 只做一件事 - <strong>可重用的</strong>：可以在多个组件中复用 - <strong>可测试的</strong>：易于编写测试用例 - <strong>文档化的</strong>：有清晰的 API 和使用示例 - <strong>类型安全的</strong>：提供完整的 TypeScript 类型定义</p>
+
+<p>通过不断实践和探索，你将能够创建出高质量的自定义 Hook，提升你的 React 开发体验和代码质量。</p>
+
+<p>--- <em>文档创建完成：自定义 Hook 深度解析</em> <em>创建时间：2026-03-30</em> <em>文档版本：1.0.0</em> <em>作者：React 技术专家</em></p>
+
+
+            </div>
+
+            <footer class="footer">
+                <p>© 2024 React 技术文档 | 生成时间: <span id="current-date"></span></p>
+                <p>本文档基于 React 官方文档和社区最佳实践编写</p>
+                <p><a href="#top">返回顶部</a></p>
+            </footer>
+        </main>
+    </div>
+
+    <a href="#top" class="back-to-top" id="back-to-top">↑</a>
+
+    <script>
+        // 设置当前日期
+        document.getElementById('current-date').textContent = new Date().toLocaleDateString('zh-CN');
+        
+        // 代码高亮
+        document.addEventListener('DOMContentLoaded', function() {
+            hljs.highlightAll();
+        });
+        
+        // 复制代码功能
+        function copyCode(button) {
+            const codeBlock = button.parentElement.nextElementSibling;
+            const codeText = codeBlock.textContent;
+            
+            navigator.clipboard.writeText(codeText).then(() => {
+                const originalText = button.textContent;
+                button.textContent = '已复制!';
+                button.style.background = 'var(--success-color)';
+                
+                setTimeout(() => {
+                    button.textContent = originalText;
+                    button.style.background = 'var(--primary-color)';
+                }, 2000);
+            }).catch(err => {
+                console.error('复制失败:', err);
+                button.textContent = '复制失败';
+                button.style.background = 'var(--danger-color)';
+                
+                setTimeout(() => {
+                    button.textContent = '复制代码';
+                    button.style.background = 'var(--primary-color)';
+                }, 2000);
+            });
+        }
+        
+        // 目录导航高亮
+        window.addEventListener('scroll', function() {
+            const sections = document.querySelectorAll('.content-section h2');
+            const tocLinks = document.querySelectorAll('.toc a');
+            
+            let currentSection = '';
+            
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                if (scrollY >= sectionTop - 100) {
+                    currentSection = section.getAttribute('id');
+                }
+            });
+            
+            tocLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href') === `#${currentSection}`) {
+                    link.classList.add('active');
+                }
+            });
+            
+            // 显示/隐藏返回顶部按钮
+            const backToTop = document.getElementById('back-to-top');
+            if (window.scrollY > 300) {
+                backToTop.style.display = 'flex';
+            } else {
+                backToTop.style.display = 'none';
+            }
+        });
+        
+        // 平滑滚动
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function(e) {
+                e.preventDefault();
+                
+                const targetId = this.getAttribute('href');
+                if (targetId === '#') return;
+                
+                const targetElement = document.querySelector(targetId);
+                if (targetElement) {
+                    window.scrollTo({
+                        top: targetElement.offsetTop - 20,
+                        behavior: 'smooth'
+                    });
+                }
+            });
+        });
+        
+        // 初始化显示返回顶部按钮
+        document.getElementById('back-to-top').style.display = 'none';
+    </script>
+</body>
+</html>

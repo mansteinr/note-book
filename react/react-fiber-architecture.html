@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>React Fiber 架构详解</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/typescript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/jsx.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-color: #007acc;
+            --secondary-color: #2d2d2d;
+            --accent-color: #61dafb;
+            --text-color: #333;
+            --light-bg: #f8f9fa;
+            --border-color: #e1e4e8;
+            --success-color: #28a745;
+            --warning-color: #ffc107;
+            --danger-color: #dc3545;
+            --info-color: #17a2b8;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            color: var(--text-color);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            display: flex;
+            gap: 30px;
+        }
+
+        .sidebar {
+            width: 280px;
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            position: sticky;
+            top: 20px;
+            height: fit-content;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+        }
+
+        .sidebar h2 {
+            color: var(--primary-color);
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--accent-color);
+            font-size: 1.5rem;
+        }
+
+        .toc {
+            list-style: none;
+        }
+
+        .toc li {
+            margin-bottom: 12px;
+            position: relative;
+        }
+
+        .toc a {
+            color: var(--text-color);
+            text-decoration: none;
+            display: block;
+            padding: 8px 12px;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .toc a:hover {
+            background: var(--light-bg);
+            color: var(--primary-color);
+            border-left-color: var(--accent-color);
+            transform: translateX(5px);
+        }
+
+        .toc a.active {
+            background: var(--primary-color);
+            color: white;
+            border-left-color: var(--accent-color);
+        }
+
+        .main-content {
+            flex: 1;
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 3px solid var(--accent-color);
+        }
+
+        .header h1 {
+            color: var(--primary-color);
+            font-size: 2.5rem;
+            margin-bottom: 15px;
+            background: linear-gradient(45deg, var(--primary-color), var(--accent-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header .subtitle {
+            color: var(--secondary-color);
+            font-size: 1.2rem;
+            opacity: 0.8;
+        }
+
+        .content-section {
+            margin-bottom: 40px;
+        }
+
+        .content-section h2 {
+            color: var(--primary-color);
+            font-size: 1.8rem;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--light-bg);
+            position: relative;
+        }
+
+        .content-section h2::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            width: 60px;
+            height: 2px;
+            background: var(--accent-color);
+        }
+
+        .content-section h3 {
+            color: var(--secondary-color);
+            font-size: 1.4rem;
+            margin: 25px 0 15px;
+        }
+
+        .content-section h4 {
+            color: var(--secondary-color);
+            font-size: 1.2rem;
+            margin: 20px 0 10px;
+        }
+
+        .content-section p {
+            margin-bottom: 15px;
+            font-size: 1.1rem;
+        }
+
+        .content-section ul, .content-section ol {
+            margin: 15px 0 15px 25px;
+        }
+
+        .content-section li {
+            margin-bottom: 8px;
+            font-size: 1.1rem;
+        }
+
+        .code-block {
+            background: var(--secondary-color);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            overflow-x: auto;
+            position: relative;
+        }
+
+        .code-block pre {
+            margin: 0;
+        }
+
+        .code-block code {
+            font-family: 'Fira Code', 'Consolas', 'Monaco', 'Andale Mono', 'Ubuntu Mono', monospace;
+            font-size: 0.95rem;
+        }
+
+        .code-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            color: #ccc;
+            font-size: 0.9rem;
+        }
+
+        .copy-btn {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: background 0.3s;
+        }
+
+        .copy-btn:hover {
+            background: var(--accent-color);
+        }
+
+        .note {
+            background: #e7f3ff;
+            border-left: 4px solid var(--primary-color);
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+
+        .note strong {
+            color: var(--primary-color);
+        }
+
+        .warning {
+            background: #fff3cd;
+            border-left: 4px solid var(--warning-color);
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+
+        .warning strong {
+            color: var(--warning-color);
+        }
+
+        .tip {
+            background: #d4edda;
+            border-left: 4px solid var(--success-color);
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+
+        .tip strong {
+            color: var(--success-color);
+        }
+
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .comparison-table th {
+            background: var(--primary-color);
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        .comparison-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .comparison-table tr:hover {
+            background: var(--light-bg);
+        }
+
+        .comparison-table .good {
+            color: var(--success-color);
+            font-weight: 600;
+        }
+
+        .comparison-table .bad {
+            color: var(--danger-color);
+            font-weight: 600;
+        }
+
+        .comparison-table .neutral {
+            color: var(--warning-color);
+            font-weight: 600;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-color);
+            color: var(--secondary-color);
+            font-size: 0.9rem;
+        }
+
+        .footer a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                position: static;
+                max-height: none;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .main-content {
+                padding: 20px;
+            }
+        }
+
+        .back-to-top {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: var(--primary-color);
+            color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+            font-size: 1.5rem;
+            box-shadow: 0 4px 15px rgba(0, 122, 204, 0.3);
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .back-to-top:hover {
+            background: var(--accent-color);
+            transform: translateY(-5px);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <aside class="sidebar">
+            <h2>📚 目录</h2>
+            <ul class="toc" id="toc">
+                <li><a href="#目录">目录</a></li>
+                <li><a href="#一什么是-react-fiber">一、什么是 React Fiber？</a></li>
+                <li><a href="#二为什么需要-fiber-架构">二、为什么需要 Fiber 架构？</a></li>
+                <li><a href="#三fiber-节点的数据结构">三、Fiber 节点的数据结构</a></li>
+                <li><a href="#四fiber-架构的核心特性">四、Fiber 架构的核心特性</a></li>
+                <li><a href="#五fiber-的协调过程">五、Fiber 的协调过程</a></li>
+                <li><a href="#六fiber-与并发渲染">六、Fiber 与并发渲染</a></li>
+                <li><a href="#七fiber-对开发者的影响">七、Fiber 对开发者的影响</a></li>
+                <li><a href="#八fiber-的性能优化">八、Fiber 的性能优化</a></li>
+                <li><a href="#九总结">九、总结</a></li>
+            </ul>
+        </aside>
+
+        <main class="main-content">
+            <header class="header">
+                <h1>React Fiber 架构详解</h1>
+                <p class="subtitle">React 技术文档 - 详细解析与最佳实践</p>
+            </header>
+
+            <div id="content">
+                <h1>React Fiber 架构详解</h1>
+
+<h2 id="目录">目录</h2>
+
+<p>1. [什么是 React Fiber？](#什么是-react-fiber) 2. [为什么需要 Fiber 架构？](#为什么需要-fiber-架构) 3. [Fiber 节点的数据结构](#fiber-节点的数据结构) 4. [Fiber 架构的核心特性](#fiber-架构的核心特性) 5. [Fiber 的协调过程](#fiber-的协调过程) 6. [Fiber 与并发渲染](#fiber-与并发渲染) 7. [Fiber 对开发者的影响](#fiber-对开发者的影响) 8. [Fiber 的性能优化](#fiber-的性能优化) 9. [总结](#总结)</p>
+
+<h2 id="一、什么是 React Fiber？">一、什么是 React Fiber？</h2>
+
+<h3>1.1 Fiber 的定义</h3>
+
+<p>React Fiber 是 React 16 引入的<strong>全新的协调引擎（Reconciliation Engine）</strong>，它彻底重写了 React 的核心渲染算法。Fiber 不是一个新的 API 或功能，而是 React 内部架构的底层重构。</p>
+
+<div class="code-block"><div class="code-header">text</div><pre><code class="language-text">┌─────────────────────────────────────────────────────────┐
+<p>│                 React 架构演进                           │ ├─────────────────────────────────────────────────────────┤ │                                                         │ │  React 15 及之前：                                      │ │  ┌─────────────────────────────────────────┐            │ │  │          Stack Reconciler               │            │ │  │  (基于递归调用栈，不可中断)               │            │ │  └─────────────────────────────────────────┘            │ │                                                         │ │  React 16 及之后：                                      │ │  ┌─────────────────────────────────────────┐            │ │  │          Fiber Reconciler               │            │ │  │  (基于链表结构，可中断、可恢复)           │            │ │  └─────────────────────────────────────────┘            │ │                                                         │ └─────────────────────────────────────────────────────────┘</code></pre></div></p>
+
+<h3>1.2 Fiber 的核心概念</h3>
+
+<p><strong>Fiber</strong>（纤维）这个名字来源于其设计理念：将渲染工作分解为<strong>最小的工作单元</strong>，就像纤维一样细密而有序。</p>
+
+<p>每个 Fiber 节点代表： 1. <strong>一个 React 元素</strong>（组件、DOM 节点等） 2. <strong>一个工作单元</strong>（可独立调度和执行） 3. <strong>一个状态容器</strong>（存储组件的状态和副作用）</p>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// Fiber 节点的简化表示
+<p>class FiberNode {   constructor(type, props) {     // 标识信息     this.tag = type;           // 组件类型（函数组件、类组件、DOM节点等）     this.type = type;          // 组件函数或DOM标签名     this.key = props.key;      // 唯一标识符</p>
+
+<p>    // 状态信息     this.stateNode = null;     // 组件实例或DOM节点     this.memoizedProps = props;// 记忆的props     this.memoizedState = null; // 记忆的state     this.updateQueue = null;   // 更新队列</p>
+
+<p>    // 链表结构     this.return = null;        // 父节点     this.child = null;         // 第一个子节点     this.sibling = null;       // 兄弟节点     this.index = 0;            // 在同级中的索引</p>
+
+<p>    // 副作用信息     this.flags = 0;            // 需要执行的副作用类型     this.subtreeFlags = 0;     // 子树中的副作用</p>
+
+<p>    // 工作进度     this.alternate = null;     // 上一次渲染的Fiber（用于双缓存）     this.lanes = 0;            // 优先级车道   } }</code></pre></div></p>
+
+<h2 id="二、为什么需要 Fiber 架构？">二、为什么需要 Fiber 架构？</h2>
+
+<h3>2.1 传统 Stack Reconciler 的局限性</h3>
+
+<p>在 React 15 及之前，React 使用<strong>基于递归调用栈的协调器</strong>：</p>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// 伪代码：传统的递归协调过程
+<p>function reconcile(component) {   // 1. 调用组件的render方法   const children = component.render();</p>
+
+<p>  // 2. 递归处理所有子组件   children.forEach(child => {     reconcile(child); // 递归调用，无法中断   });</p>
+
+<p>  // 3. 更新DOM   updateDOM(component); }</code></pre></div></p>
+
+<p><strong>传统架构的问题</strong>：</p>
+
+<p>1. <strong>不可中断性</strong>：递归调用一旦开始就无法中断 2. <strong>阻塞主线程</strong>：大型组件树渲染时会长时间占用主线程 3. <strong>无法响应高优先级任务</strong>：用户交互会被阻塞 4. <strong>缺乏优先级调度</strong>：所有更新都是同步的</p>
+
+<h3>2.2 现实场景中的问题</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// 示例：大型数据列表的渲染阻塞
+<p>function LargeList() {   const [items, setItems] = useState([]);</p>
+
+<p>  useEffect(() => {     // 加载大量数据     fetch('/api/large-data')       .then(res => res.json())       .then(data => {         setItems(data); // 触发大规模渲染，可能阻塞UI       });   }, []);</p>
+
+<p>  return (     <div>       {/<em> 用户输入被阻塞 </em>/}       <SearchInput /></p>
+
+<p>      {/<em> 渲染1000个列表项，耗时200ms+ </em>/}       {items.map(item => (         <ListItem key={item.id} data={item} />       ))}     </div>   ); }</code></pre></div></p>
+
+<h3>2.3 Fiber 架构的解决方案</h3>
+
+<p>Fiber 架构通过以下方式解决传统架构的问题：</p>
+
+<p>1. <strong>将递归改为循环</strong>：使用链表遍历代替递归调用栈 2. <strong>引入工作单元</strong>：将渲染分解为可独立调度的单元 3. <strong>支持中断和恢复</strong>：可以在任意点暂停和继续渲染 4. <strong>优先级调度</strong>：不同任务可以有不同的优先级</p>
+
+<div class="code-block"><div class="code-header">text</div><pre><code class="language-text">┌─────────────────────────────────────────────────────────┐
+<p>│           传统递归 vs Fiber 链表遍历                      │ ├─────────────────────────────────────────────────────────┤ │                                                         │ │  传统递归：                                             │ │  reconcile(A)                                          │ │    ↓ reconcile(A.child1)                               │ │        ↓ reconcile(A.child1.child1)                    │ │            ↓ reconcile(A.child1.child1.child1)         │ │                ... (无法中断)                           │ │                                                         │ │  Fiber遍历：                                            │ │  workInProgress = rootFiber                            │ │  while (workInProgress) {                              │ │    performUnitOfWork(workInProgress)                   │ │    if (shouldYield()) { // 检查是否需要中断             │ │      break; // 可以中断！                               │ │    }                                                    │ │    workInProgress = getNextFiber(workInProgress)       │ │  }                                                      │ │                                                         │ └─────────────────────────────────────────────────────────┘</code></pre></div></p>
+
+<h2 id="三、Fiber 节点的数据结构">三、Fiber 节点的数据结构</h2>
+
+<h3>3.1 完整的 Fiber 节点结构</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// React 内部实际的 Fiber 节点结构（简化版）
+<p>const FiberNode = {   // === 标识信息 ===   tag: WorkTag,              // 组件类型（0-24）   key: null | string,        // 唯一标识   elementType: any,          // 原始类型   type: any,                 // 解析后的类型</p>
+
+<p>  // === 状态信息 ===   stateNode: any,            // 实例（组件实例/DOM节点）   memoizedProps: any,        // 上次渲染的props   memoizedState: any,        // 上次渲染的state   dependencies: null | DependenciesLane, // 依赖项   updateQueue: null | UpdateQueue,      // 更新队列</p>
+
+<p>  // === 链表结构 ===   return: null | FiberNode,  // 父节点   child: null | FiberNode,   // 第一个子节点   sibling: null | FiberNode, // 兄弟节点   index: number,             // 在同级中的位置</p>
+
+<p>  // === 副作用信息 ===   flags: Flags,              // 当前节点的副作用   subtreeFlags: Flags,       // 子树的副作用   deletions: null | Array<FiberNode>, // 待删除的节点</p>
+
+<p>  // === 工作进度 ===   lanes: Lanes,              // 优先级车道   childLanes: Lanes,         // 子节点的优先级   alternate: null | FiberNode, // 上一次渲染的Fiber</p>
+
+<p>  // === 其他 ===   mode: TypeOfMode,          // 渲染模式（ConcurrentMode等）   pendingProps: any,         // 新的props（等待处理）   ref: null | RefObject,     // ref引用   actualDuration?: number,   // 实际渲染时间（开发模式）   actualStartTime?: number,  // 实际开始时间（开发模式）   selfBaseDuration?: number, // 自身基础渲染时间   treeBaseDuration?: number, // 整棵树的基础渲染时间 };</code></pre></div></p>
+
+<h3>3.2 Fiber 节点类型（WorkTag）</h3>
+
+<p>React 内部定义了多种 Fiber 节点类型：</p>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// ReactWorkTags.js 中的定义（简化）
+<p>export const FunctionComponent = 0;     // 函数组件 export const ClassComponent = 1;        // 类组件 export const IndeterminateComponent = 2;// 尚未确定的组件 export const HostRoot = 3;              // 根节点 export const HostPortal = 4;            // Portal export const HostComponent = 5;         // DOM节点（div、span等） export const HostText = 6;              // 文本节点 export const Fragment = 7;              // Fragment export const Mode = 8;                  // StrictMode export const ContextConsumer = 9;       // Context.Consumer export const ContextProvider = 10;      // Context.Provider export const ForwardRef = 11;           // ForwardRef export const Profiler = 12;             // Profiler export const SuspenseComponent = 13;    // Suspense export const MemoComponent = 14;        // React.memo export const SimpleMemoComponent = 15;  // 简单memo组件 export const LazyComponent = 16;        // React.lazy export const IncompleteClassComponent = 17; // 未完成的类组件 export const DehydratedFragment = 18;   // 脱水片段（SSR） export const SuspenseListComponent = 19;// SuspenseList export const ScopeComponent = 21;       // Scope export const OffscreenComponent = 22;   // Offscreen export const LegacyHiddenComponent = 23;// LegacyHidden export const CacheComponent = 24;       // Cache</code></pre></div></p>
+
+<h3>3.3 双缓存机制</h3>
+
+<p>Fiber 使用<strong>双缓存（Double Buffering）</strong> 技术来管理当前和上一次的渲染状态：</p>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// 双缓存示意图
+<p>let current = null;    // 当前显示在屏幕上的Fiber树 let workInProgress = null; // 正在构建的新的Fiber树</p>
+
+<p>function beginWork(current, workInProgress) {   // 使用alternate指针连接两棵树   if (workInProgress.alternate === null) {     // 第一次渲染，创建新的Fiber节点     workInProgress.alternate = {       ...workInProgress,       alternate: workInProgress     };   } else {     // 更新渲染，复用之前的Fiber节点     workInProgress = workInProgress.alternate;   }</p>
+
+<p>  return workInProgress; }</p>
+
+<p>function completeWork(current, workInProgress) {   // 完成工作后，交换两棵树   const finishedWork = workInProgress;</p>
+
+<p>  // 提交阶段后，新的树成为当前树   current = finishedWork;   workInProgress = null; }</code></pre></div></p>
+
+<h2 id="四、Fiber 架构的核心特性">四、Fiber 架构的核心特性</h2>
+
+<h3>4.1 可中断性（Interruptibility）</h3>
+
+<p>Fiber 的核心特性是<strong>渲染过程可以被中断</strong>，让高优先级任务（如用户输入）优先执行：</p>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// 伪代码：可中断的渲染循环
+<p>function workLoopConcurrent() {   // 检查是否有高优先级任务   while (workInProgress !== null && !shouldYieldToRenderer()) {     performUnitOfWork(workInProgress);   }</p>
+
+<p>  // 如果被中断，返回true表示还有工作要做   if (workInProgress !== null) {     return true;   }</p>
+
+<p>  return false; // 所有工作完成 }</p>
+
+<p>function shouldYieldToRenderer() {   // 检查是否需要让出主线程   // 1. 是否有更高优先级的任务   // 2. 是否超过了时间片（通常是5ms）   // 3. 浏览器是否需要重绘   return (     hasHigherPriorityWork() ||     exceededTimeSlice() ||     browserNeedsRepaint()   ); }</code></pre></div></p>
+
+<h3>4.2 可恢复性（Resumability）</h3>
+
+<p>被中断的渲染可以在之后<strong>从断点处恢复</strong>：</p>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// 伪代码：恢复渲染
+<p>let nextUnitOfWork = null;</p>
+
+<p>function performUnitOfWork(fiber) {   // 1. 开始处理当前Fiber   beginWork(fiber);</p>
+
+<p>  // 2. 如果有子节点，处理子节点   if (fiber.child) {     return fiber.child;   }</p>
+
+<p>  // 3. 处理兄弟节点   let nextFiber = fiber;   while (nextFiber) {     completeWork(nextFiber);</p>
+
+<p>    if (nextFiber.sibling) {       return nextFiber.sibling;     }</p>
+
+<p>    // 4. 回到父节点     nextFiber = nextFiber.return;   }</p>
+
+<p>  return null; }</p>
+
+<p>// 中断后恢复 function resumeWork() {   // 从上次中断的地方继续   if (nextUnitOfWork) {     workInProgress = nextUnitOfWork;     workLoopConcurrent();   } }</code></pre></div></p>
+
+<h3>4.3 优先级调度（Priority-based Scheduling）</h3>
+
+<p>Fiber 引入了<strong>优先级系统</strong>来管理不同任务的执行顺序：</p>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// 优先级常量（简化版）
+<p>export const NoLane = 0b0000000000000000000000000000000; export const SyncLane = 0b0000000000000000000000000000001;     // 同步任务 export const InputContinuousLane = 0b0000000000000000000000000000100; // 连续输入 export const DefaultLane = 0b0000000000000000000000000010000;  // 默认更新 export const TransitionLane = 0b0000000000000000000100000000000; // 过渡更新 export const IdleLane = 0b1000000000000000000000000000000;     // 空闲时执行</p>
+
+<p>// 根据事件类型分配优先级 function getEventPriority(domEventName) {   switch (domEventName) {     case 'click':     case 'keydown':     case 'keyup':       return DiscreteEventPriority; // 离散事件，高优先级</p>
+
+<p>    case 'mousemove':     case 'scroll':       return ContinuousEventPriority; // 连续事件，中优先级</p>
+
+<p>    default:       return DefaultEventPriority; // 默认优先级   } }</code></pre></div></p>
+
+<h3>4.4 增量渲染（Incremental Rendering）</h3>
+
+<p>Fiber 支持<strong>增量渲染</strong>，将大型更新分解为多个小批次：</p>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// 增量渲染示例
+<p>function renderIncrementally(rootFiber) {   const chunkSize = 10; // 每批处理10个节点   let processed = 0;</p>
+
+<p>  function processChunk() {     let count = 0;     while (workInProgress && count < chunkSize) {       performUnitOfWork(workInProgress);       count++;       processed++;     }</p>
+
+<p>    if (workInProgress) {       // 还有更多工作，安排下一批       requestIdleCallback(processChunk);     } else {       // 所有工作完成，提交更新       commitRoot();     }   }</p>
+
+<p>  // 开始第一批处理   processChunk(); }</code></pre></div></p>
+
+<h2 id="五、Fiber 的协调过程">五、Fiber 的协调过程</h2>
+
+<h3>5.1 协调的两个阶段</h3>
+
+<p>Fiber 的协调过程分为两个清晰的阶段：</p>
+
+<p><strong>第一阶段：渲染阶段（Render Phase）</strong> - 可中断、可恢复 - 在内存中计算变更 - 无副作用，可安全中断</p>
+
+<p><strong>第二阶段：提交阶段（Commit Phase）</strong> - 不可中断 - 一次性应用所有变更 - 确保 UI 一致性</p>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// Fiber 协调的完整流程
+<p>function updateContainer(element, container) {   // 1. 创建更新任务   const update = createUpdate();   update.payload = { element };</p>
+
+<p>  // 2. 将更新加入队列   enqueueUpdate(container.current, update);</p>
+
+<p>  // 3. 开始调度   scheduleUpdateOnFiber(container.current); }</p>
+
+<p>function scheduleUpdateOnFiber(fiber) {   // 4. 标记需要更新的节点   markUpdateLaneFromFiberToRoot(fiber);</p>
+
+<p>  // 5. 确保调度器运行   ensureRootIsScheduled(root); }</p>
+
+<p>function performConcurrentWorkOnRoot(root) {   // 6. 渲染阶段（可中断）   renderRootSync(root);</p>
+
+<p>  // 7. 提交阶段（不可中断）   commitRoot(root); }</code></pre></div></p>
+
+<h3>5.2 渲染阶段详解</h3>
+
+<p>渲染阶段负责<strong>计算变更</strong>，但不修改 DOM：</p>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">function renderRootSync(root) {
+<p>  // 准备新的工作树   prepareFreshStack(root);</p>
+
+<p>  // 开始工作循环   workLoopSync();</p>
+
+<p>  // 标记工作完成   root.finishedWork = root.current.alternate; }</p>
+
+<p>function workLoopSync() {   while (workInProgress !== null) {     performUnitOfWork(workInProgress);   } }</p>
+
+<p>function performUnitOfWork(unitOfWork) {   const current = unitOfWork.alternate;</p>
+
+<p>  // 开始处理当前节点   let next = beginWork(current, unitOfWork);</p>
+
+<p>  // 更新 memoizedProps   unitOfWork.memoizedProps = unitOfWork.pendingProps;</p>
+
+<p>  if (next === null) {     // 没有子节点，完成当前节点     completeUnitOfWork(unitOfWork);   } else {     // 继续处理子节点     workInProgress = next;   } }</code></pre></div></p>
+
+<h3>5.3 提交阶段详解</h3>
+
+<p>提交阶段负责<strong>应用变更</strong>到 DOM：</p>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">function commitRoot(root) {
+<p>  const finishedWork = root.finishedWork;</p>
+
+<p>  if (finishedWork === null) {     return;   }</p>
+
+<p>  // 提交分为三个子阶段   commitBeforeMutationEffects();   commitMutationEffects();   commitLayoutEffects();</p>
+
+<p>  // 交换当前树和工作树   root.current = finishedWork; }</p>
+
+<p>function commitMutationEffects() {   // 实际修改DOM   commitMutationEffectsOnFiber(finishedWork);</p>
+
+<p>  // 处理删除的节点   commitDeletionEffects(); }</p>
+
+<p>function commitLayoutEffects() {   // 执行生命周期方法和ref回调   commitLayoutEffectOnFiber(finishedWork);</p>
+
+<p>  // 执行useLayoutEffect   commitHookEffectListMount(); }</code></pre></div></p>
+
+<h2 id="六、Fiber 与并发渲染">六、Fiber 与并发渲染</h2>
+
+<h3>6.1 并发模式的基础</h3>
+
+<p>Fiber 架构为并发渲染提供了基础：</p>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// 启用并发模式
+<p>const root = ReactDOM.createRoot(   document.getElementById('root'),   {     // 并发特性配置     unstable_concurrentUpdatesByDefault: true,   } );</p>
+
+<p>root.render(<App />);</code></pre></div></p>
+
+<h3>6.2 时间切片（Time Slicing）</h3>
+
+<p>Fiber 通过时间切片实现并发：</p>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// 时间切片实现
+<p>function shouldYield() {   // 检查是否超过了5ms的时间预算   const elapsedTime = performance.now() - startTime;   return elapsedTime > 5; // 5ms时间片 }</p>
+
+<p>function workLoopConcurrent() {   while (workInProgress !== null && !shouldYield()) {     performUnitOfWork(workInProgress);   }</p>
+
+<p>  // 如果被中断，返回true   return workInProgress !== null; }</code></pre></div></p>
+
+<h3>6.3 并发特性 API</h3>
+
+<p>基于 Fiber 的并发特性，React 提供了新的 API：</p>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">import { useState, useTransition, useDeferredValue } from 'react';
+
+<p>function SearchComponent() {   const [query, setQuery] = useState('');   const deferredQuery = useDeferredValue(query);   const [isPending, startTransition] = useTransition();</p>
+
+<p>  const handleChange = (e) => {     const value = e.target.value;</p>
+
+<p>    // 紧急更新：立即显示输入     setQuery(value);</p>
+
+<p>    // 非紧急更新：标记为可中断     startTransition(() => {       performSearch(value);     });   };</p>
+
+<p>  return (     <div>       <input value={query} onChange={handleChange} />       {isPending && <Spinner />}       <SearchResults query={deferredQuery} />     </div>   ); }</code></pre></div></p>
+
+<h2 id="七、Fiber 对开发者的影响">七、Fiber 对开发者的影响</h2>
+
+<h3>7.1 生命周期方法的变化</h3>
+
+<p>Fiber 引入了新的生命周期方法：</p>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">class MyComponent extends React.Component {
+<p>  // 新的生命周期（Fiber引入）   static getDerivedStateFromProps(props, state) {     // 在每次渲染前调用     return null; // 返回新的state或null   }</p>
+
+<p>  getSnapshotBeforeUpdate(prevProps, prevState) {     // 在DOM更新前调用     return snapshot;   }</p>
+
+<p>  // 不推荐使用的生命周期   componentWillMount() {}    // 使用constructor或componentDidMount   componentWillReceiveProps() {} // 使用getDerivedStateFromProps   componentWillUpdate() {}   // 使用getSnapshotBeforeUpdate }</code></pre></div></p>
+
+<h3>7.2 错误边界（Error Boundaries）</h3>
+
+<p>Fiber 改进了错误处理机制：</p>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">class ErrorBoundary extends React.Component {
+<p>  constructor(props) {     super(props);     this.state = { hasError: false };   }</p>
+
+<p>  static getDerivedStateFromError(error) {     // 更新state使下一次渲染显示降级UI     return { hasError: true };   }</p>
+
+<p>  componentDidCatch(error, errorInfo) {     // 记录错误信息     logErrorToService(error, errorInfo);   }</p>
+
+<p>  render() {     if (this.state.hasError) {       return <h1>Something went wrong.</h1>;     }</p>
+
+<p>    return this.props.children;   } }</p>
+
+<p>// 使用 <ErrorBoundary>   <MyComponent /> </ErrorBoundary></code></pre></div></p>
+
+<h3>7.3 批量更新优化</h3>
+
+<p>Fiber 改进了批量更新机制：</p>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// React 17及之前：事件处理函数中的setState是批量的
+<p>handleClick = () => {   this.setState({ a: 1 });   this.setState({ b: 2 });   // 只触发一次渲染 };</p>
+
+<p>// React 18及之后：所有setState默认都是批量的 setTimeout(() => {   setState({ a: 1 });   setState({ b: 2 });   // 在React 18中也是批量更新 }, 1000);</p>
+
+<p>// 强制同步更新（如果需要） flushSync(() => {   setState({ a: 1 }); });</code></pre></div></p>
+
+<h2 id="八、Fiber 的性能优化">八、Fiber 的性能优化</h2>
+
+<h3>8.1 开发工具支持</h3>
+
+<p>React DevTools 提供了 Fiber 相关的调试功能：</p>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// 性能分析API
+<p>const onRender = (id, phase, actualDuration, baseDuration, startTime, commitTime) => {   console.log(<code>${id} ${phase} took ${actualDuration}ms</code>); };</p>
+
+<p><Profiler id="MyApp" onRender={onRender}>   <App /> </Profiler></code></pre></div></p>
+
+<h3>8.2 性能监控指标</h3>
+
+<p>Fiber 提供了详细的性能数据：</p>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// 获取Fiber节点的性能数据
+<p>function getFiberPerformanceData(fiber) {   return {     actualDuration: fiber.actualDuration,     // 实际渲染时间     treeBaseDuration: fiber.treeBaseDuration, // 整棵树的基础时间     selfBaseDuration: fiber.selfBaseDuration, // 自身基础时间     childCount: getChildCount(fiber),         // 子节点数量     depth: getDepth(fiber),                   // 深度   }; }</code></pre></div></p>
+
+<h3>8.3 内存优化</h3>
+
+<p>Fiber 通过复用节点减少内存分配：</p>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// 节点复用策略
+<p>function createWorkInProgress(current, pendingProps) {   let workInProgress = current.alternate;</p>
+
+<p>  if (workInProgress === null) {     // 创建新节点     workInProgress = createFiber(       current.tag,       pendingProps,       current.key,       current.mode     );     workInProgress.alternate = current;     current.alternate = workInProgress;   } else {     // 复用现有节点     workInProgress.pendingProps = pendingProps;     workInProgress.flags = NoFlags;     workInProgress.nextEffect = null;     workInProgress.firstEffect = null;     workInProgress.lastEffect = null;   }</p>
+
+<p>  return workInProgress; }</code></pre></div></p>
+
+<h2 id="九、总结">九、总结</h2>
+
+<h3>9.1 Fiber 架构的核心价值</h3>
+
+<p>1. <strong>可中断性</strong>：渲染过程可以被高优先级任务中断 2. <strong>可恢复性</strong>：可以从中断点继续渲染 3. <strong>优先级调度</strong>：不同任务有不同的执行优先级 4. <strong>增量渲染</strong>：大型更新可以分解为多个小批次 5. <strong>更好的错误处理</strong>：引入错误边界机制</p>
+
+<h3>9.2 Fiber 带来的变革</h3>
+
+<p><strong>对 React 内部</strong>： - 彻底重写了协调算法 - 为并发特性奠定基础 - 改进了性能监控和调试</p>
+
+<p><strong>对开发者</strong>： - 更流畅的用户体验 - 更好的错误处理机制 - 新的并发API（useTransition、useDeferredValue等） - 改进的生命周期方法</p>
+
+<p><strong>对用户体验</strong>： - 减少界面卡顿 - 提高响应速度 - 更平滑的动画和过渡</p>
+
+<h3>9.3 未来发展方向</h3>
+
+<p>1. <strong>更智能的调度</strong>：基于用户行为和设备性能的智能调度 2. <strong>离线渲染</strong>：更好的离线体验和同步策略 3. <strong>跨平台统一</strong>：React Native 的深度集成 4. <strong>编译时优化</strong>：React Compiler 的进一步集成</p>
+
+<h3>9.4 学习建议</h3>
+
+<p>1. <strong>理解核心概念</strong>：掌握可中断性、优先级调度等核心概念 2. <strong>实践并发特性</strong>：在实际项目中使用 useTransition、Suspense 等API 3. <strong>性能监控</strong>：使用 React DevTools 监控应用性能 4. <strong>关注更新</strong>：React 团队持续改进 Fiber 架构，关注最新特性</p>
+
+<p>---</p>
+
+<p>© 2026 React Fiber 架构详解指南</p>
+            </div>
+
+            <footer class="footer">
+                <p>© 2024 React 技术文档 | 生成时间: <span id="current-date"></span></p>
+                <p>本文档基于 React 官方文档和社区最佳实践编写</p>
+                <p><a href="#top">返回顶部</a></p>
+            </footer>
+        </main>
+    </div>
+
+    <a href="#top" class="back-to-top" id="back-to-top">↑</a>
+
+    <script>
+        // 设置当前日期
+        document.getElementById('current-date').textContent = new Date().toLocaleDateString('zh-CN');
+        
+        // 代码高亮
+        document.addEventListener('DOMContentLoaded', function() {
+            hljs.highlightAll();
+        });
+        
+        // 复制代码功能
+        function copyCode(button) {
+            const codeBlock = button.parentElement.nextElementSibling;
+            const codeText = codeBlock.textContent;
+            
+            navigator.clipboard.writeText(codeText).then(() => {
+                const originalText = button.textContent;
+                button.textContent = '已复制!';
+                button.style.background = 'var(--success-color)';
+                
+                setTimeout(() => {
+                    button.textContent = originalText;
+                    button.style.background = 'var(--primary-color)';
+                }, 2000);
+            }).catch(err => {
+                console.error('复制失败:', err);
+                button.textContent = '复制失败';
+                button.style.background = 'var(--danger-color)';
+                
+                setTimeout(() => {
+                    button.textContent = '复制代码';
+                    button.style.background = 'var(--primary-color)';
+                }, 2000);
+            });
+        }
+        
+        // 目录导航高亮
+        window.addEventListener('scroll', function() {
+            const sections = document.querySelectorAll('.content-section h2');
+            const tocLinks = document.querySelectorAll('.toc a');
+            
+            let currentSection = '';
+            
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                if (scrollY >= sectionTop - 100) {
+                    currentSection = section.getAttribute('id');
+                }
+            });
+            
+            tocLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href') === `#${currentSection}`) {
+                    link.classList.add('active');
+                }
+            });
+            
+            // 显示/隐藏返回顶部按钮
+            const backToTop = document.getElementById('back-to-top');
+            if (window.scrollY > 300) {
+                backToTop.style.display = 'flex';
+            } else {
+                backToTop.style.display = 'none';
+            }
+        });
+        
+        // 平滑滚动
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function(e) {
+                e.preventDefault();
+                
+                const targetId = this.getAttribute('href');
+                if (targetId === '#') return;
+                
+                const targetElement = document.querySelector(targetId);
+                if (targetElement) {
+                    window.scrollTo({
+                        top: targetElement.offsetTop - 20,
+                        behavior: 'smooth'
+                    });
+                }
+            });
+        });
+        
+        // 初始化显示返回顶部按钮
+        document.getElementById('back-to-top').style.display = 'none';
+    </script>
+</body>
+</html>

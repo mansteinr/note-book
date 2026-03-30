@@ -1,0 +1,7 @@
+{
+  "markdown.preview.security": {
+    "allowScripts": true,
+    "allowLocalImages": true,
+    "allowLocalResources": true
+  }
+}

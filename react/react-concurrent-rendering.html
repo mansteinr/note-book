@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>React 19 并发渲染 (Concurrent Rendering) 详解</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/typescript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/jsx.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-color: #007acc;
+            --secondary-color: #2d2d2d;
+            --accent-color: #61dafb;
+            --text-color: #333;
+            --light-bg: #f8f9fa;
+            --border-color: #e1e4e8;
+            --success-color: #28a745;
+            --warning-color: #ffc107;
+            --danger-color: #dc3545;
+            --info-color: #17a2b8;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            color: var(--text-color);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            display: flex;
+            gap: 30px;
+        }
+
+        .sidebar {
+            width: 280px;
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            position: sticky;
+            top: 20px;
+            height: fit-content;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+        }
+
+        .sidebar h2 {
+            color: var(--primary-color);
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--accent-color);
+            font-size: 1.5rem;
+        }
+
+        .toc {
+            list-style: none;
+        }
+
+        .toc li {
+            margin-bottom: 12px;
+            position: relative;
+        }
+
+        .toc a {
+            color: var(--text-color);
+            text-decoration: none;
+            display: block;
+            padding: 8px 12px;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .toc a:hover {
+            background: var(--light-bg);
+            color: var(--primary-color);
+            border-left-color: var(--accent-color);
+            transform: translateX(5px);
+        }
+
+        .toc a.active {
+            background: var(--primary-color);
+            color: white;
+            border-left-color: var(--accent-color);
+        }
+
+        .main-content {
+            flex: 1;
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 3px solid var(--accent-color);
+        }
+
+        .header h1 {
+            color: var(--primary-color);
+            font-size: 2.5rem;
+            margin-bottom: 15px;
+            background: linear-gradient(45deg, var(--primary-color), var(--accent-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header .subtitle {
+            color: var(--secondary-color);
+            font-size: 1.2rem;
+            opacity: 0.8;
+        }
+
+        .content-section {
+            margin-bottom: 40px;
+        }
+
+        .content-section h2 {
+            color: var(--primary-color);
+            font-size: 1.8rem;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--light-bg);
+            position: relative;
+        }
+
+        .content-section h2::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            width: 60px;
+            height: 2px;
+            background: var(--accent-color);
+        }
+
+        .content-section h3 {
+            color: var(--secondary-color);
+            font-size: 1.4rem;
+            margin: 25px 0 15px;
+        }
+
+        .content-section h4 {
+            color: var(--secondary-color);
+            font-size: 1.2rem;
+            margin: 20px 0 10px;
+        }
+
+        .content-section p {
+            margin-bottom: 15px;
+            font-size: 1.1rem;
+        }
+
+        .content-section ul, .content-section ol {
+            margin: 15px 0 15px 25px;
+        }
+
+        .content-section li {
+            margin-bottom: 8px;
+            font-size: 1.1rem;
+        }
+
+        .code-block {
+            background: var(--secondary-color);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            overflow-x: auto;
+            position: relative;
+        }
+
+        .code-block pre {
+            margin: 0;
+        }
+
+        .code-block code {
+            font-family: 'Fira Code', 'Consolas', 'Monaco', 'Andale Mono', 'Ubuntu Mono', monospace;
+            font-size: 0.95rem;
+        }
+
+        .code-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            color: #ccc;
+            font-size: 0.9rem;
+        }
+
+        .copy-btn {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: background 0.3s;
+        }
+
+        .copy-btn:hover {
+            background: var(--accent-color);
+        }
+
+        .note {
+            background: #e7f3ff;
+            border-left: 4px solid var(--primary-color);
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+
+        .note strong {
+            color: var(--primary-color);
+        }
+
+        .warning {
+            background: #fff3cd;
+            border-left: 4px solid var(--warning-color);
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+
+        .warning strong {
+            color: var(--warning-color);
+        }
+
+        .tip {
+            background: #d4edda;
+            border-left: 4px solid var(--success-color);
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+
+        .tip strong {
+            color: var(--success-color);
+        }
+
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .comparison-table th {
+            background: var(--primary-color);
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        .comparison-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .comparison-table tr:hover {
+            background: var(--light-bg);
+        }
+
+        .comparison-table .good {
+            color: var(--success-color);
+            font-weight: 600;
+        }
+
+        .comparison-table .bad {
+            color: var(--danger-color);
+            font-weight: 600;
+        }
+
+        .comparison-table .neutral {
+            color: var(--warning-color);
+            font-weight: 600;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-color);
+            color: var(--secondary-color);
+            font-size: 0.9rem;
+        }
+
+        .footer a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                position: static;
+                max-height: none;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .main-content {
+                padding: 20px;
+            }
+        }
+
+        .back-to-top {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: var(--primary-color);
+            color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+            font-size: 1.5rem;
+            box-shadow: 0 4px 15px rgba(0, 122, 204, 0.3);
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .back-to-top:hover {
+            background: var(--accent-color);
+            transform: translateY(-5px);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <aside class="sidebar">
+            <h2>📚 目录</h2>
+            <ul class="toc" id="toc">
+                <li><a href="#目录">目录</a></li>
+                <li><a href="#一什么是并发渲染">一、什么是并发渲染？</a></li>
+                <li><a href="#二并发渲染解决的问题">二、并发渲染解决的问题</a></li>
+                <li><a href="#三fiber-架构并发的基础">三、Fiber 架构：并发的基础</a></li>
+                <li><a href="#四react-19-中的并发特性">四、React 19 中的并发特性</a></li>
+                <li><a href="#五并发渲染的核心机制">五、并发渲染的核心机制</a></li>
+                <li><a href="#六并发渲染带来的用户体验提升">六、并发渲染带来的用户体验提升</a></li>
+                <li><a href="#七并发-api-使用指南">七、并发 API 使用指南</a></li>
+                <li><a href="#八实际应用场景">八、实际应用场景</a></li>
+                <li><a href="#九总结">九、总结</a></li>
+            </ul>
+        </aside>
+
+        <main class="main-content">
+            <header class="header">
+                <h1>React 19 并发渲染 (Concurrent Rendering) 详解</h1>
+                <p class="subtitle">React 技术文档 - 详细解析与最佳实践</p>
+            </header>
+
+            <div id="content">
+                <h1>React 19 并发渲染 (Concurrent Rendering) 详解</h1>
+
+<h2 id="目录">目录</h2>
+
+<p>1. [什么是并发渲染？](#什么是并发渲染) 2. [并发渲染解决的问题](#并发渲染解决的问题) 3. [Fiber 架构：并发的基础](#fiber-架构并发的基础) 4. [React 19 中的并发特性](#react-19-中的并发特性) 5. [并发渲染的核心机制](#并发渲染的核心机制) 6. [并发渲染带来的用户体验提升](#并发渲染带来的用户体验提升) 7. [并发 API 使用指南](#并发-api-使用指南) 8. [实际应用场景](#实际应用场景) 9. [总结](#总结)</p>
+
+<h2 id="一、什么是并发渲染？">一、什么是并发渲染？</h2>
+
+<h3>1.1 并发渲染的定义</h3>
+
+<p>并发渲染 (Concurrent Rendering) 是 React 18 引入并在 React 19 中进一步完善的底层渲染机制。它不是指同时执行多个任务（并行），而是指 <strong>React 能够同时处理多个更新任务，并根据优先级在这些任务之间进行智能切换</strong>。</p>
+
+<div class="code-block"><div class="code-header">text</div><pre><code class="language-text">┌─────────────────────────────────────────────────────────────┐
+<p>│                   传统渲染 vs 并发渲染                         │ ├─────────────────────────────────────────────────────────────┤ │                                                             │ │  传统渲染：                                                 │ │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐        │ │  │ 任务A   │→│ 任务B   │→│ 任务C   │→│ 任务D   │        │ │  └─────────┘  └─────────┘  └─────────┘  └─────────┘        │ │                                                             │ │  并发渲染：                                                 │ │  ┌─────────┐  ┌─────────┐                                  │ │  │ 高优先级│←→│ 低优先级│                                  │ │  │ 任务A   │  │ 任务B   │                                  │ │  └─────────┘  └─────────┘                                  │ │        ↓            ↓                                       │ │  ┌─────────┐  ┌─────────┐                                  │ │  │ 用户输入│  │ 数据渲染│                                  │ │  │ 立即响应│  │ 可中断  │                                  │ │  └─────────┘  └─────────┘                                  │ │                                                             │ └─────────────────────────────────────────────────────────────┘</code></pre></div></p>
+
+<h3>1.2 并发 vs 并行</h3>
+
+<p><strong>并发</strong>： - 同一时间段内处理多个任务 - 任务之间可以切换和中断 - 适用于单核处理器 - 核心是任务调度和优先级管理</p>
+
+<p><strong>并行</strong>： - 同一时刻执行多个任务 - 需要多核处理器支持 - 任务同时进行，互不干扰</p>
+
+<p>React 的并发渲染属于<strong>并发</strong>，它通过智能的任务调度，让高优先级任务（如用户输入）能够打断低优先级任务（如大数据列表渲染）。</p>
+
+<h2 id="二、并发渲染解决的问题">二、并发渲染解决的问题</h2>
+
+<h3>2.1 传统渲染的瓶颈</h3>
+
+<p>在 React 16 之前，渲染过程是<strong>同步且不可中断</strong>的：</p>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// 传统同步渲染的问题
+<p>function SearchComponent() {   const [query, setQuery] = useState('');   const [results, setResults] = useState([]);</p>
+
+<p>  // 每次输入都会触发完整渲染   const handleInput = (e) => {     const value = e.target.value;     setQuery(value);</p>
+
+<p>    // 假设这是一个耗时的过滤操作     const filtered = hugeList.filter(item =>        item.includes(value)     );     setResults(filtered); // 阻塞主线程 200ms   };</p>
+
+<p>  return (     <div>       <input value={query} onChange={handleInput} />       <LargeList items={results} /> {/<em> 渲染耗时 </em>/}     </div>   ); }</code></pre></div></p>
+
+<p><strong>问题</strong>： - 用户输入被阻塞 - 页面卡顿、不流畅 - 无法响应其他交互</p>
+
+<h3>2.2 并发渲染的解决方案</h3>
+
+<p>并发渲染将渲染过程拆分为可中断的小任务：</p>
+
+<div class="code-block"><div class="code-header">text</div><pre><code class="language-text">用户输入 "r" → 显示 "r" → 中断列表渲染 → 
+<p>用户输入 "e" → 显示 "re" → 继续列表渲染 → 用户输入 "a" → 显示 "rea" → 再次中断...</code></pre></div></p>
+
+<h2 id="三、Fiber 架构：并发的基础">三、Fiber 架构：并发的基础</h2>
+
+<h3>3.1 Fiber 节点结构</h3>
+
+<p>Fiber 是 React 16 引入的底层架构，为并发渲染提供了基础：</p>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// Fiber 节点简化结构
+<p>const fiberNode = {   tag: FunctionComponent,        // 组件类型   type: ComponentFunction,       // 组件函数   stateNode: null,               // 组件实例   return: parentFiber,           // 父 Fiber   child: firstChildFiber,        // 第一个子 Fiber   sibling: nextSiblingFiber,     // 兄弟 Fiber   alternate: previousFiber,      // 上一次渲染的 Fiber   memoizedProps: props,          // 记忆的 props   memoizedState: state,          // 记忆的 state   updateQueue: updates,          // 更新队列   lanes: LanePriority,           // 优先级车道   // ... 其他属性 };</code></pre></div></p>
+
+<h3>3.2 可中断的渲染过程</h3>
+
+<p>Fiber 架构将渲染分为两个阶段：</p>
+
+<p><strong>第一阶段：渲染阶段 (Render Phase)</strong> - 可中断、可恢复 - 在内存中计算变更 - 无副作用，可安全中断</p>
+
+<p><strong>第二阶段：提交阶段 (Commit Phase)</strong> - 不可中断 - 一次性应用所有变更 - 确保 UI 一致性</p>
+
+<div class="code-block"><div class="code-header">text</div><pre><code class="language-text">┌─────────────────────────────────────────────────────┐
+<p>│                Fiber 渲染流程                          │ ├─────────────────────────────────────────────────────┤ │                                                     │ │  开始渲染 → 处理 Fiber1 → 检查中断 → 处理 Fiber2 → ... │ │        ↑              ↓              ↓              │ │        └────── 用户输入 ──────→ 中断渲染 → 响应输入    │ │                                                     │ └─────────────────────────────────────────────────────┘</code></pre></div></p>
+
+<h2 id="四、React 19 中的并发特性">四、React 19 中的并发特性</h2>
+
+<h3>4.1 use Hook：并发数据获取</h3>
+
+<p>React 19 引入了 <code>use</code> Hook，支持在渲染期间读取 Promise：</p>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">import { use, Suspense } from 'react';
+
+<p>// 异步数据获取 async function fetchUserData(userId) {   const response = await fetch(<code>/api/users/${userId}</code>);   return response.json(); }</p>
+
+<p>function UserProfile({ userId }) {   // 在渲染中直接使用 Promise   const userData = use(fetchUserData(userId));</p>
+
+<p>  return (     <div>       <h1>{userData.name}</h1>       <p>{userData.email}</p>     </div>   ); }</p>
+
+<p>function App() {   return (     <Suspense fallback={<div>Loading user...</div>}>       <UserProfile userId="123" />     </Suspense>   ); }</code></pre></div></p>
+
+<h3>4.2 useTransition：标记非紧急更新</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">import { useState, useTransition } from 'react';
+
+<p>function SearchPage() {   const [query, setQuery] = useState('');   const [results, setResults] = useState([]);   const [isPending, startTransition] = useTransition();</p>
+
+<p>  const handleSearch = (newQuery) => {     // 紧急更新：立即显示用户输入     setQuery(newQuery);</p>
+
+<p>    // 非紧急更新：标记为可中断     startTransition(() => {       const filtered = filterLargeDataset(newQuery);       setResults(filtered);     });   };</p>
+
+<p>  return (     <div>       <input          value={query}          onChange={(e) => handleSearch(e.target.value)}       />       {isPending && <div>Searching...</div>}       <SearchResults results={results} />     </div>   ); }</code></pre></div></p>
+
+<h3>4.3 useOptimistic：乐观更新</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">import { useOptimistic } from 'react';
+
+<p>function LikeButton({ postId, initialLikes }) {   const [likes, addLike] = useOptimistic(     initialLikes,     (currentLikes, newLike) => currentLikes + 1   );</p>
+
+<p>  const handleClick = async () => {     // 立即更新 UI（乐观）     addLike();</p>
+
+<p>    try {       // 发送请求到服务器       await fetch(<code>/api/posts/${postId}/like</code>, {         method: 'POST'       });     } catch (error) {       // 如果失败，React 会自动回滚       console.error('Like failed:', error);     }   };</p>
+
+<p>  return (     <button onClick={handleClick}>       👍 {likes}     </button>   ); }</code></pre></div></p>
+
+<h2 id="五、并发渲染的核心机制">五、并发渲染的核心机制</h2>
+
+<h3>5.1 Lane 模型：优先级管理</h3>
+
+<p>React 使用 Lane（车道）模型来管理任务优先级：</p>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// 优先级常量（简化版）
+<p>const SyncLane = 0b0000000000000000000000000000001; const InputContinuousLane = 0b0000000000000000000000000000100; const DefaultLane = 0b0000000000000000000000000010000; const TransitionLane = 0b0000000000000000000100000000000; const IdleLane = 0b1000000000000000000000000000000;</p>
+
+<p>// 任务分配 const update = {   payload: newState,   lane: isUserInput ? InputContinuousLane : TransitionLane,   next: null };</code></pre></div></p>
+
+<h3>5.2 时间切片 (Time Slicing)</h3>
+
+<p>React 将渲染工作分成 5ms 的时间片：</p>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// 伪代码：时间切片调度
+<p>function workLoopConcurrent() {   while (workInProgress !== null && !shouldYield()) {     performUnitOfWork(workInProgress);   }</p>
+
+<p>  // 检查是否需要让出主线程   if (workInProgress !== null) {     // 还有工作，但时间片用完了     return true; // 需要继续   }</p>
+
+<p>  return false; // 工作完成 }</p>
+
+<p>function shouldYield() {   // 检查是否超过了 5ms 的时间预算   return performance.now() - startTime > 5; }</code></pre></div></p>
+
+<h3>5.3 可中断的协调过程</h3>
+
+<div class="code-block"><div class="code-header">text</div><pre><code class="language-text">┌─────────────────────────────────────────────────────────┐
+<p>│                   可中断协调流程                           │ ├─────────────────────────────────────────────────────────┤ │                                                         │ │  开始协调 → 处理组件A → 检查中断 → 处理组件B → 检查中断 → ... │ │        │          │          │          │          │    │ │        ▼          ▼          ▼          ▼          ▼    │ │      Fiber1    Fiber2    用户输入!  继续Fiber2   Fiber3  │ │                                                         │ └─────────────────────────────────────────────────────────┘</code></pre></div></p>
+
+<h2 id="六、并发渲染带来的用户体验提升">六、并发渲染带来的用户体验提升</h2>
+
+<h3>6.1 即时响应性</h3>
+
+<p><strong>传统渲染</strong>： - 用户输入 → 等待渲染完成 → 显示结果 - 有明显的延迟感</p>
+
+<p><strong>并发渲染</strong>： - 用户输入 → 立即显示 → 后台渲染 - 感觉即时响应</p>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// 并发渲染下的搜索体验
+<p>function ConcurrentSearch() {   const [query, setQuery] = useState('');   const [results, setResults] = useState([]);   const [isPending, startTransition] = useTransition();</p>
+
+<p>  return (     <div>       {/<em> 输入框始终响应迅速 </em>/}       <input          value={query}         onChange={(e) => {           setQuery(e.target.value); // 立即更新           startTransition(() => {             // 后台处理，不阻塞输入             setResults(searchAPI(e.target.value));           });         }}       /></p>
+
+<p>      {/<em> 显示加载状态 </em>/}       {isPending && <Spinner />}</p>
+
+<p>      {/<em> 结果逐步显示 </em>/}       <ResultsList items={results} />     </div>   ); }</code></pre></div></p>
+
+<h3>6.2 流畅的过渡动画</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">function TabContainer() {
+<p>  const [activeTab, setActiveTab] = useState('home');   const [isPending, startTransition] = useTransition();</p>
+
+<p>  const handleTabChange = (tab) => {     startTransition(() => {       setActiveTab(tab);     });   };</p>
+
+<p>  return (     <div>       <TabBar activeTab={activeTab} onChange={handleTabChange} /></p>
+
+<p>      {/<em> 平滑过渡，无内容闪烁 </em>/}       <Suspense fallback={<TabSkeleton />}>         <TabContent tab={activeTab} />       </Suspense>     </div>   ); }</code></pre></div></p>
+
+<h3>6.3 减少布局抖动</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// 资源预加载，避免布局抖动
+<p>function ImageWithSuspense({ src, alt }) {   return (     <Suspense fallback={       <div style={{ width: '300px', height: '200px', background: '#eee' }}>         Loading...       </div>     }>       <img src={src} alt={alt} />     </Suspense>   ); }</p>
+
+<p>// 字体加载，避免文本闪烁 function App() {   return (     <Suspense fallback={<div>Loading fonts...</div>}>       <link         rel="stylesheet"         href="https://fonts.googleapis.com/css2?family=Inter"       />       <div style={{ fontFamily: 'Inter, sans-serif' }}>         Content with loaded font       </div>     </Suspense>   ); }</code></pre></div></p>
+
+<h3>6.4 智能的后台预加载</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">function ProductPage({ productId }) {
+<p>  // 预加载相关数据   const relatedProductsPromise = useMemo(     () => fetchRelatedProducts(productId),     [productId]   );</p>
+
+<p>  return (     <div>       <ProductDetails productId={productId} /></p>
+
+<p>      {/<em> 后台预加载，用户滚动时立即显示 </em>/}       <Suspense fallback={<ProductGridSkeleton />}>         <RelatedProducts promise={relatedProductsPromise} />       </Suspense>     </div>   ); }</code></pre></div></p>
+
+<h2 id="七、并发 API 使用指南">七、并发 API 使用指南</h2>
+
+<h3>7.1 useTransition 最佳实践</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// ✅ 正确：用于非紧急更新
+<p>function GoodExample() {   const [isPending, startTransition] = useTransition();</p>
+
+<p>  const handleUpdate = (newData) => {     // 紧急更新     setImmediateState(newData.immediate);</p>
+
+<p>    // 非紧急更新     startTransition(() => {       setHeavyState(newData.heavy);     });   };</p>
+
+<p>  return (     <div>       <button onClick={() => handleUpdate(data)}>         Update       </button>       {isPending && <LoadingIndicator />}     </div>   ); }</p>
+
+<p>// ❌ 错误：滥用 useTransition function BadExample() {   const [isPending, startTransition] = useTransition();</p>
+
+<p>  const handleClick = () => {     // 用户点击应该是紧急的！     startTransition(() => {       setClicked(true); // 这会延迟响应     });   };</p>
+
+<p>  return <button onClick={handleClick}>Click me</button>; }</code></pre></div></p>
+
+<h3>7.2 Suspense 数据获取模式</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// Render-as-you-fetch 模式
+<p>function UserProfileWrapper({ userId }) {   // 在渲染前开始获取数据   const userPromise = fetchUser(userId);   const postsPromise = fetchUserPosts(userId);</p>
+
+<p>  return (     <Suspense fallback={<ProfileSkeleton />}>       <UserProfile          userPromise={userPromise}         postsPromise={postsPromise}       />     </Suspense>   ); }</p>
+
+<p>function UserProfile({ userPromise, postsPromise }) {   // 在渲染中读取数据   const user = use(userPromise);   const posts = use(postsPromise);</p>
+
+<p>  return (     <div>       <h1>{user.name}</h1>       <PostList posts={posts} />     </div>   ); }</code></pre></div></p>
+
+<h3>7.3 错误边界与并发</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">import { ErrorBoundary } from 'react-error-boundary';
+
+<p>function App() {   return (     <ErrorBoundary       fallback={<ErrorFallback />}       onReset={() => window.location.reload()}     >       <Suspense fallback={<LoadingSpinner />}>         <ConcurrentComponent />       </Suspense>     </ErrorBoundary>   ); }</p>
+
+<p>function ErrorFallback({ error, resetErrorBoundary }) {   return (     <div role="alert">       <p>Something went wrong:</p>       <pre>{error.message}</pre>       <button onClick={resetErrorBoundary}>Try again</button>     </div>   ); }</code></pre></div></p>
+
+<h2 id="八、实际应用场景">八、实际应用场景</h2>
+
+<h3>8.1 大型数据表格</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">function DataGrid({ data }) {
+<p>  const [sortBy, setSortBy] = useState('id');   const [filter, setFilter] = useState('');   const [isPending, startTransition] = useTransition();</p>
+
+<p>  const handleSort = (column) => {     startTransition(() => {       setSortBy(column); // 排序可能很耗时     });   };</p>
+
+<p>  const handleFilter = (value) => {     setFilter(value); // 输入立即响应     startTransition(() => {       // 过滤在后台进行       applyFilter(value);     });   };</p>
+
+<p>  // 虚拟滚动 + 并发渲染   const visibleRows = useVirtualRows(data, sortBy, filter);</p>
+
+<p>  return (     <div>       <SearchInput value={filter} onChange={handleFilter} />       {isPending && <div>Updating...</div>}       <VirtualList rows={visibleRows} onSort={handleSort} />     </div>   ); }</code></pre></div></p>
+
+<h3>8.2 实时聊天应用</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">function ChatApp() {
+<p>  const [messages, setMessages] = useState([]);   const [input, setInput] = useState('');   const [isPending, startTransition] = useTransition();</p>
+
+<p>  // 接收新消息（可能很频繁）   useEffect(() => {     const socket = new WebSocket('ws://chat.example.com');</p>
+
+<p>    socket.onmessage = (event) => {       const newMessage = JSON.parse(event.data);</p>
+
+<p>      startTransition(() => {         setMessages(prev => [...prev, newMessage]);       });     };</p>
+
+<p>    return () => socket.close();   }, []);</p>
+
+<p>  const sendMessage = () => {     const message = { text: input, timestamp: Date.now() };</p>
+
+<p>    // 乐观更新     setMessages(prev => [...prev, { ...message, pending: true }]);     setInput('');</p>
+
+<p>    // 发送到服务器     sendToServer(message).then(() => {       // 服务器确认后更新状态       setMessages(prev =>          prev.map(msg =>            msg.timestamp === message.timestamp              ? { ...msg, pending: false }             : msg         )       );     });   };</p>
+
+<p>  return (     <div>       <MessageList messages={messages} />       <MessageInput          value={input}         onChange={setInput}         onSend={sendMessage}       />       {isPending && <div>Receiving new messages...</div>}     </div>   ); }</code></pre></div></p>
+
+<h3>8.3 仪表盘应用</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">function Dashboard() {
+<p>  const [dateRange, setDateRange] = useState('today');   const [isPending, startTransition] = useTransition();</p>
+
+<p>  const handleDateChange = (range) => {     startTransition(() => {       setDateRange(range);     });   };</p>
+
+<p>  return (     <div>       <DateRangeSelector value={dateRange} onChange={handleDateChange} /></p>
+
+<p>      {isPending ? (         <DashboardSkeleton />       ) : (         <div className="dashboard-grid">           <Suspense fallback={<MetricCardSkeleton />}>             <RevenueChart dateRange={dateRange} />           </Suspense></p>
+
+<p>          <Suspense fallback={<MetricCardSkeleton />}>             <UserMetrics dateRange={dateRange} />           </Suspense></p>
+
+<p>          <Suspense fallback={<MetricCardSkeleton />}>             <ConversionRate dateRange={dateRange} />           </Suspense>         </div>       )}     </div>   ); }</code></pre></div></p>
+
+<h2 id="九、总结">九、总结</h2>
+
+<h3>9.1 并发渲染的核心价值</h3>
+
+<p>1. <strong>响应性</strong>：用户交互始终优先，无阻塞感 2. <strong>流畅性</strong>：动画和过渡更加平滑 3. <strong>可预测性</strong>：复杂应用行为更可控 4. <strong>开发体验</strong>：更简单的异步状态管理</p>
+
+<h3>9.2 适用场景</h3>
+
+<p><strong>推荐使用并发渲染</strong>： - 大型数据列表/表格 - 实时搜索和过滤 - 复杂仪表盘 - 实时聊天应用 - 需要平滑过渡的应用</p>
+
+<p><strong>可能不需要并发渲染</strong>： - 简单的静态页面 - 小规模应用 - 对兼容性要求极高的场景</p>
+
+<h3>9.3 迁移建议</h3>
+
+<p>1. <strong>渐进式迁移</strong>：从关键路径开始，逐步应用并发特性 2. <strong>性能监控</strong>：使用 React DevTools 监控渲染性能 3. <strong>测试覆盖</strong>：确保并发模式下的功能正确性 4. <strong>错误处理</strong>：完善错误边界和降级策略</p>
+
+<h3>9.4 未来展望</h3>
+
+<p>React 19 的并发渲染为下一代 Web 应用奠定了基础：</p>
+
+<p>- <strong>更智能的预加载</strong>：基于用户行为的预测性加载 - <strong>离线优先</strong>：更好的离线体验和同步策略 - <strong>跨平台一致性</strong>：React Native 的并发支持 - <strong>开发者工具</strong>：更强大的调试和分析工具</p>
+
+<p>---</p>
+
+<p>© 2026 React 19 并发渲染详解指南</p>
+            </div>
+
+            <footer class="footer">
+                <p>© 2024 React 技术文档 | 生成时间: <span id="current-date"></span></p>
+                <p>本文档基于 React 官方文档和社区最佳实践编写</p>
+                <p><a href="#top">返回顶部</a></p>
+            </footer>
+        </main>
+    </div>
+
+    <a href="#top" class="back-to-top" id="back-to-top">↑</a>
+
+    <script>
+        // 设置当前日期
+        document.getElementById('current-date').textContent = new Date().toLocaleDateString('zh-CN');
+        
+        // 代码高亮
+        document.addEventListener('DOMContentLoaded', function() {
+            hljs.highlightAll();
+        });
+        
+        // 复制代码功能
+        function copyCode(button) {
+            const codeBlock = button.parentElement.nextElementSibling;
+            const codeText = codeBlock.textContent;
+            
+            navigator.clipboard.writeText(codeText).then(() => {
+                const originalText = button.textContent;
+                button.textContent = '已复制!';
+                button.style.background = 'var(--success-color)';
+                
+                setTimeout(() => {
+                    button.textContent = originalText;
+                    button.style.background = 'var(--primary-color)';
+                }, 2000);
+            }).catch(err => {
+                console.error('复制失败:', err);
+                button.textContent = '复制失败';
+                button.style.background = 'var(--danger-color)';
+                
+                setTimeout(() => {
+                    button.textContent = '复制代码';
+                    button.style.background = 'var(--primary-color)';
+                }, 2000);
+            });
+        }
+        
+        // 目录导航高亮
+        window.addEventListener('scroll', function() {
+            const sections = document.querySelectorAll('.content-section h2');
+            const tocLinks = document.querySelectorAll('.toc a');
+            
+            let currentSection = '';
+            
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                if (scrollY >= sectionTop - 100) {
+                    currentSection = section.getAttribute('id');
+                }
+            });
+            
+            tocLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href') === `#${currentSection}`) {
+                    link.classList.add('active');
+                }
+            });
+            
+            // 显示/隐藏返回顶部按钮
+            const backToTop = document.getElementById('back-to-top');
+            if (window.scrollY > 300) {
+                backToTop.style.display = 'flex';
+            } else {
+                backToTop.style.display = 'none';
+            }
+        });
+        
+        // 平滑滚动
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function(e) {
+                e.preventDefault();
+                
+                const targetId = this.getAttribute('href');
+                if (targetId === '#') return;
+                
+                const targetElement = document.querySelector(targetId);
+                if (targetElement) {
+                    window.scrollTo({
+                        top: targetElement.offsetTop - 20,
+                        behavior: 'smooth'
+                    });
+                }
+            });
+        });
+        
+        // 初始化显示返回顶部按钮
+        document.getElementById('back-to-top').style.display = 'none';
+    </script>
+</body>
+</html>
