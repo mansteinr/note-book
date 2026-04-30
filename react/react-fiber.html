@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>React Fiber 完全指南</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.8;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 60px 40px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 3em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        h2 {
+            color: #667eea;
+            font-size: 2em;
+            margin: 40px 0 20px 0;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #667eea;
+        }
+
+        h3 {
+            color: #764ba2;
+            font-size: 1.5em;
+            margin: 30px 0 15px 0;
+        }
+
+        p {
+            margin-bottom: 15px;
+            font-size: 1.05em;
+        }
+
+        ul, ol {
+            margin: 15px 0;
+            padding-left: 30px;
+        }
+
+        li {
+            margin-bottom: 10px;
+        }
+
+        code {
+            background: #f4f4f4;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            color: #e74c3c;
+        }
+
+        pre {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 20px;
+            border-radius: 10px;
+            overflow-x: auto;
+            margin: 20px 0;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+            color: #f8f8f2;
+        }
+
+        .highlight {
+            background: linear-gradient(120deg, #84fab0 0%, #8fd3f4 100%);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            border-left: 5px solid #667eea;
+        }
+
+        .feature-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 15px 0;
+            border-left: 4px solid #764ba2;
+            transition: transform 0.3s ease;
+        }
+
+        .feature-card:hover {
+            transform: translateX(10px);
+        }
+
+        .summary {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            margin-top: 40px;
+        }
+
+        .summary h2 {
+            color: white;
+            border-bottom-color: white;
+        }
+
+        .summary ul {
+            color: white;
+        }
+
+        .toc {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 10px;
+            margin: 30px 0;
+            border: 2px solid #667eea;
+        }
+
+        .toc h3 {
+            margin-top: 0;
+            color: #667eea;
+        }
+
+        .toc a {
+            color: #764ba2;
+            text-decoration: none;
+            display: block;
+            padding: 5px 0;
+            transition: color 0.3s ease;
+        }
+
+        .toc a:hover {
+            color: #667eea;
+            padding-left: 10px;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 30px;
+            background: #f8f9fa;
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .content {
+                padding: 20px;
+            }
+            
+            h2 {
+                font-size: 1.5em;
+            }
+            
+            h3 {
+                font-size: 1.2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>React Fiber</h1>
+            <p>React 16 核心架构的革命性升级</p>
+        </div>
+
+        <div class="content">
+            <div class="toc">
+                <h3>目录</h3>
+                <a href="#section1">什么是 React Fiber？</a>
+                <a href="#section2">为什么引入 Fiber？</a>
+                <a href="#section3">Fiber 的工作原理</a>
+                <a href="#section4">Fiber 的优势</a>
+                <a href="#section5">Fiber 的实际应用</a>
+                <a href="#section6">总结</a>
+            </div>
+
+            <h2 id="section1">什么是 React Fiber？</h2>
+            <p>React Fiber 是 React 16 中引入的全新协调引擎（Reconciliation Engine），它是 React 核心算法的完全重写。Fiber 是对 React 核心算法的实现，旨在解决 React 在处理大型应用和复杂 UI 更新时的性能问题。</p>
+
+            <h3>Fiber 的核心概念</h3>
+            <p>Fiber 可以被理解为：</p>
+            <ul>
+                <li><strong>数据结构</strong>：每个 React 元素都有一个对应的 Fiber 节点</li>
+                <li><strong>工作单元</strong>：每个 Fiber 节点代表一个工作单元</li>
+                <li><strong>栈帧</strong>：Fiber 节点包含了组件的状态、props 和渲染结果</li>
+            </ul>
+
+            <h3>Fiber 节点的结构</h3>
+            <p>每个 Fiber 节点包含以下关键属性：</p>
+            <pre><code>{
+  // 组件类型
+  type: Component,
+  
+  // 组件的 props
+  props: props,
+  
+  // 指向父节点
+  return: parentFiber,
+  
+  // 指向第一个子节点
+  child: childFiber,
+  
+  // 指向下一个兄弟节点
+  sibling: siblingFiber,
+  
+  // 组件的状态
+  memoizedState: state,
+  
+  // 上次渲染的 props
+  memoizedProps: props,
+  
+  // 副作用标记
+  effectTag: effectTag,
+  
+  // 副作用链表
+  nextEffect: nextEffect
+}</code></pre>
+
+            <h2 id="section2">为什么引入 Fiber？</h2>
+
+            <div class="feature-card">
+                <h3>1. 解决渲染阻塞问题</h3>
+                <p>在 React Fiber 之前，React 使用递归方式进行协调（diff 算法），这意味着：</p>
+                <ul>
+                    <li>一旦开始渲染，就必须一次性完成</li>
+                    <li>无法中断渲染过程</li>
+                    <li>大型应用的更新会阻塞主线程，导致用户交互卡顿</li>
+                </ul>
+            </div>
+
+            <pre><code>// 旧版本的递归渲染
+function render(element) {
+  if (typeof element === 'string') {
+    return document.createTextNode(element);
+  }
+  
+  const dom = document.createElement(element.type);
+  element.props.children.forEach(child => {
+    dom.appendChild(render(child));
+  });
+  
+  return dom;
+}</code></pre>
+
+            <div class="feature-card">
+                <h3>2. 实现增量渲染</h3>
+                <p>Fiber 引入了<strong>增量渲染</strong>的概念：</p>
+                <ul>
+                    <li>将渲染任务分解为多个小的工作单元</li>
+                    <li>可以在多个帧中分批执行</li>
+                    <li>避免长时间阻塞主线程</li>
+                </ul>
+            </div>
+
+            <div class="feature-card">
+                <h3>3. 支持任务优先级</h3>
+                <p>Fiber 实现了<strong>任务调度</strong>机制：</p>
+                <ul>
+                    <li>不同类型的更新有不同的优先级</li>
+                    <li>高优先级任务（如用户输入）可以打断低优先级任务</li>
+                    <li>实现了类似操作系统的任务调度</li>
+                </ul>
+            </div>
+
+            <pre><code>// 优先级从高到低
+const Priority = {
+  Immediate: 1,      // 同步任务，如点击事件
+  UserBlocking: 2,   // 用户交互，如输入
+  Normal: 3,        // 正常更新
+  Low: 4,           // 低优先级，如数据获取
+  Idle: 5           // 空闲时执行
+};</code></pre>
+
+            <div class="feature-card">
+                <h3>4. 支持中断和恢复</h3>
+                <p>Fiber 的<strong>可中断渲染</strong>特性：</p>
+                <ul>
+                    <li>渲染过程可以被中断</li>
+                    <li>可以保存当前渲染状态</li>
+                    <li>在合适的时机恢复渲染</li>
+                </ul>
+            </div>
+
+            <div class="feature-card">
+                <h3>5. 更好的错误处理</h3>
+                <p>Fiber 提供了<strong>错误边界</strong>（Error Boundaries）的支持：</p>
+                <ul>
+                    <li>可以捕获组件树中的错误</li>
+                    <li>防止整个应用崩溃</li>
+                    <li>提供更好的用户体验</li>
+                </ul>
+            </div>
+
+            <h2 id="section3">Fiber 的工作原理</h2>
+
+            <div class="feature-card">
+                <h3>1. 双缓存技术</h3>
+                <p>Fiber 使用双缓存技术：</p>
+                <ul>
+                    <li><strong>current</strong>：当前屏幕上显示的 Fiber 树</li>
+                    <li><strong>workInProgress</strong>：正在构建的 Fiber 树</li>
+                </ul>
+            </div>
+
+            <pre><code>// 双缓存示例
+let currentFiber = currentTree;
+let workInProgressFiber = createWorkInProgress(currentFiber);
+
+// 在 workInProgressFiber 上进行更新
+// 完成后交换
+currentTree = workInProgressFiber;</code></pre>
+
+            <div class="feature-card">
+                <h3>2. 阶段划分</h3>
+                <p>Fiber 将渲染过程分为两个阶段：</p>
+                <ul>
+                    <li><strong>阶段一：Render 阶段（可中断）</strong>
+                        <ul>
+                            <li>构建 Fiber 树</li>
+                            <li>计算 diff</li>
+                            <li>标记需要更新的节点</li>
+                            <li>可以被中断和恢复</li>
+                        </ul>
+                    </li>
+                    <li><strong>阶段二：Commit 阶段（不可中断）</strong>
+                        <ul>
+                            <li>执行实际的 DOM 操作</li>
+                            <li>更新 refs</li>
+                            <li>执行副作用</li>
+                            <li>必须一次性完成</li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="feature-card">
+                <h3>3. 调度循环</h3>
+                <p>Fiber 使用调度循环来管理工作单元：</p>
+            </div>
+
+            <pre><code>function workLoop(deadline) {
+  while (nextUnitOfWork && deadline.timeRemaining() > 1) {
+    nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
+  }
+  
+  if (!nextUnitOfWork) {
+    commitRoot();
+  } else {
+    requestIdleCallback(workLoop);
+  }
+}</code></pre>
+
+            <h2 id="section4">Fiber 的优势</h2>
+
+            <div class="highlight">
+                <h3>1. 性能提升</h3>
+                <ul>
+                    <li>减少主线程阻塞时间</li>
+                    <li>提高应用的响应性</li>
+                    <li>更好的帧率</li>
+                </ul>
+            </div>
+
+            <div class="highlight">
+                <h3>2. 用户体验改善</h3>
+                <ul>
+                    <li>流畅的动画</li>
+                    <li>即时的用户反馈</li>
+                    <li>避免页面卡顿</li>
+                </ul>
+            </div>
+
+            <div class="highlight">
+                <h3>3. 开发体验提升</h3>
+                <ul>
+                    <li>更好的错误处理</li>
+                    <li>支持 Suspense 和 lazy loading</li>
+                    <li>为并发模式（Concurrent Mode）奠定基础</li>
+                </ul>
+            </div>
+
+            <div class="highlight">
+                <h3>4. 为新特性铺路</h3>
+                <p>Fiber 为以下特性提供了基础：</p>
+                <ul>
+                    <li><strong>Concurrent Mode</strong>：并发渲染模式</li>
+                    <li><strong>Suspense</strong>：异步组件加载</li>
+                    <li><strong>useTransition</strong>：优先级更新</li>
+                    <li><strong>useDeferredValue</strong>：延迟更新</li>
+                </ul>
+            </div>
+
+            <h2 id="section5">Fiber 的实际应用</h2>
+
+            <div class="feature-card">
+                <h3>1. 时间切片（Time Slicing）</h3>
+                <pre><code>// Fiber 自动将工作分割到多个帧
+function TimeSlicingExample() {
+  const [items, setItems] = useState([]);
+  
+  const handleClick = () => {
+    // 即使有大量数据，也不会阻塞 UI
+    setItems(generateLargeArray(10000));
+  };
+  
+  return (
+    &lt;div&gt;
+      &lt;button onClick={handleClick}&gt;Load Data&lt;/button&gt;
+      {items.map(item => &lt;div key={item.id}&gt;{item.name}&lt;/div&gt;)}
+    &lt;/div&gt;
+  );
+}</code></pre>
+            </div>
+
+            <div class="feature-card">
+                <h3>2. 优先级更新</h3>
+                <pre><code>function PriorityExample() {
+  const [text, setText] = useState('');
+  const [list, setList] = useState([]);
+  
+  // 用户输入具有高优先级
+  const handleChange = (e) => {
+    setText(e.target.value);
+  };
+  
+  // 列表更新具有较低优先级
+  useEffect(() => {
+    setList(generateList());
+  }, [text]);
+  
+  return (
+    &lt;div&gt;
+      &lt;input value={text} onChange={handleChange} /&gt;
+      &lt;ul&gt;{list.map(item => &lt;li key={item}&gt;{item}&lt;/li&gt;)}&lt;/ul&gt;
+    &lt;/div&gt;
+  );
+}</code></pre>
+            </div>
+
+            <div class="feature-card">
+                <h3>3. 并发模式</h3>
+                <pre><code>function ConcurrentExample() {
+  const [isPending, startTransition] = useTransition();
+  const [filter, setFilter] = useState('');
+  const [list, setList] = useState(largeList);
+  
+  const handleChange = (e) => {
+    setFilter(e.target.value);
+    
+    // 使用 transition 降低优先级
+    startTransition(() => {
+      setList(filterList(e.target.value));
+    });
+  };
+  
+  return (
+    &lt;div&gt;
+      &lt;input value={filter} onChange={handleChange} /&gt;
+      {isPending && &lt;div&gt;Loading...&lt;/div&gt;}
+      &lt;List items={list} /&gt;
+    &lt;/div&gt;
+  );
+}</code></pre>
+            </div>
+
+            <div class="summary">
+                <h2 id="section6">总结</h2>
+                <p>React Fiber 是 React 发展史上的一个重要里程碑，它：</p>
+                <ol>
+                    <li><strong>解决了性能瓶颈</strong>：通过增量渲染和任务调度，避免了长时间阻塞主线程</li>
+                    <li><strong>提升了用户体验</strong>：实现了流畅的动画和即时的用户反馈</li>
+                    <li><strong>为未来铺路</strong>：为并发模式、Suspense 等新特性提供了基础</li>
+                    <li><strong>保持了向后兼容</strong>：对开发者透明，不需要修改现有代码</li>
+                </ol>
+                <p style="margin-top: 20px;">Fiber 的引入使得 React 能够更好地处理复杂应用和大型 UI 更新，为构建高性能的 Web 应用提供了坚实的基础。</p>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>© 2024 React Fiber 指南 | By AI Assistant</p>
+        </div>
+    </div>
+</body>
+</html>

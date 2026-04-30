@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>React Hooks 实现原理</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 2rem 1rem;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 3rem 2rem;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            font-weight: 700;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 2rem;
+        }
+
+        h2 {
+            color: #667eea;
+            font-size: 1.8rem;
+            margin: 2rem 0 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 3px solid #667eea;
+        }
+
+        h3 {
+            color: #764ba2;
+            font-size: 1.4rem;
+            margin: 1.5rem 0 0.8rem;
+        }
+
+        h4 {
+            color: #555;
+            font-size: 1.2rem;
+            margin: 1rem 0 0.5rem;
+        }
+
+        p {
+            margin-bottom: 1rem;
+            color: #555;
+        }
+
+        ul, ol {
+            margin: 1rem 0;
+            padding-left: 2rem;
+        }
+
+        li {
+            margin-bottom: 0.5rem;
+            color: #555;
+        }
+
+        .feature-list {
+            background: #f8f9fa;
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+        }
+
+        .feature-list li {
+            margin-bottom: 0.8rem;
+            padding-left: 0.5rem;
+        }
+
+        .feature-list li strong {
+            color: #667eea;
+        }
+
+        pre {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 1.5rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 1rem 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+
+        code {
+            background: #f1f5f9;
+            color: #667eea;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+
+        pre code {
+            background: none;
+            color: inherit;
+            padding: 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        th, td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: 600;
+        }
+
+        tr:hover {
+            background: #f8f9fa;
+        }
+
+        .highlight-box {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+            border-left: 4px solid #667eea;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .highlight-box h4 {
+            color: #667eea;
+            margin-top: 0;
+        }
+
+        .benefit-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin: 1.5rem 0;
+        }
+
+        .benefit-card {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
+            padding: 1.5rem;
+            border-radius: 8px;
+            border: 2px solid #667eea;
+        }
+
+        .benefit-card h4 {
+            color: #667eea;
+            margin-top: 0;
+        }
+
+        .comparison-section {
+            background: #f8f9fa;
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin: 1.5rem 0;
+        }
+
+        .comparison-section h4 {
+            color: #d32f2f;
+        }
+
+        .comparison-section h4:last-child {
+            color: #388e3c;
+        }
+
+        .warning-box {
+            background: linear-gradient(135deg, rgba(255, 193, 7, 0.1) 0%, rgba(255, 152, 0, 0.1) 100%);
+            border-left: 4px solid #ff9800;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .warning-box h4 {
+            color: #ff9800;
+            margin-top: 0;
+        }
+
+        .success-box {
+            background: linear-gradient(135deg, rgba(76, 175, 80, 0.1) 0%, rgba(56, 142, 60, 0.1) 100%);
+            border-left: 4px solid #4caf50;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .success-box h4 {
+            color: #4caf50;
+            margin-top: 0;
+        }
+
+        .error-box {
+            background: linear-gradient(135deg, rgba(244, 67, 54, 0.1) 0%, rgba(211, 47, 47, 0.1) 100%);
+            border-left: 4px solid #f44336;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .error-box h4 {
+            color: #f44336;
+            margin-top: 0;
+        }
+
+        .code-comparison {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin: 1.5rem 0;
+        }
+
+        .code-wrong {
+            border: 2px solid #f44336;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .code-wrong h4 {
+            background: #f44336;
+            color: white;
+            margin: 0;
+            padding: 0.8rem 1rem;
+        }
+
+        .code-wrong pre {
+            margin: 0;
+            border-radius: 0;
+        }
+
+        .code-correct {
+            border: 2px solid #4caf50;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .code-correct h4 {
+            background: #4caf50;
+            color: white;
+            margin: 0;
+            padding: 0.8rem 1rem;
+        }
+
+        .code-correct pre {
+            margin: 0;
+            border-radius: 0;
+        }
+
+        .footer {
+            background: #2d3748;
+            color: white;
+            padding: 2rem;
+            text-align: center;
+        }
+
+        .footer h3 {
+            color: white;
+            margin-top: 0;
+        }
+
+        .footer ul {
+            display: inline-block;
+            text-align: left;
+        }
+
+        .footer li {
+            color: #e2e8f0;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .content {
+                padding: 1.5rem;
+            }
+
+            h2 {
+                font-size: 1.5rem;
+            }
+
+            h3 {
+                font-size: 1.2rem;
+            }
+
+            .benefit-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .code-comparison {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>React Hooks 实现原理</h1>
+            <p>深入理解 Hooks 工作机制与使用规则</p>
+        </div>
+
+        <div class="content">
+            <h2>Hooks 是什么？</h2>
+            <p>React Hooks 是 React 16.8 引入的一项革命性特性，它允许你在<strong>函数组件</strong>中使用状态（state）和其他 React 特性，而无需编写类组件。</p>
+
+            <h3>主要 Hooks 类型</h3>
+            <ul class="feature-list">
+                <li><strong>useState</strong> - 管理组件状态</li>
+                <li><strong>useEffect</strong> - 处理副作用</li>
+                <li><strong>useContext</strong> - 访问 Context</li>
+                <li><strong>useReducer</strong> - 复杂状态管理</li>
+                <li><strong>useCallback</strong> - 缓存函数</li>
+                <li><strong>useMemo</strong> - 缓存计算结果</li>
+                <li><strong>useRef</strong> - 创建可变引用</li>
+                <li><strong>自定义 Hooks</strong> - 复用逻辑</li>
+            </ul>
+
+            <h2>Hooks 的实现原理</h2>
+
+            <h3>1. 链表数据结构</h3>
+            <p>React 内部使用<strong>链表</strong>来跟踪 Hooks 的调用顺序。每个组件都有一个对应的 Hooks 链表。</p>
+            
+            <div class="highlight-box">
+                <h4>简化的 Hooks 链表结构</h4>
+                <pre><code>const hook = {
+  memoizedState: null,    // 当前状态值
+  next: null,             // 指向下一个 Hook
+  queue: null,            // 更新队列
+  baseState: null,        // 基础状态
+  baseQueue: null,        // 基础队列
+};</code></pre>
+            </div>
+
+            <h3>2. 组件渲染过程</h3>
+            <p>当组件渲染时，React 会：</p>
+
+            <div class="code-comparison">
+                <div class="code-correct">
+                    <h4>首次渲染</h4>
+                    <pre><code>// 1. 创建空的 Hooks 链表
+let firstHook = null;
+let currentHook = null;
+
+// 2. 按顺序调用 Hooks
+useState(initialValue);  // 第一个 Hook
+useEffect(callback);     // 第二个 Hook
+// ...</code></pre>
+                </div>
+
+                <div class="code-correct">
+                    <h4>后续渲染</h4>
+                    <pre><code>// 1. 从链表中按顺序读取 Hook
+let hook = firstHook;
+
+// 2. 按顺序调用 Hooks
+useState();  // 读取第一个 Hook 的状态
+useEffect(); // 读取第二个 Hook 的状态
+// ...</code></pre>
+                </div>
+            </div>
+
+            <h3>3. useState 实现原理</h3>
+            <div class="highlight-box">
+                <h4>简化的 useState 实现</h4>
+                <pre><code>let hookIndex = 0;
+let hooks = [];
+
+function useState(initialValue) {
+  // 获取当前 Hook
+  const currentHook = hooks[hookIndex];
+  
+  if (!currentHook) {
+    // 首次渲染：创建 Hook
+    hooks[hookIndex] = {
+      state: typeof initialValue === 'function' 
+        ? initialValue() 
+        : initialValue,
+      queue: [],
+    };
+  }
+  
+  // 处理更新队列
+  if (currentHook.queue.length > 0) {
+    let newState = currentHook.state;
+    for (let update of currentHook.queue) {
+      newState = typeof update === 'function'
+        ? update(newState)
+        : update;
+    }
+    currentHook.state = newState;
+    currentHook.queue = [];
+  }
+  
+  // 设置状态函数
+  const setState = (newState) => {
+    currentHook.queue.push(newState);
+    // 触发重新渲染
+    scheduleUpdate();
+  };
+  
+  // 移动到下一个 Hook
+  hookIndex++;
+  
+  return [currentHook.state, setState];
+}</code></pre>
+            </div>
+
+            <h3>4. useEffect 实现原理</h3>
+            <div class="highlight-box">
+                <h4>简化的 useEffect 实现</h4>
+                <pre><code>let effectIndex = 0;
+let effects = [];
+
+function useEffect(callback, deps) {
+  const currentEffect = effects[effectIndex];
+  
+  // 检查依赖是否变化
+  const hasChanged = !currentEffect || 
+    !deps || 
+    deps.some((dep, i) => dep !== currentEffect.deps[i]);
+  
+  if (hasChanged) {
+    // 清理上一个 effect
+    if (currentEffect && currentEffect.cleanup) {
+      currentEffect.cleanup();
+    }
+    
+    // 执行新的 effect
+    const cleanup = callback();
+    
+    // 保存 effect 信息
+    effects[effectIndex] = {
+      callback,
+      deps,
+      cleanup,
+    };
+  }
+  
+  effectIndex++;
+}</code></pre>
+            </div>
+
+            <h2>为什么 Hooks 不能在条件语句或循环中调用？</h2>
+
+            <h3>1. 依赖调用顺序</h3>
+            <p>React 依赖 <strong>Hook 的调用顺序</strong>来正确关联状态和副作用。</p>
+
+            <div class="code-comparison">
+                <div class="code-correct">
+                    <h4>✅ 正确：每次渲染都按相同顺序调用</h4>
+                    <pre><code>function Component() {
+  const [name, setName] = useState('Alice');    // 第一个 Hook
+  const [age, setAge] = useState(25);          // 第二个 Hook
+  useEffect(() => { /* 第三个 Hook */ });
+  
+  return <div>{name} is {age} years old</div>;
+}</code></pre>
+                </div>
+
+                <div class="code-wrong">
+                    <h4>❌ 错误：条件语句改变调用顺序</h4>
+                    <pre><code>function BadComponent({ showAge }) {
+  const [name, setName] = useState('Alice');    // 第一个 Hook
+  
+  if (showAge) {
+    const [age, setAge] = useState(25);        // ❌ 第二个 Hook（有时调用）
+  }
+  
+  useEffect(() => { /* 第三个 Hook */ });       // ❌ 顺序混乱
+  
+  return <div>{name}</div>;
+}</code></pre>
+                </div>
+            </div>
+
+            <h3>2. 渲染过程分析</h3>
+            <div class="code-comparison">
+                <div class="code-correct">
+                    <h4>首次渲染</h4>
+                    <pre><code>// Hook 链表：name → age → effect
+hooks = [
+  { state: 'Alice' },    // name
+  { state: 25 },         // age
+  { callback: fn },      // effect
+];</code></pre>
+                </div>
+
+                <div class="code-wrong">
+                    <h4>第二次渲染（showAge = false）</h4>
+                    <pre><code>// Hook 链表应该：name → effect
+// 但 React 期望：name → age → effect
+// ❌ 错误：把 effect 当成了 age
+hooks = [
+  { state: 'Alice' },    // name
+  { callback: fn },      // ❌ 错误：effect 被当作 age
+];</code></pre>
+                </div>
+            </div>
+
+            <h3>3. 具体问题示例</h3>
+            <div class="error-box">
+                <h4>❌ 错误示例 1：条件语句</h4>
+                <pre><code>function ConditionalHook() {
+  if (Math.random() > 0.5) {
+    const [count, setCount] = useState(0);  // ❌ 有时调用
+  }
+  
+  const [name, setName] = useState('Alice');  // ❌ 顺序混乱
+  
+  // React 无法知道哪个状态属于哪个 Hook
+}</code></pre>
+            </div>
+
+            <div class="error-box">
+                <h4>❌ 错误示例 2：循环</h4>
+                <pre><code>function LoopHook() {
+  const items = ['A', 'B', 'C'];
+  
+  for (let i = 0; i < items.length; i++) {
+    const [value, setValue] = useState(items[i]);  // ❌ 调用次数变化
+  }
+  
+  // React 无法跟踪动态数量的 Hooks
+}</code></pre>
+            </div>
+
+            <div class="error-box">
+                <h4>❌ 错误示例 3：早期返回</h4>
+                <pre><code>function EarlyReturnHook({ shouldRender }) {
+  const [count, setCount] = useState(0);
+  
+  if (!shouldRender) {
+    return null;  // ❌ 提前返回，后续 Hook 可能不调用
+  }
+  
+  const [name, setName] = useState('Alice');  // ❌ 有时调用
+  
+  return <div>{name}</div>;
+}</code></pre>
+            </div>
+
+            <h3>4. 正确使用方式</h3>
+            <div class="success-box">
+                <h4>✅ 正确示例 1：条件逻辑放在 Hook 内部</h4>
+                <pre><code>function CorrectConditional() {
+  const [user, setUser] = useState(null);
+  
+  // 条件逻辑在
