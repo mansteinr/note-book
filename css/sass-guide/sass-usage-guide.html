@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sass 使用指南</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-color: #3498db;
+            --secondary-color: #2ecc71;
+            --accent-color: #e74c3c;
+            --text-color: #333;
+            --light-bg: #f8f9fa;
+            --border-color: #e0e0e0;
+            --shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            --radius: 8px;
+            --spacing-sm: 8px;
+            --spacing-md: 16px;
+            --spacing-lg: 24px;
+            --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --code-font: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+        }
+
+        body {
+            font-family: var(--font-family);
+            line-height: 1.6;
+            color: var(--text-color);
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: var(--spacing-lg);
+        }
+
+        .header {
+            background: white;
+            border-radius: var(--radius);
+            padding: var(--spacing-lg);
+            margin-bottom: var(--spacing-lg);
+            box-shadow: var(--shadow);
+            text-align: center;
+            border-left: 5px solid var(--primary-color);
+        }
+
+        .header h1 {
+            color: var(--primary-color);
+            margin-bottom: var(--spacing-sm);
+            font-size: 2.5rem;
+        }
+
+        .header .subtitle {
+            color: #666;
+            font-size: 1.1rem;
+            margin-bottom: var(--spacing-md);
+        }
+
+        .badge {
+            display: inline-block;
+            background: var(--primary-color);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            margin: 0 5px;
+        }
+
+        .badge.secondary {
+            background: var(--secondary-color);
+        }
+
+        .badge.accent {
+            background: var(--accent-color);
+        }
+
+        .content-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: var(--spacing-lg);
+            margin-bottom: var(--spacing-lg);
+        }
+
+        .card {
+            background: white;
+            border-radius: var(--radius);
+            padding: var(--spacing-lg);
+            box-shadow: var(--shadow);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            border-top: 3px solid var(--primary-color);
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        .card h2 {
+            color: var(--primary-color);
+            margin-bottom: var(--spacing-md);
+            padding-bottom: var(--spacing-sm);
+            border-bottom: 2px solid var(--light-bg);
+            font-size: 1.5rem;
+        }
+
+        .card h3 {
+            color: var(--secondary-color);
+            margin: var(--spacing-md) 0 var(--spacing-sm);
+            font-size: 1.2rem;
+        }
+
+        .card ul, .card ol {
+            margin-left: var(--spacing-lg);
+            margin-bottom: var(--spacing-md);
+        }
+
+        .card li {
+            margin-bottom: var(--spacing-sm);
+        }
+
+        .code-block {
+            background: #282c34;
+            color: #abb2bf;
+            padding: var(--spacing-md);
+            border-radius: var(--radius);
+            margin: var(--spacing-md) 0;
+            overflow-x: auto;
+            font-family: var(--code-font);
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        .code-block .comment {
+            color: #5c6370;
+        }
+
+        .code-block .keyword {
+            color: #c678dd;
+        }
+
+        .code-block .string {
+            color: #98c379;
+        }
+
+        .code-block .number {
+            color: #d19a66;
+        }
+
+        .code-block .function {
+            color: #61afef;
+        }
+
+        .code-block .variable {
+            color: #e06c75;
+        }
+
+        .example-section {
+            background: var(--light-bg);
+            border-radius: var(--radius);
+            padding: var(--spacing-lg);
+            margin: var(--spacing-lg) 0;
+            border-left: 4px solid var(--secondary-color);
+        }
+
+        .example-section h3 {
+            color: var(--secondary-color);
+            margin-bottom: var(--spacing-md);
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: var(--spacing-md);
+            margin-top: var(--spacing-md);
+        }
+
+        .feature-item {
+            background: white;
+            padding: var(--spacing-md);
+            border-radius: var(--radius);
+            border: 1px solid var(--border-color);
+            transition: all 0.3s ease;
+        }
+
+        .feature-item:hover {
+            border-color: var(--primary-color);
+            transform: translateY(-2px);
+        }
+
+        .feature-item h4 {
+            color: var(--primary-color);
+            margin-bottom: var(--spacing-sm);
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+        }
+
+        .feature-item h4::before {
+            content: "✓";
+            background: var(--secondary-color);
+            color: white;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+        }
+
+        .comparison {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: var(--spacing-lg);
+            margin: var(--spacing-lg) 0;
+        }
+
+        .comparison-item {
+            background: white;
+            padding: var(--spacing-lg);
+            border-radius: var(--radius);
+            border: 2px solid var(--border-color);
+        }
+
+        .comparison-item h3 {
+            text-align: center;
+            margin-bottom: var(--spacing-md);
+            padding-bottom: var(--spacing-sm);
+            border-bottom: 2px solid var(--border-color);
+        }
+
+        .comparison-item.scss {
+            border-color: var(--primary-color);
+        }
+
+        .comparison-item.scss h3 {
+            color: var(--primary-color);
+            border-bottom-color: var(--primary-color);
+        }
+
+        .comparison-item.sass {
+            border-color: var(--secondary-color);
+        }
+
+        .comparison-item.sass h3 {
+            color: var(--secondary-color);
+            border-bottom-color: var(--secondary-color);
+        }
+
+        .installation-steps {
+            counter-reset: step-counter;
+            margin: var(--spacing-lg) 0;
+        }
+
+        .step {
+            background: white;
+            padding: var(--spacing-lg);
+            border-radius: var(--radius);
+            margin-bottom: var(--spacing-md);
+            border-left: 4px solid var(--primary-color);
+            position: relative;
+            padding-left: 60px;
+        }
+
+        .step::before {
+            counter-increment: step-counter;
+            content: counter(step-counter);
+            position: absolute;
+            left: var(--spacing-lg);
+            top: var(--spacing-lg);
+            background: var(--primary-color);
+            color: white;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+
+        .command {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: var(--spacing-sm) var(--spacing-md);
+            border-radius: 4px;
+            font-family: var(--code-font);
+            margin: var(--spacing-sm) 0;
+            display: inline-block;
+        }
+
+        .tip {
+            background: #e8f4fd;
+            border-left: 4px solid var(--primary-color);
+            padding: var(--spacing-md);
+            margin: var(--spacing-md) 0;
+            border-radius: 0 var(--radius) var(--radius) 0;
+        }
+
+        .tip::before {
+            content: "💡 提示: ";
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+
+        .warning {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: var(--spacing-md);
+            margin: var(--spacing-md) 0;
+            border-radius: 0 var(--radius) var(--radius) 0;
+        }
+
+        .warning::before {
+            content: "⚠️ 注意: ";
+            font-weight: bold;
+            color: #856404;
+        }
+
+        .footer {
+            text-align: center;
+            padding: var(--spacing-lg);
+            margin-top: var(--spacing-lg);
+            color: #666;
+            border-top: 1px solid var(--border-color);
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: var(--spacing-md);
+            }
+            
+            .comparison {
+                grid-template-columns: 1fr;
+            }
+            
+            .content-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+        }
+
+        .demo-button {
+            display: inline-block;
+            background: var(--primary-color);
+            color: white;
+            padding: 10px 20px;
+            border-radius: var(--radius);
+            text-decoration: none;
+            margin: 10px 5px;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+
+        .demo-button:hover {
+            background: #2980b9;
+            transform: translateY(-2px);
+        }
+
+        .demo-button.secondary {
+            background: var(--secondary-color);
+        }
+
+        .demo-button.secondary:hover {
+            background: #27ae60;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>Sass 使用指南</h1>
+            <p class="subtitle">强大的 CSS 预处理器，让样式开发更高效</p>
+            <div>
+                <span class="badge">CSS 预处理器</span>
+                <span class="badge secondary">SCSS 语法</span>
+                <span class="badge accent">前端开发</span>
+            </div>
+        </header>
+
+        <div class="content-grid">
+            <div class="card">
+                <h2>什么是 Sass？</h2>
+                <p>Sass（Syntactically Awesome Style Sheets）是一个 CSS 预处理器，它扩展了 CSS 的功能，提供了变量、嵌套规则、混合（mixins）、函数等高级功能，使 CSS 更易于维护和编写。</p>
+                
+                <div class="feature-grid">
+                    <div class="feature-item">
+                        <h4>变量系统</h4>
+                        <p>统一管理颜色、尺寸、字体等值</p>
+                    </div>
+                    <div class="feature-item">
+                        <h4>嵌套规则</h4>
+                        <p>清晰的层级结构，减少重复代码</p>
+                    </div>
+                    <div class="feature-item">
+                        <h4>混合功能</h4>
+                        <p>创建可复用的样式代码块</p>
+                    </div>
+                    <div class="feature-item">
+                        <h4>函数运算</h4>
+                        <p>动态计算样式值，支持数学运算</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>两种语法对比</h2>
+                
+                <div class="comparison">
+                    <div class="comparison-item scss">
+                        <h3>SCSS 语法</h3>
+                        <p>完全兼容 CSS3 语法，使用 <code>.scss</code> 扩展名</p>
+                        <div class="code-block">
+<span class="comment">// 变量定义</span><br>
+<span class="variable">$primary-color</span>: <span class="string">#3498db</span>;<br>
+<span class="variable">$font-stack</span>: <span class="string">Helvetica, sans-serif</span>;<br>
+<br>
+<span class="comment">// 嵌套规则</span><br>
+<span class="keyword">nav</span> {<br>
+&nbsp;&nbsp;<span class="keyword">ul</span> {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="variable">margin</span>: <span class="number">0</span>;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="variable">padding</span>: <span class="number">0</span>;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="variable">list-style</span>: <span class="keyword">none</span>;<br>
+&nbsp;&nbsp;}<br>
+<br>
+&nbsp;&nbsp;<span class="keyword">a</span> {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="variable">color</span>: <span class="variable">$primary-color</span>;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&<span class="keyword">:hover</span> {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="variable">text-decoration</span>: <span class="keyword">underline</span>;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;}<br>
+&nbsp;&nbsp;}<br>
+}
+                        </div>
+                        <div class="tip">推荐使用 SCSS 语法，更容易上手</div>
+                    </div>
+
+                    <div class="comparison-item sass">
+                        <h3>Sass 语法</h3>
+                        <p>基于缩进的语法，使用 <code>.sass</code> 扩展名</p>
+                        <div class="code-block">
+<span class="comment">// 变量定义</span><br>
+<span class="variable">$primary-color</span>: <span class="string">#3498db</span><br>
+<span class="variable">$font-stack</span>: <span class="string">Helvetica, sans-serif</span><br>
+<br>
+<span class="comment">// 嵌套规则</span><br>
+<span class="keyword">nav</span><br>
+&nbsp;&nbsp;<span class="keyword">ul</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="variable">margin</span>: <span class="number">0</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="variable">padding</span>: <span class="number">0</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="variable">list-style</span>: <span class="keyword">none</span><br>
+<br>
+&nbsp;&nbsp;<span class="keyword">a</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="variable">color</span>: <span class="variable">$primary-color</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;&<span class="keyword">:hover</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="variable">text-decoration</span>: <span class="keyword">underline</span>
+                        </div>
+                        <div class="warning">旧语法，新项目不建议使用</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="example-section">
+            <h3>核心特性示例</h3>
+            
+            <div class="content-grid">
+                <div class="card">
+                    <h3>变量系统</h3>
+                    <div class="code-block">
+<span class="comment">// 定义变量</span><br>
+<span class="variable">$primary-color</span>: <span class="string">#3498db</span>;<br>
+<span class="variable">$spacing-unit</span>: <span class="number">8px</span>;<br>
+<span class="variable">$font-size-base</span>: <span class="number">16px</span>;<br>
+<br>
+<span class="comment">// 使用变量</span><br>
+<span class="keyword">.header</span> {<br>
+&nbsp;&nbsp;<span class="variable">background-color</span>: <span class="variable">$primary-color</span>;<br>
+&nbsp;&nbsp;<span class="variable">padding</span>: <span class="variable">$spacing-unit</span> * <span class="number">2</span>;<br>
+&nbsp;&nbsp;<span class="variable">font-size</span>: <span class="variable">$font-size-base</span>;<br>
+}
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>混合功能</h3>
+                    <div class="code-block">
+<span class="comment">// 定义混合</span><br>
+<span class="keyword">@mixin</span> <span class="function">flex-center</span> {<br>
+&nbsp;&nbsp;<span class="variable">display</span>: <span class="keyword">flex</span>;<br>
+&nbsp;&nbsp;<span class="variable">justify-content</span>: <span class="keyword">center</span>;<br>
+&nbsp;&nbsp;<span class="variable">align-items</span>: <span class="keyword">center</span>;<br>
+}<br>
+<br>
+<span class="keyword">@mixin</span> <span class="function">border-radius</span>(<span class="variable">$radius</span>) {<br>
+&nbsp;&nbsp;<span class="variable">border-radius</span>: <span class="variable">$radius</span>;<br>
+}<br>
+<br>
+<span class="comment">// 使用混合</span><br>
+<span class="keyword">.card</span> {<br>
+&nbsp;&nbsp;<span class="keyword">@include</span> <span class="function">flex-center</span>;<br>
+&nbsp;&nbsp;<span class="keyword">@include</span> <span class="function">border-radius</span>(<span class="number">10px</span>);<br>
+}
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>嵌套规则</h3>
+                    <div class="code-block">
+<span class="keyword">.container</span> {<br>
+&nbsp;&nbsp;<span class="variable">width</span>: <span class="number">100%</span>;<br>
+<br>
+&nbsp;&nbsp;<span class="keyword">.header</span> {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="variable">background</span>: <span class="string">#333</span>;<br>
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">.logo</span> {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="variable">width</span>: <span class="number">100px</span>;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="variable">height</span>: <span class="number">50px</span>;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;}<br>
+&nbsp;&nbsp;}<br>
+<br>
+&nbsp;&nbsp;<span class="keyword">.button</span> {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="variable">background</span>: <span class="string">blue</span>;<br>
+<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&<span class="keyword">:hover</span> {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="variable">background</span>: <span class="string">darkblue</span>;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;}<br>
+&nbsp;&nbsp;}<br>
+}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>安装和使用</h2>
+            
+            <div class="installation-steps">
+                <div class="step">
+                    <h3>安装 Sass</h3>
+                    <p>使用 npm 或 yarn 全局安装 Sass：</p>
+                    <div class="command">npm install -g sass</div>
+                    <div class="command">yarn global add sass</div>
+                </div>
+
+                <div class="step">
+                    <h3>基本编译命令</h3>
+                    <p>编译 Sass 文件为 CSS：</p>
+                    <div class="command">sass input.scss output.css</div>
+                    <div class="command">sass --watch input.scss:output.css</div>
+                    <div class="command">sass input.scss output.css --style compressed</div>
+                </div>
+
+                <div class="step">
+                    <h3>项目配置</h3>
+                    <p>在 package.json 中添加脚本：</p>
+                    <div class="code-block">
+{<br>
+&nbsp;&nbsp;<span class="string">"scripts"</span>: {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="string">"sass"</span>: <span class="string">"sass src/scss:dist/css"</span>,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="string">"sass:watch"</span>: <span class="string">"sass --watch src/scss:dist/css"</span>,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="string">"sass:build"</span>: <span class="string">"sass src/scss:dist/css --style compressed"</span><br>
+&nbsp;&nbsp;},<br>
+&nbsp;&nbsp;<span class="string">"devDependencies"</span>: {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="string">"sass"</span>: <span class="string">"^1.77.0"</span><br>
+&nbsp;&nbsp;}<br>
+}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="example-section">
+            <h3>实际应用示例</h3>
+            
+            <div class="content-grid">
+                <div class="card">
+                    <h3>按钮组件</h3>
+                    <div class="code-block">
+<span class="keyword">@mixin</span> <span class="function">button-variant</span>(<span class="variable">$bg</span>, <span class="variable">$color</span>) {<br>
+&nbsp;&nbsp;<span class="variable">background</span>: <span class="variable">$bg</span>;<br>
+&nbsp;&nbsp;<span class="variable">color</span>: <span class="variable">$color</span>;<br>
+&nbsp;&nbsp;<span class="variable">border</span>: <span class="number">1px</span> <span class="keyword">solid</span> <span class="function">darken</span>(<span class="variable">$bg</span>, <span class="number">10%</span>);<br>
+<br>
+&nbsp;&nbsp;&<span class="keyword">:hover</span> {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="variable">background</span>: <span class="function">darken</span>(<span class="variable">$bg</span>, <span class="number">10%</span>);<br>
+&nbsp;&nbsp;}<br>
+}<br>
+<br>
+<span class="keyword">.button</span> {<br>
+&nbsp;&nbsp;<span class="variable">padding</span>: <span class="number">12px</span> <span class="number">24px</span>;<br>
+&nbsp;&nbsp;<span class="variable">border-radius</span>: <span class="number">4px</span>;<br>
+&nbsp;&nbsp;<span class="variable">cursor</span>: <span class="keyword">pointer</span>;<br>
+<br>
+&nbsp;&nbsp;&<span class="keyword">--primary</span> {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">@include</span> <span class="function">button-variant</span>(<span class="string">#3498db</span>, <span class="string">white</span>);<br>
+&nbsp;&nbsp;}<br>
+<br>
+&nbsp;&nbsp;&<span class="keyword">--secondary</span> {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">@include</span> <span class="function">button-variant</span>(<span class="string">#95a5a6</span>, <span class="string">white</span>);<br>
+&nbsp;&nbsp;}<br>
+}
+                    </div>
+                    <button class="demo-button">主要按钮</button>
+                    <button class="demo-button secondary">次要按钮</button>
+                </div>
+
+                <div class="card">
+                    <h3>响应式设计</h3>
+                    <div class="code-block">
+<span class="comment">// 断点变量</span><br>
+<span class="variable">$breakpoints</span>: (<br>
+&nbsp;&nbsp;<span class="string">'sm'</span>: <span class="number">576px</span>,<br>
+&nbsp;&nbsp;<span class="string">'md'</span>: <span class="number">768px</span>,<br>
+&nbsp;&nbsp;<span class="string">'lg'</span>: <span class="number">992px</span><br>
+);<br>
+<br>
+<span class="keyword">@mixin</span> <span class="function">respond-to</span>(<span class="variable">$breakpoint</span>) {<br>
+&nbsp;&nbsp;<span class="keyword">@media</span> (<span class="variable">min-width</span>: <span class="function">map-get</span>(<span class="variable">$breakpoints</span>, <span class="variable">$breakpoint</span>)) {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">@content</span>;<br>
+&nbsp;&nbsp;}<br>
+}<br>
+<br>
+<span class="keyword">.container</span> {<br>
+&nbsp;&nbsp;<span class="variable">width</span>: <span class="number">100%</span>;<br>
+<br>
+&nbsp;&nbsp;<span class="keyword">@include</span> <span class="function">respond-to</span>(<span class="string">'md'</span>) {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="variable">width</span>: <span class="number">750px</span>;<br>
+&nbsp;&nbsp;}<br>
+<br>
+&nbsp;&nbsp;<span class="keyword">@include</span> <span class="function">respond-to</span>(<span class="string">'lg'</span>) {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="variable">width</span>: <span class="number">970px</span>;<br>
+&nbsp;&nbsp;}<br>
+}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>最佳实践</h2>
+            
+            <div class="content-grid">
+                <div class="feature-item">
+                    <h4>文件组织</h4>
+                    <p>按功能模块组织 Sass 文件，提高可维护性</p>
+                </div>
+                
+                <div class="feature-item">
+                    <h4>命名规范</h4>
+                    <p>使用 BEM 或其他命名规范保持一致性</p>
+                </div>
+                
+                <div class="feature-item">
+                    <h4>避免过度嵌套</h4>
+                    <p>嵌套深度不超过 3-4 层，保持代码清晰</p>
+                </div>
+                
+                <div class="feature-item">
+                    <h4>使用模块系统</h4>
+                    <p>优先使用 @use 和 @forward 替代 @import</p>
+                </div>
+            </div>
+            
+            <div class="tip">
+                建议从 SCSS 语法开始学习，逐步掌握高级功能。合理使用变量和混合可以大大提高开发效率。
+            </div>
+        </div>
+
+        <footer class="footer">
+            <p>© 2024 Sass 使用指南 | 本页面使用 Sass 样式特性实现</p>
+            <p>相关文档：<a href="sass-usage-guide.md" download>下载 Markdown 版本</a></p>
+        </footer>
+    </div>
+
+    <script>
+        // 添加简单的交互效果
+        document.addEventListener('DOMContentLoaded', function() {
+            // 代码块点击复制功能
+            const codeBlocks = document.querySelectorAll('.code-block');
+            codeBlocks.forEach(block => {
+                block.addEventListener('click', function() {
+                    const text = this.textContent;
+                    navigator.clipboard.writeText(text).then(() => {
+                        const originalText = this.textContent;
+                        this.textContent = '已复制到剪贴板！';
+                        setTimeout(() => {
+                            this.textContent = originalText;
+                        }, 1500);
+                    });
+                });
+            });
+
+            // 按钮点击效果
+            const buttons = document.querySelectorAll('.demo-button');
+            buttons.forEach(button => {
+                button.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    this.style.transform = 'scale(0.95)';
+                    setTimeout(() => {
+                        this.style.transform = '';
+                    }, 150);
+                });
+            });
+
+            // 平滑滚动到锚点
+            document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+                anchor.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const targetId = this.getAttribute('href');
+                    if (targetId === '#') return;
+                    
+                    const targetElement = document.querySelector(targetId);
+                    if (targetElement) {
+                        targetElement.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'start'
+                        });
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>

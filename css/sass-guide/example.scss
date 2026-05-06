@@ -1,0 +1,788 @@
+// ==========================================================================
+// Sass 示例文件
+// 展示 Sass 的核心功能和实际应用
+// ==========================================================================
+
+// --------------------------------------------------------------------------
+// 变量定义
+// --------------------------------------------------------------------------
+
+// 颜色变量
+$primary-color: #3498db;
+$secondary-color: #2ecc71;
+$accent-color: #e74c3c;
+$dark-color: #2c3e50;
+$light-color: #ecf0f1;
+$text-color: #333;
+$border-color: #ddd;
+
+// 尺寸变量
+$spacing-unit: 8px;
+$font-size-base: 16px;
+$border-radius: 4px;
+$container-width: 1200px;
+
+// 断点变量
+$breakpoints: (
+  'xs': 0,
+  'sm': 576px,
+  'md': 768px,
+  'lg': 992px,
+  'xl': 1200px
+);
+
+// 字体变量
+$font-family-base: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+$font-family-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+
+// 阴影变量
+$shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.12);
+$shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+$shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.15);
+
+// --------------------------------------------------------------------------
+// 混合（Mixins）
+// --------------------------------------------------------------------------
+
+// 弹性盒子居中
+@mixin flex-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+// 弹性盒子列布局
+@mixin flex-column {
+  display: flex;
+  flex-direction: column;
+}
+
+// 响应式断点
+@mixin respond-to($breakpoint) {
+  @if map-has-key($breakpoints, $breakpoint) {
+    @media (min-width: map-get($breakpoints, $breakpoint)) {
+      @content;
+    }
+  } @else {
+    @warn "Unknown breakpoint: #{$breakpoint}";
+  }
+}
+
+// 按钮变体
+@mixin button-variant($background, $color) {
+  background-color: $background;
+  color: $color;
+  border: 1px solid darken($background, 10%);
+  
+  &:hover {
+    background-color: darken($background, 10%);
+    border-color: darken($background, 20%);
+  }
+  
+  &:active {
+    background-color: darken($background, 15%);
+    transform: translateY(1px);
+  }
+  
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    
+    &:hover {
+      background-color: $background;
+    }
+  }
+}
+
+// 卡片样式
+@mixin card-style($elevation: 'md') {
+  background: white;
+  border-radius: $border-radius * 2;
+  
+  @if $elevation == 'sm' {
+    box-shadow: $shadow-sm;
+  } @else if $elevation == 'md' {
+    box-shadow: $shadow-md;
+  } @else if $elevation == 'lg' {
+    box-shadow: $shadow-lg;
+  }
+  
+  transition: all 0.3s ease;
+  
+  &:hover {
+    transform: translateY(-2px);
+    
+    @if $elevation == 'sm' {
+      box-shadow: $shadow-md;
+    } @else if $elevation == 'md' {
+      box-shadow: $shadow-lg;
+    } @else if $elevation == 'lg' {
+      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+    }
+  }
+}
+
+// --------------------------------------------------------------------------
+// 函数（Functions）
+// --------------------------------------------------------------------------
+
+// 计算 rem 值
+@function rem($px) {
+  @return ($px / $font-size-base) * 1rem;
+}
+
+// 计算间距
+@function spacing($multiplier) {
+  @return $multiplier * $spacing-unit;
+}
+
+// 颜色变亮/变暗函数
+@function tint($color, $percentage) {
+  @return mix(white, $color, $percentage);
+}
+
+@function shade($color, $percentage) {
+  @return mix(black, $color, $percentage);
+}
+
+// --------------------------------------------------------------------------
+// 占位符（Placeholders）
+// --------------------------------------------------------------------------
+
+%reset-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+%clearfix {
+  &::after {
+    content: '';
+    display: table;
+    clear: both;
+  }
+}
+
+%visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+// --------------------------------------------------------------------------
+// 基础样式
+// --------------------------------------------------------------------------
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: $font-family-base;
+  font-size: $font-size-base;
+  line-height: 1.6;
+  color: $text-color;
+  background-color: $light-color;
+}
+
+.container {
+  width: 100%;
+  max-width: $container-width;
+  margin: 0 auto;
+  padding: 0 spacing(2);
+  
+  @include respond-to('md') {
+    padding: 0 spacing(3);
+  }
+  
+  @include respond-to('lg') {
+    padding: 0 spacing(4);
+  }
+}
+
+// --------------------------------------------------------------------------
+// 按钮组件
+// --------------------------------------------------------------------------
+
+.btn {
+  display: inline-block;
+  padding: spacing(1.5) spacing(3);
+  font-size: rem(16px);
+  font-weight: 500;
+  text-align: center;
+  text-decoration: none;
+  border-radius: $border-radius;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: none;
+  
+  // 按钮变体
+  &--primary {
+    @include button-variant($primary-color, white);
+  }
+  
+  &--secondary {
+    @include button-variant($secondary-color, white);
+  }
+  
+  &--accent {
+    @include button-variant($accent-color, white);
+  }
+  
+  &--outline {
+    background: transparent;
+    border: 2px solid $primary-color;
+    color: $primary-color;
+    
+    &:hover {
+      background: $primary-color;
+      color: white;
+    }
+  }
+  
+  // 按钮尺寸
+  &--sm {
+    padding: spacing(1) spacing(2);
+    font-size: rem(14px);
+  }
+  
+  &--lg {
+    padding: spacing(2) spacing(4);
+    font-size: rem(18px);
+  }
+  
+  &--block {
+    display: block;
+    width: 100%;
+  }
+}
+
+// --------------------------------------------------------------------------
+// 卡片组件
+// --------------------------------------------------------------------------
+
+.card {
+  @include card-style('md');
+  padding: spacing(3);
+  
+  &__header {
+    margin-bottom: spacing(2);
+    padding-bottom: spacing(2);
+    border-bottom: 1px solid $border-color;
+  }
+  
+  &__title {
+    font-size: rem(20px);
+    font-weight: 600;
+    color: $dark-color;
+    margin: 0;
+  }
+  
+  &__subtitle {
+    font-size: rem(14px);
+    color: tint($text-color, 40%);
+    margin-top: spacing(0.5);
+  }
+  
+  &__body {
+    line-height: 1.7;
+    
+    p {
+      margin-bottom: spacing(2);
+      
+      &:last-child {
+        margin-bottom: 0;
+      }
+    }
+  }
+  
+  &__footer {
+    margin-top: spacing(3);
+    padding-top: spacing(2);
+    border-top: 1px solid $border-color;
+    text-align: right;
+  }
+  
+  // 卡片变体
+  &--featured {
+    border-left: 4px solid $primary-color;
+  }
+  
+  &--dark {
+    background: $dark-color;
+    color: white;
+    
+    .card__title {
+      color: white;
+    }
+    
+    .card__subtitle {
+      color: tint($light-color, 20%);
+    }
+  }
+}
+
+// --------------------------------------------------------------------------
+// 网格系统
+// --------------------------------------------------------------------------
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0 spacing(-1);
+  
+  @extend %clearfix;
+}
+
+.col {
+  flex: 1 0 0%;
+  padding: 0 spacing(1);
+  
+  // 响应式列
+  @for $i from 1 through 12 {
+    &-#{$i} {
+      flex: 0 0 auto;
+      width: percentage($i / 12);
+    }
+  }
+  
+  // 响应式断点
+  @each $breakpoint, $value in $breakpoints {
+    @if $breakpoint != 'xs' {
+      @include respond-to($breakpoint) {
+        @for $i from 1 through 12 {
+          &-#{$breakpoint}-#{$i} {
+            flex: 0 0 auto;
+            width: percentage($i / 12);
+          }
+        }
+      }
+    }
+  }
+}
+
+// --------------------------------------------------------------------------
+// 导航组件
+// --------------------------------------------------------------------------
+
+.nav {
+  background: white;
+  box-shadow: $shadow-sm;
+  padding: spacing(2) 0;
+  
+  &__container {
+    @extend .container;
+    @include flex-center;
+    justify-content: space-between;
+  }
+  
+  &__brand {
+    font-size: rem(20px);
+    font-weight: 700;
+    color: $primary-color;
+    text-decoration: none;
+    
+    &:hover {
+      color: darken($primary-color, 10%);
+    }
+  }
+  
+  &__menu {
+    @extend %reset-list;
+    display: flex;
+    gap: spacing(2);
+    
+    @include respond-to('md') {
+      gap: spacing(3);
+    }
+  }
+  
+  &__item {
+    position: relative;
+  }
+  
+  &__link {
+    color: $text-color;
+    text-decoration: none;
+    padding: spacing(1) spacing(2);
+    border-radius: $border-radius;
+    transition: all 0.3s ease;
+    
+    &:hover {
+      color: $primary-color;
+      background: tint($primary-color, 95%);
+    }
+    
+    &--active {
+      color: $primary-color;
+      background: tint($primary-color, 90%);
+      font-weight: 500;
+    }
+  }
+}
+
+// --------------------------------------------------------------------------
+// 表单组件
+// --------------------------------------------------------------------------
+
+.form {
+  &__group {
+    margin-bottom: spacing(3);
+  }
+  
+  &__label {
+    display: block;
+    margin-bottom: spacing(1);
+    font-weight: 500;
+    color: $dark-color;
+    
+    &--required::after {
+      content: '*';
+      color: $accent-color;
+      margin-left: 2px;
+    }
+  }
+  
+  &__control {
+    width: 100%;
+    padding: spacing(1.5) spacing(2);
+    font-size: rem(16px);
+    font-family: $font-family-base;
+    border: 1px solid $border-color;
+    border-radius: $border-radius;
+    transition: all 0.3s ease;
+    
+    &:focus {
+      outline: none;
+      border-color: $primary-color;
+      box-shadow: 0 0 0 3px rgba($primary-color, 0.1);
+    }
+    
+    &--error {
+      border-color: $accent-color;
+      
+      &:focus {
+        box-shadow: 0 0 0 3px rgba($accent-color, 0.1);
+      }
+    }
+  }
+  
+  &__error {
+    color: $accent-color;
+    font-size: rem(14px);
+    margin-top: spacing(0.5);
+  }
+  
+  &__help {
+    color: tint($text-color, 40%);
+    font-size: rem(14px);
+    margin-top: spacing(0.5);
+  }
+}
+
+// --------------------------------------------------------------------------
+// 工具类
+// --------------------------------------------------------------------------
+
+// 文本工具类
+.text {
+  @each $color-name, $color-value in (
+    'primary': $primary-color,
+    'secondary': $secondary-color,
+    'accent': $accent-color,
+    'dark': $dark-color,
+    'light': $light-color,
+    'muted': tint($text-color, 40%)
+  ) {
+    &--#{$color-name} {
+      color: $color-value;
+    }
+  }
+  
+  &--center {
+    text-align: center;
+  }
+  
+  &--right {
+    text-align: right;
+  }
+  
+  &--bold {
+    font-weight: 700;
+  }
+  
+  &--uppercase {
+    text-transform: uppercase;
+  }
+}
+
+// 间距工具类
+@each $direction in (t, r, b, l, x, y) {
+  @for $i from 0 through 5 {
+    $property: '';
+    $value: spacing($i);
+    
+    @if $direction == 't' {
+      $property: 'margin-top';
+    } @else if $direction == 'r' {
+      $property: 'margin-right';
+    } @else if $direction == 'b' {
+      $property: 'margin-bottom';
+    } @else if $direction == 'l' {
+      $property: 'margin-left';
+    } @else if $direction == 'x' {
+      $property: 'margin-left margin-right';
+    } @else if $direction == 'y' {
+      $property: 'margin-top margin-bottom';
+    }
+    
+    .m#{$direction}-#{$i} {
+      #{$property}: $value;
+    }
+    
+    .p#{$direction}-#{$i} {
+      #{$property}: $value;
+    }
+  }
+}
+
+// 显示工具类
+.d-none {
+  display: none;
+}
+
+.d-block {
+  display: block;
+}
+
+.d-flex {
+  display: flex;
+}
+
+@each $breakpoint, $value in $breakpoints {
+  @if $breakpoint != 'xs' {
+    @include respond-to($breakpoint) {
+      .d-#{$breakpoint}-none {
+        display: none;
+      }
+      
+      .d-#{$breakpoint}-block {
+        display: block;
+      }
+      
+      .d-#{$breakpoint}-flex {
+        display: flex;
+      }
+    }
+  }
+}
+
+// --------------------------------------------------------------------------
+// 页面布局示例
+// --------------------------------------------------------------------------
+
+.header {
+  background: linear-gradient(135deg, $primary-color 0%, darken($primary-color, 10%) 100%);
+  color: white;
+  padding: spacing(6) 0;
+  text-align: center;
+  
+  &__title {
+    font-size: rem(36px);
+    font-weight: 700;
+    margin-bottom: spacing(2);
+    
+    @include respond-to('md') {
+      font-size: rem(48px);
+    }
+  }
+  
+  &__subtitle {
+    font-size: rem(18px);
+    opacity: 0.9;
+    max-width: 600px;
+    margin: 0 auto;
+    
+    @include respond-to('md') {
+      font-size: rem(20px);
+    }
+  }
+}
+
+.features {
+  padding: spacing(6) 0;
+  background: white;
+  
+  &__grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: spacing(4);
+    
+    @include respond-to('md') {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    
+    @include respond-to('lg') {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+  
+  &__item {
+    text-align: center;
+    padding: spacing(3);
+    
+    .icon {
+      width: 60px;
+      height: 60px;
+      background: tint($primary-color, 90%);
+      color: $primary-color;
+      border-radius: 50%;
+      @include flex-center;
+      margin: 0 auto spacing(2);
+      font-size: rem(24px);
+    }
+    
+    h3 {
+      font-size: rem(20px);
+      margin-bottom: spacing(1);
+      color: $dark-color;
+    }
+    
+    p {
+      color: tint($text-color, 30%);
+    }
+  }
+}
+
+.footer {
+  background: $dark-color;
+  color: white;
+  padding: spacing(6) 0;
+  
+  &__content {
+    @extend .container;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: spacing(4);
+    
+    @include respond-to('md') {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+  
+  &__section {
+    h4 {
+      font-size: rem(18px);
+      margin-bottom: spacing(2);
+      color: white;
+    }
+    
+    ul {
+      @extend %reset-list;
+      
+      li {
+        margin-bottom: spacing(1);
+        
+        a {
+          color: tint($light-color, 20%);
+          text-decoration: none;
+          
+          &:hover {
+            color: white;
+          }
+        }
+      }
+    }
+  }
+  
+  &__copyright {
+    text-align: center;
+    padding-top: spacing(4);
+    margin-top: spacing(4);
+    border-top: 1px solid rgba(white, 0.1);
+    color: tint($light-color, 30%);
+    font-size: rem(14px);
+  }
+}
+
+// --------------------------------------------------------------------------
+// 动画和过渡
+// --------------------------------------------------------------------------
+
+.fade-in {
+  animation: fadeIn 0.5s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.slide-in {
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+// --------------------------------------------------------------------------
+// 主题变量（用于主题切换）
+// --------------------------------------------------------------------------
+
+:root {
+  // 默认主题
+  --primary-color: #{$primary-color};
+  --secondary-color: #{$secondary-color};
+  --accent-color: #{$accent-color};
+  --dark-color: #{$dark-color};
+  --light-color: #{$light-color};
+}
+
+.theme-dark {
+  // 暗色主题
+  --primary-color: #{darken($primary-color, 10%)};
+  --secondary-color: #{darken($secondary-color, 10%)};
+  --accent-color: #{lighten($accent-color, 10%)};
+  --dark-color: #{$light-color};
+  --light-color: #{darken($dark-color, 10%)};
+}
+
+// --------------------------------------------------------------------------
+// 打印样式
+// --------------------------------------------------------------------------
+
+@media print {
+  .no-print {
+    display: none;
+  }
+  
+  body {
+    font-size: 12pt;
+    line-height: 1.4;
+  }
+  
+  .container {
+    max-width: 100%;
+    padding: 0;
+  }
+}

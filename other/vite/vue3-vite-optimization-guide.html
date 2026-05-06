@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vue3 + Vite 打包优化实践指南</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/typescript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/jsx.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-color: #007acc;
+            --secondary-color: #2d2d2d;
+            --accent-color: #61dafb;
+            --text-color: #333;
+            --light-bg: #f8f9fa;
+            --border-color: #e1e4e8;
+            --success-color: #28a745;
+            --warning-color: #ffc107;
+            --danger-color: #dc3545;
+            --info-color: #17a2b8;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            color: var(--text-color);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            display: flex;
+            gap: 30px;
+        }
+
+        .sidebar {
+            width: 280px;
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            position: sticky;
+            top: 20px;
+            height: fit-content;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+        }
+
+        .sidebar h2 {
+            color: var(--primary-color);
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--accent-color);
+            font-size: 1.5rem;
+        }
+
+        .toc {
+            list-style: none;
+        }
+
+        .toc li {
+            margin-bottom: 12px;
+            position: relative;
+        }
+
+        .toc a {
+            color: var(--text-color);
+            text-decoration: none;
+            display: block;
+            padding: 8px 12px;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .toc a:hover {
+            background: var(--light-bg);
+            color: var(--primary-color);
+            border-left-color: var(--accent-color);
+            transform: translateX(5px);
+        }
+
+        .toc a.active {
+            background: var(--primary-color);
+            color: white;
+            border-left-color: var(--accent-color);
+        }
+
+        .main-content {
+            flex: 1;
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 3px solid var(--accent-color);
+        }
+
+        .header h1 {
+            color: var(--primary-color);
+            font-size: 2.5rem;
+            margin-bottom: 15px;
+            background: linear-gradient(45deg, var(--primary-color), var(--accent-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header .subtitle {
+            color: var(--secondary-color);
+            font-size: 1.2rem;
+            opacity: 0.8;
+        }
+
+        .content-section {
+            margin-bottom: 40px;
+        }
+
+        .content-section h2 {
+            color: var(--primary-color);
+            font-size: 1.8rem;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--light-bg);
+            position: relative;
+        }
+
+        .content-section h2::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            width: 60px;
+            height: 2px;
+            background: var(--accent-color);
+        }
+
+        .content-section h3 {
+            color: var(--secondary-color);
+            font-size: 1.4rem;
+            margin: 25px 0 15px;
+        }
+
+        .content-section h4 {
+            color: var(--secondary-color);
+            font-size: 1.2rem;
+            margin: 20px 0 10px;
+        }
+
+        .content-section p {
+            margin-bottom: 15px;
+            font-size: 1.1rem;
+        }
+
+        .content-section ul, .content-section ol {
+            margin: 15px 0 15px 25px;
+        }
+
+        .content-section li {
+            margin-bottom: 8px;
+            font-size: 1.1rem;
+        }
+
+        .code-block {
+            background: var(--secondary-color);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            overflow-x: auto;
+            position: relative;
+        }
+
+        .code-block pre {
+            margin: 0;
+        }
+
+        .code-block code {
+            font-family: 'Fira Code', 'Consolas', 'Monaco', 'Andale Mono', 'Ubuntu Mono', monospace;
+            font-size: 0.95rem;
+        }
+
+        .code-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            color: #ccc;
+            font-size: 0.9rem;
+        }
+
+        .copy-btn {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: background 0.3s;
+        }
+
+        .copy-btn:hover {
+            background: var(--accent-color);
+        }
+
+        .note {
+            background: #e7f3ff;
+            border-left: 4px solid var(--primary-color);
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+
+        .note strong {
+            color: var(--primary-color);
+        }
+
+        .warning {
+            background: #fff3cd;
+            border-left: 4px solid var(--warning-color);
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+
+        .warning strong {
+            color: var(--warning-color);
+        }
+
+        .tip {
+            background: #d4edda;
+            border-left: 4px solid var(--success-color);
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+
+        .tip strong {
+            color: var(--success-color);
+        }
+
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .comparison-table th {
+            background: var(--primary-color);
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        .comparison-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .comparison-table tr:hover {
+            background: var(--light-bg);
+        }
+
+        .comparison-table .good {
+            color: var(--success-color);
+            font-weight: 600;
+        }
+
+        .comparison-table .bad {
+            color: var(--danger-color);
+            font-weight: 600;
+        }
+
+        .comparison-table .neutral {
+            color: var(--warning-color);
+            font-weight: 600;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-color);
+            color: var(--secondary-color);
+            font-size: 0.9rem;
+        }
+
+        .footer a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                position: static;
+                max-height: none;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .main-content {
+                padding: 20px;
+            }
+        }
+
+        .back-to-top {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: var(--primary-color);
+            color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+            font-size: 1.5rem;
+            box-shadow: 0 4px 15px rgba(0, 122, 204, 0.3);
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .back-to-top:hover {
+            background: var(--accent-color);
+            transform: translateY(-5px);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <aside class="sidebar">
+            <h2>📚 目录</h2>
+            <ul class="toc" id="toc">
+                <li><a href="#概述">概述</a></li>
+                <li><a href="#为什么需要打包优化">为什么需要打包优化</a></li>
+                <li><a href="#基础配置优化">基础配置优化</a></li>
+                <li><a href="#代码分割策略">代码分割策略</a></li>
+                <li><a href="#性能优化技巧">性能优化技巧</a></li>
+                <li><a href="#构建优化">构建优化</a></li>
+                <li><a href="#监控与分析">监控与分析</a></li>
+                <li><a href="#最佳实践总结">最佳实践总结</a></li>
+                <li><a href="#常见问题与解决方案">常见问题与解决方案</a></li>
+                <li><a href="#工具推荐">工具推荐</a></li>
+                <li><a href="#结语">结语</a></li>
+            </ul>
+        </aside>
+
+        <main class="main-content">
+            <header class="header">
+                <h1>Vue3 + Vite 打包优化实践指南</h1>
+                <p class="subtitle">React 技术文档 - 详细解析与最佳实践</p>
+            </header>
+
+            <div id="content">
+                <h1>Vue3 + Vite 打包优化实践指南</h1>
+
+<h2 id="概述">概述</h2>
+<p>Vue3 结合 Vite 构建工具提供了极快的开发体验，但在生产环境打包时，仍然需要进行优化以提升应用性能。本指南将详细介绍从代码分包到性能提升的完整优化实践。</p>
+
+<h2 id="为什么需要打包优化">为什么需要打包优化</h2>
+<p>- <strong>减少首屏加载时间</strong>：通过代码分割和懒加载减少初始包体积 - <strong>提升用户体验</strong>：更快的页面响应和交互 - <strong>降低服务器带宽成本</strong>：减少传输数据量 - <strong>提高缓存利用率</strong>：合理分包提升缓存命中率 - <strong>优化 SEO</strong>：更快的加载速度有利于搜索引擎排名</p>
+
+<h2 id="基础配置优化">基础配置优化</h2>
+
+<h3>1. Vite 配置文件优化</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// vite.config.ts
+<p>import { defineConfig } from 'vite' import vue from '@vitejs/plugin-vue' import { visualizer } from 'rollup-plugin-visualizer'</p>
+
+<p>export default defineConfig({   plugins: [     vue(),     visualizer({       open: true,       gzipSize: true,       brotliSize: true     })   ],   build: {     target: 'es2015',     minify: 'terser',     terserOptions: {       compress: {         drop_console: true,         drop_debugger: true       }     },     rollupOptions: {       output: {         manualChunks: {           'vue-vendor': ['vue', 'vue-router', 'pinia'],           'ui-library': ['element-plus', 'vant'],           'utils': ['lodash-es', 'dayjs', 'axios']         }       }     }   } })</code></pre></div></p>
+
+<h3>2. 环境变量配置</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// .env.production
+<p>VITE_APP_TITLE=生产环境 VITE_APP_API_BASE=https://api.example.com VITE_APP_CDN_URL=https://cdn.example.com</p>
+
+<p>// .env.development VITE_APP_TITLE=开发环境 VITE_APP_API_BASE=http://localhost:3000</code></pre></div></p>
+
+<h2 id="代码分割策略">代码分割策略</h2>
+
+<h3>1. 路由级代码分割</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// router/index.js
+<p>import { createRouter, createWebHistory } from 'vue-router'</p>
+
+<p>const routes = [   {     path: '/',     name: 'Home',     component: () => import('@/views/Home.vue')   },   {     path: '/about',     name: 'About',     component: () => import('@/views/About.vue')   },   {     path: '/user/:id',     name: 'UserProfile',     component: () => import('@/views/UserProfile.vue')   } ]</p>
+
+<p>const router = createRouter({   history: createWebHistory(),   routes })</p>
+
+<p>export default router</code></pre></div></p>
+
+<h3>2. 组件级懒加载</h3>
+
+<div class="code-block"><div class="code-header">vue</div><pre><code class="language-vue"><!-- UserList.vue -->
+<p><script setup> import { defineAsyncComponent } from 'vue'</p>
+
+<p>const UserCard = defineAsyncComponent(() =>   import('./UserCard.vue') )</p>
+
+<p>const UserFilter = defineAsyncComponent(() =>   import('./UserFilter.vue').then(module => module.default) ) </script></code></pre></div></p>
+
+<h3>3. 第三方库按需加载</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// 按需引入 Element Plus
+<p>import { createApp } from 'vue' import App from './App.vue' import { ElButton, ElInput, ElTable } from 'element-plus' import 'element-plus/dist/index.css'</p>
+
+<p>const app = createApp(App)</p>
+
+<p>app.use(ElButton) app.use(ElInput) app.use(ElTable)</p>
+
+<p>app.mount('#app')</code></pre></div></p>
+
+<h2 id="性能优化技巧">性能优化技巧</h2>
+
+<h3>1. 图片优化</h3>
+
+<div class="code-block"><div class="code-header">vue</div><pre><code class="language-vue"><!-- 使用 WebP 格式和懒加载 -->
+<p><template>   <img     :src="imageSrc"     :srcset="<code>${imageSrc}?format=webp 1x, ${imageSrc}?format=webp&dpr=2 2x</code>"     loading="lazy"     alt="示例图片"   /> </template></p>
+
+<p><script setup> const imageSrc = 'https://example.com/image.jpg' </script></code></pre></div></p>
+
+<h3>2. 字体优化</h3>
+
+<div class="code-block"><div class="code-header">css</div><pre><code class="language-css">/<em> 字体子集化和预加载 </em>/
+<p>@font-face {   font-family: 'CustomFont';   src: url('/fonts/custom-font.woff2') format('woff2');   font-display: swap;   font-weight: 400;   font-style: normal; }</p>
+
+<p>/<em> 使用系统字体栈作为回退 </em>/ body {   font-family: 'CustomFont', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }</code></pre></div></p>
+
+<h3>3. 缓存策略</h3>
+
+<div class="code-block"><div class="code-header">nginx</div><pre><code class="language-nginx"><h1>nginx 配置示例</h1>
+<p>location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {     expires 1y;     add_header Cache-Control "public, immutable"; }</p>
+
+<p>location / {     try_files $uri $uri/ /index.html;     add_header Cache-Control "no-cache"; }</code></pre></div></p>
+
+<h2 id="构建优化">构建优化</h2>
+
+<h3>1. 压缩配置</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// vite.config.ts - 压缩配置
+<p>export default defineConfig({   build: {     minify: 'terser',     terserOptions: {       compress: {         pure_funcs: ['console.log', 'console.debug'],         drop_console: process.env.NODE_ENV === 'production',         drop_debugger: true       }     },     cssCodeSplit: true,     cssMinify: true   } })</code></pre></div></p>
+
+<h3>2. Gzip/Brotli 压缩</h3>
+
+<div class="code-block"><div class="code-header">bash</div><pre><code class="language-bash"><h1>安装压缩插件</h1>
+<p>npm install vite-plugin-compression --save-dev</p>
+
+<h1>vite.config.ts 配置</h1>
+<p>import compression from 'vite-plugin-compression'</p>
+
+<p>export default defineConfig({   plugins: [     compression({       algorithm: 'gzip',       ext: '.gz'     }),     compression({       algorithm: 'brotliCompress',       ext: '.br'     })   ] })</code></pre></div></p>
+
+<h3>3. 预渲染配置</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// vite.config.ts - 预渲染
+<p>import { defineConfig } from 'vite' import vue from '@vitejs/plugin-vue' import { createHtmlPlugin } from 'vite-plugin-html'</p>
+
+<p>export default defineConfig({   plugins: [     vue(),     createHtmlPlugin({       minify: true,       inject: {         data: {           title: 'Vue3 应用',           description: '优化的 Vue3 应用',           keywords: 'vue3,vite,优化'         }       }     })   ] })</code></pre></div></p>
+
+<h2 id="监控与分析">监控与分析</h2>
+
+<h3>1. 构建分析工具</h3>
+
+<div class="code-block"><div class="code-header">bash</div><pre><code class="language-bash"><h1>安装分析工具</h1>
+<p>npm install rollup-plugin-visualizer --save-dev npm install vite-plugin-bundle-analyzer --save-dev</code></pre></div></p>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// vite.config.ts - 分析配置
+<p>import { defineConfig } from 'vite' import { visualizer } from 'rollup-plugin-visualizer' import { bundleAnalyzer } from 'vite-plugin-bundle-analyzer'</p>
+
+<p>export default defineConfig({   plugins: [     visualizer({       open: true,       filename: 'stats.html',       gzipSize: true,       brotliSize: true     }),     bundleAnalyzer({       analyzerMode: 'static',       reportFilename: 'bundle-analysis.html',       openAnalyzer: false     })   ] })</code></pre></div></p>
+
+<h3>2. 性能监控</h3>
+
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// performance-monitor.js
+<p>export class PerformanceMonitor {   constructor() {     this.metrics = {}     this.init()   }</p>
+
+<p>  init() {     // 监听性能指标     if (window.performance) {       const navigationTiming = performance.getEntriesByType('navigation')[0]</p>
+
+<p>      this.metrics = {         dns: navigationTiming.domainLookupEnd - navigationTiming.domainLookupStart,         tcp: navigationTiming.connectEnd - navigationTiming.connectStart,         request: navigationTiming.responseStart - navigationTiming.requestStart,         response: navigationTiming.responseEnd - navigationTiming.responseStart,         domReady: navigationTiming.domContentLoadedEventEnd - navigationTiming.fetchStart,         load: navigationTiming.loadEventEnd - navigationTiming.fetchStart       }     }   }</p>
+
+<p>  report() {     // 上报性能数据     console.log('性能指标:', this.metrics)   } }</code></pre></div></p>
+
+<h2 id="最佳实践总结">最佳实践总结</h2>
+
+<h3>1. 开发阶段优化</h3>
+<p>- 使用 Vite 的热更新功能 - 配置合理的 ESLint 和 Prettier 规则 - 启用 TypeScript 严格模式 - 使用组件库的按需引入</p>
+
+<h3>2. 构建阶段优化</h3>
+<p>- 启用代码分割和懒加载 - 配置合适的压缩选项 - 生成 sourcemap 用于调试 - 使用 CDN 加速静态资源</p>
+
+<h3>3. 部署阶段优化</h3>
+<p>- 配置 HTTP/2 或 HTTP/3 - 启用 Brotli 压缩 - 设置合理的缓存策略 - 使用 CDN 分发静态资源</p>
+
+<h3>4. 运行时优化</h3>
+<p>- 使用 Vue3 的组合式 API - 合理使用 computed 和 watch - 避免不必要的重新渲染 - 使用虚拟列表处理大数据</p>
+
+<h2 id="常见问题与解决方案">常见问题与解决方案</h2>
+
+<h3>1. 包体积过大</h3>
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// 解决方案：分析包体积
+<p>npm run build -- --report</p>
+
+<p>// 使用 webpack-bundle-analyzer const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin</code></pre></div></p>
+
+<h3>2. 首屏加载慢</h3>
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// 解决方案：预加载关键资源
+<link rel="preload" href="/fonts/important.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/js/main.js" as="script"></code></pre></div>
+
+<h3>3. 内存泄漏</h3>
+<div class="code-block"><div class="code-header">javascript</div><pre><code class="language-javascript">// 解决方案：正确清理副作用
+<p>import { onUnmounted } from 'vue'</p>
+
+<p>onUnmounted(() => {   // 清理定时器、事件监听器等   clearInterval(timer)   window.removeEventListener('resize', handleResize) })</code></pre></div></p>
+
+<h2 id="工具推荐">工具推荐</h2>
+
+<h3>1. 构建工具</h3>
+<p>- <strong>Vite</strong>: 下一代前端构建工具 - <strong>Rollup</strong>: 模块打包器 - <strong>esbuild</strong>: 极速 JavaScript 打包器</p>
+
+<h3>2. 分析工具</h3>
+<p>- <strong>Webpack Bundle Analyzer</strong>: 包体积分析 - <strong>Lighthouse</strong>: 性能分析 - <strong>PageSpeed Insights</strong>: 页面速度分析</p>
+
+<h3>3. 监控工具</h3>
+<p>- <strong>Sentry</strong>: 错误监控 - <strong>Google Analytics</strong>: 用户行为分析 - <strong>New Relic</strong>: 应用性能监控</p>
+
+<h2 id="结语">结语</h2>
+<p>Vue3 + Vite 的组合为现代前端开发提供了强大的工具链。通过合理的打包优化策略，可以显著提升应用性能，改善用户体验。建议根据实际项目需求，选择适合的优化方案，并在开发过程中持续监控和调整。</p>
+
+<p>记住：优化是一个持续的过程，需要根据用户数据和业务需求不断调整。定期检查性能指标，保持代码质量，才能构建出高性能的 Vue3 应用。</p>
+            </div>
+
+            <footer class="footer">
+                <p>© 2024 React 技术文档 | 生成时间: <span id="current-date"></span></p>
+                <p>本文档基于 React 官方文档和社区最佳实践编写</p>
+                <p><a href="#top">返回顶部</a></p>
+            </footer>
+        </main>
+    </div>
+
+    <a href="#top" class="back-to-top" id="back-to-top">↑</a>
+
+    <script>
+        // 设置当前日期
+        document.getElementById('current-date').textContent = new Date().toLocaleDateString('zh-CN');
+        
+        // 代码高亮
+        document.addEventListener('DOMContentLoaded', function() {
+            hljs.highlightAll();
+        });
+        
+        // 复制代码功能
+        function copyCode(button) {
+            const codeBlock = button.parentElement.nextElementSibling;
+            const codeText = codeBlock.textContent;
+            
+            navigator.clipboard.writeText(codeText).then(() => {
+                const originalText = button.textContent;
+                button.textContent = '已复制!';
+                button.style.background = 'var(--success-color)';
+                
+                setTimeout(() => {
+                    button.textContent = originalText;
+                    button.style.background = 'var(--primary-color)';
+                }, 2000);
+            }).catch(err => {
+                console.error('复制失败:', err);
+                button.textContent = '复制失败';
+                button.style.background = 'var(--danger-color)';
+                
+                setTimeout(() => {
+                    button.textContent = '复制代码';
+                    button.style.background = 'var(--primary-color)';
+                }, 2000);
+            });
+        }
+        
+        // 目录导航高亮
+        window.addEventListener('scroll', function() {
+            const sections = document.querySelectorAll('.content-section h2');
+            const tocLinks = document.querySelectorAll('.toc a');
+            
+            let currentSection = '';
+            
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                if (scrollY >= sectionTop - 100) {
+                    currentSection = section.getAttribute('id');
+                }
+            });
+            
+            tocLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href') === `#${currentSection}`) {
+                    link.classList.add('active');
+                }
+            });
+            
+            // 显示/隐藏返回顶部按钮
+            const backToTop = document.getElementById('back-to-top');
+            if (window.scrollY > 300) {
+                backToTop.style.display = 'flex';
+            } else {
+                backToTop.style.display = 'none';
+            }
+        });
+        
+        // 平滑滚动
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function(e) {
+                e.preventDefault();
+                
+                const targetId = this.getAttribute('href');
+                if (targetId === '#') return;
+                
+                const targetElement = document.querySelector(targetId);
+                if (targetElement) {
+                    window.scrollTo({
+                        top: targetElement.offsetTop - 20,
+                        behavior: 'smooth'
+                    });
+                }
+            });
+        });
+        
+        // 初始化显示返回顶部按钮
+        document.getElementById('back-to-top').style.display = 'none';
+    </script>
+</body>
+</html>
