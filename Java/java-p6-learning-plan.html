@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Java P6高级工程师学习计划</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:"Microsoft YaHei","PingFang SC","Helvetica Neue",Arial,sans-serif;color:#1a1a2e;background:#fff;line-height:1.7;font-size:13px}
+.cover{page-break-after:always;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f0c29 0%,#302b63 50%,#24243e 100%);color:#fff;text-align:center;padding:40px}
+.cover-icon{font-size:80px;margin-bottom:20px}
+.cover h1{font-size:42px;font-weight:800;letter-spacing:4px;margin-bottom:12px}
+.cover h2{font-size:18px;font-weight:400;opacity:.85;letter-spacing:2px;margin-bottom:30px}
+.cover-line{width:120px;height:3px;background:linear-gradient(90deg,#e94560,#f5a623);margin:0 auto 30px;border-radius:2px}
+.cover-meta{display:flex;flex-wrap:wrap;justify-content:center;gap:12px 24px;max-width:600px}
+.cover-meta span{font-size:13px;opacity:.9;background:rgba(255,255,255,.1);padding:6px 14px;border-radius:20px}
+.toc{page-break-after:always;padding:50px 40px;background:#fafbff}
+.toc h2{text-align:center;font-size:28px;color:#302b63;margin-bottom:30px;letter-spacing:8px}
+.toc-list{list-style:none;max-width:700px;margin:0 auto}
+.toc-list li{padding:8px 0;border-bottom:1px dashed #e0e0e0}
+.toc-list li.chapter{font-size:15px;font-weight:700;color:#302b63;padding-top:16px;border-bottom:1px solid #ccc}
+.toc-list li.section{font-size:12px;color:#666;padding-left:24px}
+.content{padding:20px 40px 40px}
+.ct{font-size:22px;color:#302b63;border-bottom:3px solid #e94560;padding-bottom:8px;margin:36px 0 20px;display:flex;align-items:center}
+.num{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;background:linear-gradient(135deg,#e94560,#f5a623);color:#fff;border-radius:50%;font-size:16px;font-weight:700;margin-right:12px;flex-shrink:0}
+h3{font-size:16px;color:#302b63;margin:24px 0 12px;padding-left:12px;border-left:4px solid #e94560}
+p{margin:8px 0;color:#333}
+table{width:100%;border-collapse:collapse;margin:12px 0 20px;font-size:12px}
+th{background:linear-gradient(135deg,#302b63,#24243e);color:#fff;padding:10px 12px;text-align:left;font-weight:600}
+td{padding:8px 12px;border-bottom:1px solid #eee;vertical-align:top}
+tr:nth-child(even) td{background:#f8f9ff}
+.pd{background:linear-gradient(135deg,#f0f0ff,#fafbff);border-radius:12px;padding:20px;margin:12px 0;text-align:center}
+.ps{display:inline-block;background:linear-gradient(135deg,#302b63,#24243e);color:#fff;padding:14px 18px;border-radius:10px;font-size:12px;line-height:1.6;text-align:center;min-width:140px}
+.pa{display:inline-block;font-size:24px;color:#e94560;margin:0 6px;vertical-align:middle;font-weight:700}
+.sg{margin:12px 0}
+.si{display:flex;align-items:center;padding:8px 0;border-bottom:1px solid #f0f0f0}
+.sn{width:120px;font-weight:700;color:#302b63;flex-shrink:0}
+.sl{flex:1;color:#555;font-size:12px}
+.sd{width:100px;text-align:right;flex-shrink:0}
+.d{display:inline-block;width:14px;height:14px;border-radius:50%;margin:0 2px}
+.d.f{background:linear-gradient(135deg,#e94560,#f5a623)}
+.d.e{background:#e0e0e0}
+.wc{background:#fff;border:1px solid #e0e4f0;border-radius:10px;margin:12px 0;overflow:hidden;box-shadow:0 2px 8px rgba(48,43,99,.06)}
+.wh{background:linear-gradient(135deg,#302b63,#24243e);color:#fff;padding:10px 16px;font-size:14px;font-weight:600}
+.wt{list-style:none;padding:12px 16px}
+.wt li{padding:5px 0;font-size:12px;color:#444}
+.rc{background:#fff;border-left:4px solid #302b63;border-radius:0 8px 8px 0;padding:10px 14px;margin:8px 0;box-shadow:0 2px 6px rgba(0,0,0,.05)}
+.rt{font-weight:700;color:#302b63;font-size:13px}
+.rl{color:#e94560;font-size:11px;word-break:break-all;margin:3px 0}
+.rd{color:#888;font-size:11px}
+.proj{background:linear-gradient(135deg,#fafbff,#f0f0ff);border:1px solid #d0d4f0;border-radius:10px;margin:12px 0;overflow:hidden}
+.pn{background:linear-gradient(135deg,#e94560,#f5a623);color:#fff;padding:10px 16px;font-size:14px;font-weight:700}
+.pd2{padding:12px 16px;font-size:12px;color:#444;line-height:1.8}
+.ib{border-radius:10px;padding:14px 16px;margin:10px 0}
+.ib.iv{background:#f0f4ff;border-left:4px solid #302b63}
+.ib.tip{background:#f0fff4;border-left:4px solid #10b981}
+.ib.warn{background:#fff8f0;border-left:4px solid #f5a623}
+.bt{font-weight:700;font-size:14px;margin-bottom:6px}
+.ib.iv .bt{color:#302b63}
+.ib.tip .bt{color:#10b981}
+.ib.warn .bt{color:#f5a623}
+.ib p{font-size:12px;color:#444;margin:0}
+pre{background:#1a1a2e;color:#e0e0e0;padding:16px;border-radius:10px;font-size:12px;line-height:1.6;overflow-x:auto;margin:12px 0;font-family:"Cascadia Code","Fira Code",Consolas,monospace}
+@media print{.cover{height:auto;min-height:100vh}.content{padding:10px 20px}h2.ct{page-break-before:always;margin-top:20px}table{page-break-inside:avoid}.wc,.proj,.ib,.rc{page-break-inside:avoid}}
+</style>
+</head>
+<body>
+<div class="cover">
+  <div class="cover-icon">☕</div>
+  <h1>Java 学习计划</h1>
+  <h2>互联网大厂 P6 高级工程师 · 系统性技术路线</h2>
+  <div class="cover-line"></div>
+  <div class="cover-meta">
+    <span>📅 总周期：40周（10个月）</span><span>⏰ 每周投入：15-20小时</span>
+    <span>🎯 目标级别：P6高级工程师</span><span>☕ 核心版本：JDK 17 LTS</span>
+    <span>🔧 构建工具：Maven</span><span>🚀 核心框架：Spring Boot</span>
+    <span>📋 6大学习阶段</span><span>💻 8个实战项目</span>
+  </div>
+</div>
+<div class="toc"><h2>目 录</h2><ul class="toc-list">
+<li class="chapter"><span>学习路径总览</span></li>
+<li class="section"><span>六阶段路径图 / 时间分配 / P6技能评估</span></li>
+<li class="chapter"><span>阶段一：Java基础夯实（第1-8周）</span></li>
+<li class="section"><span>基础语法与OOP / 集合与泛型 / IO与NIO / Lambda/Stream/JDK17新特性</span></li>
+<li class="chapter"><span>阶段二：Java进阶技术（第9-16周）</span></li>
+<li class="section"><span>并发编程 / JVM原理与调优 / 设计模式 / Maven深入</span></li>
+<li class="chapter"><span>阶段三：框架应用（第17-24周）</span></li>
+<li class="section"><span>Spring核心 / Spring Boot核心 / 数据访问与安全 / MyBatis</span></li>
+<li class="chapter"><span>阶段四：分布式系统（第25-32周）</span></li>
+<li class="section"><span>微服务与Spring Cloud / 分布式理论 / 中间件</span></li>
+<li class="chapter"><span>阶段五：性能优化与架构设计（第33-36周）</span></li>
+<li class="section"><span>数据库优化 / 系统设计方法论</span></li>
+<li class="chapter"><span>阶段六：项目实战与综合提升（第37-40周）</span></li>
+<li class="chapter"><span>实践项目清单 / 常见面试题解析 / 推荐学习资源汇总 / 职业发展与学习方法</span></li>
+</ul></div>
+<div class="content">
+<h2 class="ct"><span class="num">☕</span>学习路径总览</h2>
+<h3>六阶段学习路径图</h3>
+<div class="pd">
+  <div style="margin-bottom:8px;">
+    <span class="ps">🏗️ 阶段一·筑基<br>第1-8周<br>Java基础夯实</span><span class="pa">→</span>
+    <span class="ps">⚙️ 阶段二·进阶<br>第9-16周<br>并发+JVM+Maven</span><span class="pa">→</span>
+    <span class="ps">🚀 阶段三·框架<br>第17-24周<br>Spring Boot生态</span>
+  </div>
+  <div style="margin-top:8px;">
+    <span class="ps">🌐 阶段四·分布式<br>第25-32周<br>微服务+中间件</span><span class="pa">→</span>
+    <span class="ps">⚡ 阶段五·优化<br>第33-36周<br>性能+架构设计</span><span class="pa">→</span>
+    <span class="ps">🏆 阶段六·实战<br>第37-40周<br>综合项目+面试</span>
+  </div>
+</div>
+<table><thead><tr><th>阶段</th><th>周期</th><th>核心模块</th><th>里程碑目标</th><th>考核标准</th></tr></thead><tbody>
+<tr><td>一·筑基</td><td>第1-8周</td><td>Java基础、OOP、集合、IO、JDK17新特性</td><td>能独立编写高质量Java应用</td><td>独立完成待办事项+简易HTTP服务器</td></tr>
+<tr><td>二·进阶</td><td>第9-16周</td><td>并发编程、JVM、设计模式、Maven</td><td>能编写高并发程序，掌握JVM调优</td><td>手写线程池+JVM调优实战</td></tr>
+<tr><td>三·框架</td><td>第17-24周</td><td>Spring IoC/AOP、Spring Boot、MyBatis</td><td>能独立开发Spring Boot应用</td><td>完成电商后台管理系统</td></tr>
+<tr><td>四·分布式</td><td>第25-32周</td><td>微服务、分布式理论、中间件</td><td>能设计微服务架构</td><td>完成微服务电商系统</td></tr>
+<tr><td>五·优化</td><td>第33-36周</td><td>数据库优化、系统设计</td><td>具备系统设计能力</td><td>完成秒杀系统设计</td></tr>
+<tr><td>六·实战</td><td>第37-40周</td><td>综合项目、面试准备</td><td>达到P6面试水平</td><td>模拟面试通过</td></tr>
+</tbody></table>
+<h3>每周时间分配建议</h3>
+<table><thead><tr><th>活动类型</th><th>占比</th><th>每周时长</th><th>说明</th></tr></thead><tbody>
+<tr><td>📖 理论学习</td><td>25%</td><td>4-5h</td><td>阅读官方文档、书籍、教程</td></tr>
+<tr><td>💻 编码实践</td><td>35%</td><td>5-7h</td><td>跟随示例编码、完成练习</td></tr>
+<tr><td>🔨 项目实战</td><td>25%</td><td>4-5h</td><td>完成阶段实战项目</td></tr>
+<tr><td>🧮 算法练习</td><td>10%</td><td>1.5-2h</td><td>LeetCode每日1-2题</td></tr>
+<tr><td>📝 复习总结</td><td>5%</td><td>1h</td><td>整理笔记、模拟面试</td></tr>
+</tbody></table>
+<h3>P6技能评估体系</h3>
+<div class="sg">
+<div class="si"><div class="sn">Java语言基础</div><div class="sl">精通语法、集合、泛型、Lambda、JDK17新特性</div><div class="sd"><span class="d f"></span><span class="d f"></span><span class="d f"></span><span class="d f"></span><span class="d f"></span></div></div>
+<div class="si"><div class="sn">并发编程</div><div class="sl">精通JUC、线程池、锁机制、AQS</div><div class="sd"><span class="d f"></span><span class="d f"></span><span class="d f"></span><span class="d f"></span><span class="d e"></span></div></div>
+<div class="si"><div class="sn">JVM原理</div><div class="sl">掌握内存模型、GC算法、调优</div><div class="sd"><span class="d f"></span><span class="d f"></span><span class="d f"></span><span class="d f"></span><span class="d e"></span></div></div>
+<div class="si"><div class="sn">Maven构建</div><div class="sl">精通依赖管理、生命周期、多模块</div><div class="sd"><span class="d f"></span><span class="d f"></span><span class="d f"></span><span class="d f"></span><span class="d e"></span></div></div>
+<div class="si"><div class="sn">Spring Boot</div><div class="sl">精通自动配置、Starter、数据访问</div><div class="sd"><span class="d f"></span><span class="d f"></span><span class="d f"></span><span class="d f"></span><span class="d e"></span></div></div>
+<div class="si"><div class="sn">数据库</div><div class="sl">精通SQL优化、事务、分库分表</div><div class="sd"><span class="d f"></span><span class="d f"></span><span class="d f"></span><span class="d f"></span><span class="d e"></span></div></div>
+<div class="si"><div class="sn">微服务/分布式</div><div class="sl">掌握服务治理、分布式事务、CAP</div><div class="sd"><span class="d f"></span><span class="d f"></span><span class="d f"></span><span class="d f"></span><span class="d e"></span></div></div>
+<div class="si"><div class="sn">系统设计</div><div class="sl">能设计高可用、高并发系统</div><div class="sd"><span class="d f"></span><span class="d f"></span><span class="d f"></span><span class="d e"></span><span class="d e"></span></div></div>
+</div>
+<h2 class="ct"><span class="num">1</span>阶段一：Java基础夯实（第1-8周）</h2>
+<h3>1.1 阶段目标</h3><p>掌握Java语言核心语法与面向对象编程思想，熟练使用集合框架、IO/NIO、Lambda与Stream API，掌握JDK 17新特性。完成本阶段后，能独立编写高质量Java控制台应用和简易网络程序。</p>
+<h3>1.2 Java基础语法与面向对象（第1-2周）</h3>
+<table><thead><tr><th>知识点</th><th>掌握程度</th><th>重点/难点</th></tr></thead><tbody>
+<tr><td>基本数据类型与运算</td><td>精通</td><td>自动装箱/拆箱、类型提升、== vs equals</td></tr>
+<tr><td>流程控制与数组</td><td>精通</td><td>数组内存模型、多维数组</td></tr>
+<tr><td>类与对象</td><td>精通</td><td>构造器、this/super、初始化顺序</td></tr>
+<tr><td>封装、继承、多态</td><td>精通</td><td>多态的实现机制、动态绑定</td></tr>
+<tr><td>抽象类与接口</td><td>精通</td><td>JDK8+接口默认方法/静态方法</td></tr>
+<tr><td>内部类与枚举</td><td>熟练</td><td>匿名内部类、枚举单例</td></tr>
+</tbody></table>
+<div class="wc"><div class="wh">第1周 | 开发环境搭建与Java基础</div><ul class="wt"><li>✅ 安装JDK 17，配置JAVA_HOME与PATH环境变量</li><li>✅ 安装IntelliJ IDEA，配置Maven与代码格式化</li><li>✅ 掌握基本数据类型、运算符、流程控制</li><li>✅ 理解JVM、JRE、JDK的关系</li><li>✅ 练习：编写命令行计算器</li></ul></div>
+<div class="wc"><div class="wh">第2周 | 面向对象编程深入</div><ul class="wt"><li>✅ 深入理解封装、继承、多态的底层机制</li><li>✅ 掌握抽象类与接口的设计选择</li><li>✅ 理解对象创建与初始化顺序</li><li>✅ 掌握内部类（成员/局部/匿名/静态）</li><li>✅ 练习：设计一个简易图书管理系统（OOP版）</li></ul></div>
+<h3>1.3 集合框架与泛型（第3-4周）</h3>
+<table><thead><tr><th>知识点</th><th>掌握程度</th><th>重点/难点</th></tr></thead><tbody>
+<tr><td>List体系</td><td>精通</td><td>ArrayList/LinkedList底层实现与性能对比</td></tr>
+<tr><td>Map体系</td><td>精通</td><td>HashMap底层数组+链表+红黑树、扩容机制</td></tr>
+<tr><td>Set/Queue体系</td><td>熟练</td><td>HashSet基于HashMap、PriorityQueue堆实现</td></tr>
+<tr><td>泛型</td><td>精通</td><td>类型擦除、通配符上下界、PECS原则</td></tr>
+<tr><td>ConcurrentHashMap</td><td>精通</td><td>CAS+synchronized、分段锁演进</td></tr>
+</tbody></table>
+<div class="wc"><div class="wh">第3周 | 集合框架深入</div><ul class="wt"><li>✅ 掌握List/Map/Set/Queue体系与底层实现</li><li>✅ 深入HashMap：hash计算、冲突处理、扩容、红黑树转换</li><li>✅ 掌握ConcurrentHashMap的线程安全实现</li><li>✅ 练习：手写简易HashMap（数组+链表）</li></ul></div>
+<div class="wc"><div class="wh">第4周 | 泛型与集合实战</div><ul class="wt"><li>✅ 掌握泛型类型擦除与通配符</li><li>✅ 理解PECS原则</li><li>✅ 练习：基于LinkedHashMap实现LRU缓存</li></ul></div>
+<h3>1.4 IO/NIO与异常处理（第5-6周）</h3>
+<table><thead><tr><th>知识点</th><th>掌握程度</th><th>重点/难点</th></tr></thead><tbody>
+<tr><td>IO流体系</td><td>精通</td><td>字节流/字符流、缓冲流、转换流</td></tr>
+<tr><td>NIO</td><td>熟练</td><td>Buffer/Channel/Selector、非阻塞IO</td></tr>
+<tr><td>异常体系</td><td>精通</td><td>受检vs非受检、try-with-resources</td></tr>
+</tbody></table>
+<h3>1.5 Lambda、Stream与JDK 17新特性（第7-8周）</h3>
+<table><thead><tr><th>知识点</th><th>掌握程度</th><th>重点/难点</th></tr></thead><tbody>
+<tr><td>Lambda表达式</td><td>精通</td><td>函数式接口、方法引用、构造器引用</td></tr>
+<tr><td>Stream API</td><td>精通</td><td>中间操作/终端操作/并行流/收集器</td></tr>
+<tr><td>Optional</td><td>精通</td><td>避免空指针、链式调用</td></tr>
+<tr><td>JDK 17：Records</td><td>熟练</td><td>不可变数据载体、与Lombok对比</td></tr>
+<tr><td>JDK 17：密封类(Sealed)</td><td>熟练</td><td>受限继承、模式匹配配合</td></tr>
+<tr><td>JDK 17：模式匹配instanceof</td><td>熟练</td><td>类型模式变量、简化代码</td></tr>
+<tr><td>JDK 17：Switch表达式</td><td>熟练</td><td>箭头语法、yield、模式匹配预览</td></tr>
+<tr><td>JDK 17：Text Blocks</td><td>了解</td><td>多行字符串、SQL/JSON模板</td></tr>
+</tbody></table>
+<pre>// JDK 17 新特性示例
+public record UserDTO(Long id, String name, String email) {}
+public sealed interface Shape permits Circle, Rectangle, Triangle {}
+public record Circle(double radius) implements Shape {}
+if (obj instanceof String s &amp;&amp; s.length() &gt; 5) { System.out.println(s.toUpperCase()); }
+String result = switch (day) {
+    case MONDAY, FRIDAY, SUNDAY -&gt; "休息日";
+    case TUESDAY -&gt; "工作日";
+    default -&gt; { yield "未知"; }
+};</pre>
+<h3>1.6 阶段一推荐资源</h3>
+<div class="rc"><div class="rt">📘 Oracle Java 17官方文档</div><div class="rl">https://docs.oracle.com/en/java/javase/17/</div><div class="rd">JDK 17 LTS官方API文档与教程</div></div>
+<div class="rc"><div class="rt">📘 Java官方学习平台</div><div class="rl">https://dev.java/learn/</div><div class="rd">Oracle官方Java学习路径</div></div>
+<div class="rc"><div class="rt">📘 JDK 17新特性指南</div><div class="rl">https://openjdk.org/projects/jdk/17/</div><div class="rd">OpenJDK 17所有JEP特性列表</div></div>
+<div class="rc"><div class="rt">📕 《Java核心技术（第12版）·卷I》</div><div class="rl">Cay S. Horstmann著，机械工业出版社，基于JDK 17</div><div class="rd">Java基础百科全书</div></div>
+<div class="rc"><div class="rt">📕 《Effective Java（第3版）》</div><div class="rl">Joshua Bloch著，机械工业出版社</div><div class="rd">Java最佳实践，P6必读</div></div>
+<div class="rc"><div class="rt">🎥 廖雪峰Java教程</div><div class="rl">https://www.liaoxuefeng.com/wiki/1252599548343744</div><div class="rd">中文免费教程</div></div>
+<h2 class="ct"><span class="num">2</span>阶段二：Java进阶技术（第9-16周）</h2>
+<h3>2.1 阶段目标</h3><p>精通Java并发编程核心机制，深入JVM内存模型与GC调优，掌握23种设计模式，熟练使用Maven进行项目构建与依赖管理。</p>
+<h3>2.2 Java并发编程（第9-12周）</h3>
+<table><thead><tr><th>知识点</th><th>掌握程度</th><th>重点/难点</th></tr></thead><tbody>
+<tr><td>线程基础</td><td>精通</td><td>生命周期、Thread/Runnable/Callable/Future</td></tr>
+<tr><td>synchronized</td><td>精通</td><td>锁升级（偏向→轻量→重量）、Monitor</td></tr>
+<tr><td>volatile</td><td>精通</td><td>可见性、禁止重排、不保证原子性</td></tr>
+<tr><td>JUC锁体系</td><td>精通</td><td>ReentrantLock、ReadWriteLock、StampedLock</td></tr>
+<tr><td>CAS与原子类</td><td>精通</td><td>Unsafe、ABA问题、LongAdder</td></tr>
+<tr><td>AQS</td><td>深入</td><td>CLH队列、独占/共享模式、Condition</td></tr>
+<tr><td>线程池</td><td>精通</td><td>7大参数、4种拒绝策略、动态调优</td></tr>
+<tr><td>并发容器</td><td>熟练</td><td>ConcurrentHashMap、CopyOnWrite、BlockingQueue</td></tr>
+<tr><td>JMM</td><td>精通</td><td>happens-before、内存屏障、as-if-serial</td></tr>
+<tr><td>CompletableFuture</td><td>熟练</td><td>异步编排、异常处理、超时控制</td></tr>
+</tbody></table>
+<div class="wc"><div class="wh">第9周 | 线程基础与锁机制</div><ul class="wt"><li>✅ 掌握线程创建方式与生命周期</li><li>✅ 深入synchronized锁升级过程</li><li>✅ 理解volatile的可见性与禁止重排</li><li>✅ 掌握ReentrantLock与synchronized对比</li></ul></div>
+<div class="wc"><div class="wh">第10周 | CAS、AQS与原子类</div><ul class="wt"><li>✅ 理解CAS原理与ABA问题</li><li>✅ 深入AQS源码：CLH队列、tryAcquire/tryRelease</li><li>✅ 掌握原子类：AtomicInteger、LongAdder</li></ul></div>
+<div class="wc"><div class="wh">第11周 | 线程池与并发容器</div><ul class="wt"><li>✅ 精通线程池7大参数与执行流程</li><li>✅ 掌握4种拒绝策略与线程池监控</li><li>✅ 练习：手写简易线程池</li></ul></div>
+<div class="wc"><div class="wh">第12周 | JMM与异步编程</div><ul class="wt"><li>✅ 精通happens-before规则与内存屏障</li><li>✅ 掌握CompletableFuture异步编排</li><li>✅ 练习：并行数据聚合</li></ul></div>
+<pre>ThreadPoolExecutor executor = new ThreadPoolExecutor(
+    Runtime.getRuntime().availableProcessors(),
+    Runtime.getRuntime().availableProcessors() * 2,
+    60L, TimeUnit.SECONDS,
+    new LinkedBlockingQueue&lt;&gt;(1000),
+    new ThreadFactoryBuilder().setNameFormat("biz-%d").build(),
+    new ThreadPoolExecutor.CallerRunsPolicy()
+);</pre>
+<h3>2.3 JVM原理与性能优化（第13-14周）</h3>
+<table><thead><tr><th>知识点</th><th>掌握程度</th><th>重点/难点</th></tr></thead><tbody>
+<tr><td>JVM内存结构</td><td>精通</td><td>堆/栈/方法区/元空间，各区域OOM场景</td></tr>
+<tr><td>垃圾回收算法</td><td>精通</td><td>标记清除/复制/标记整理/分代收集</td></tr>
+<tr><td>垃圾收集器</td><td>精通</td><td>G1（JDK17默认）、ZGC、Shenandoah</td></tr>
+<tr><td>类加载机制</td><td>精通</td><td>双亲委派、自定义ClassLoader</td></tr>
+<tr><td>JVM调优工具</td><td>熟练</td><td>jstat/jmap/jstack/Arthas/JFR</td></tr>
+</tbody></table>
+<h3>2.4 设计模式与重构（第15周）</h3>
+<table><thead><tr><th>类型</th><th>核心模式（P6必会）</th><th>应用场景</th></tr></thead><tbody>
+<tr><td>创建型</td><td>单例、工厂方法、抽象工厂、建造者</td><td>对象创建逻辑复杂时解耦</td></tr>
+<tr><td>结构型</td><td>适配器、装饰器、代理、外观</td><td>类与对象组合优化</td></tr>
+<tr><td>行为型</td><td>策略、观察者、模板方法、责任链</td><td>对象间通信与职责分配</td></tr>
+</tbody></table>
+<pre>public interface PaymentStrategy { PaymentResult pay(PaymentOrder order); }
+@Component("ALIPAY") public class AlipayStrategy implements PaymentStrategy { ... }
+@Component
+public class PaymentContext {
+    @Autowired private Map&lt;String, PaymentStrategy&gt; strategyMap;
+    public PaymentResult pay(String type, PaymentOrder order) {
+        return strategyMap.get(type).pay(order);
+    }
+}</pre>
+<h3>2.5 Maven构建工具深入（第16周）</h3>
+<table><thead><tr><th>知识点</th><th>掌握程度</th><th>重点/难点</th></tr></thead><tbody>
+<tr><td>POM文件结构</td><td>精通</td><td>groupId/artifactId/version、继承与聚合</td></tr>
+<tr><td>依赖管理</td><td>精通</td><td>依赖传递、冲突解决、exclusions、BOM</td></tr>
+<tr><td>生命周期与阶段</td><td>精通</td><td>clean/compile/test/package/install/deploy</td></tr>
+<tr><td>插件机制</td><td>熟练</td><td>compiler/surefire/shade/assembly插件</td></tr>
+<tr><td>多模块项目</td><td>精通</td><td>父POM、模块聚合、依赖管理统一</td></tr>
+<tr><td>私服搭建</td><td>熟练</td><td>Nexus/Artifactory、snapshot/release管理</td></tr>
+<tr><td>Maven Wrapper</td><td>了解</td><td>mvnw脚本、统一构建版本</td></tr>
+</tbody></table>
+<pre>&lt;dependencyManagement&gt;
+  &lt;dependencies&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+      &lt;artifactId&gt;spring-boot-dependencies&lt;/artifactId&gt;
+      &lt;version&gt;3.2.x&lt;/version&gt;
+      &lt;type&gt;pom&lt;/type&gt;
+      &lt;scope&gt;import&lt;/scope&gt;
+    &lt;/dependency&gt;
+  &lt;/dependencies&gt;
+&lt;/dependencyManagement&gt;
+// 依赖冲突：mvn dependency:tree -Dverbose
+// 原则：最短路径优先 → 声明顺序优先</pre>
+<h3>2.6 阶段二推荐资源</h3>
+<div class="rc"><div class="rt">📘 Java并发官方教程</div><div class="rl">https://docs.oracle.com/javase/tutorial/essential/concurrency/</div><div class="rd">Oracle官方并发编程教程</div></div>
+<div class="rc"><div class="rt">📘 Maven官方文档</div><div class="rl">https://maven.apache.org/guides/</div><div class="rd">Maven完整指南</div></div>
+<div class="rc"><div class="rt">📘 Maven插件文档</div><div class="rl">https://maven.apache.org/plugins/</div><div class="rd">Maven官方插件列表</div></div>
+<div class="rc"><div class="rt">📘 Arthas官方文档</div><div class="rl">https://arthas.aliyun.com/doc/</div><div class="rd">阿里JVM诊断工具</div></div>
+<div class="rc"><div class="rt">📕 《Java并发编程实战》</div><div class="rl">Brian Goetz著，机械工业出版社</div><div class="rd">JUC作者亲笔，并发圣经</div></div>
+<div class="rc"><div class="rt">📕 《深入理解Java虚拟机（第3版）》</div><div class="rl">周志明著，机械工业出版社</div><div class="rd">JVM学习圣经</div></div>
+<div class="rc"><div class="rt">📘 Refactoring.Guru</div><div class="rl">https://refactoring.guru/design-patterns</div><div class="rd">最直观的设计模式学习网站</div></div>
+<div class="rc"><div class="rt">📘 Maven中央仓库</div><div class="rl">https://search.maven.org/</div><div class="rd">Maven依赖搜索</div></div>
+<h2 class="ct"><span class="num">3</span>阶段三：框架应用（第17-24周）</h2>
+<h3>3.1 阶段目标</h3><p>精通Spring核心（IoC/AOP）与Spring Boot自动配置原理，熟练使用Spring Boot进行数据访问、安全控制与测试，掌握MyBatis持久层框架。</p>
+<h3>3.2 Spring核心（第17-18周）</h3>
+<table><thead><tr><th>知识点</th><th>掌握程度</th><th>重点/难点</th></tr></thead><tbody>
+<tr><td>IoC容器</td><td>精通</td><td>Bean生命周期、循环依赖三级缓存</td></tr>
+<tr><td>DI依赖注入</td><td>精通</td><td>构造器/Setter/字段注入、@Autowired原理</td></tr>
+<tr><td>AOP</td><td>精通</td><td>JDK动态代理vs CGLIB、切面执行顺序</td></tr>
+<tr><td>Spring事务</td><td>精通</td><td>传播行为、@Transactional失效场景</td></tr>
+<tr><td>Spring MVC</td><td>精通</td><td>请求处理流程、拦截器、异常处理</td></tr>
+</tbody></table>
+<pre>// Spring IoC三级缓存解决循环依赖
+// singletonObjects（一级）：完全初始化好的Bean
+// earlySingletonObjects（二级）：提前暴露的早期Bean引用
+// singletonFactories（三级）：Bean的工厂对象（生成AOP代理）
+// @Transactional失效的7种场景
+// 1.方法非public 2.同类内部调用 3.异常被catch
+// 4.checked异常 5.MyISAM引擎 6.传播行为错误 7.未被Spring管理</pre>
+<h3>3.3 Spring Boot核心与自动配置（第19-21周）</h3>
+<table><thead><tr><th>知识点</th><th>掌握程度</th><th>重点/难点</th></tr></thead><tbody>
+<tr><td>自动配置原理</td><td>精通</td><td>@Conditional条件装配、spring.factories</td></tr>
+<tr><td>Starter机制</td><td>精通</td><td>自定义Starter开发、configuration-processor</td></tr>
+<tr><td>配置管理</td><td>精通</td><td>application.yml、Profile、@ConfigurationProperties</td></tr>
+<tr><td>Actuator</td><td>熟练</td><td>健康检查、指标暴露、自定义Endpoint</td></tr>
+<tr><td>Spring Boot Test</td><td>精通</td><td>@SpringBootTest、MockMvc、分层测试</td></tr>
+<tr><td>Spring Boot 3.x</td><td>了解</td><td>基于JDK 17、GraalVM原生镜像支持</td></tr>
+<tr><td>嵌入式服务器</td><td>熟练</td><td>Tomcat/Undertow配置与切换</td></tr>
+<tr><td>日志配置</td><td>熟练</td><td>Logback/Log4j2、日志级别与环境关联</td></tr>
+</tbody></table>
+<pre>// Spring Boot自动配置核心流程
+// 1. @SpringBootApplication = @SpringBootConfiguration + @EnableAutoConfiguration + @ComponentScan
+// 2. @EnableAutoConfiguration → @Import(AutoConfigurationImportSelector)
+// 3. 加载META-INF/spring/...AutoConfiguration.imports
+// 4. 根据@ConditionalOnClass/@ConditionalOnMissingBean等条件过滤
+// 5. 满足条件的配置类生效，自动注册Bean
+@Configuration
+@ConditionalOnClass(RedisTemplate.class)
+@EnableConfigurationProperties(RedisCustomProperties.class)
+public class RedisCustomAutoConfiguration {
+    @Bean @ConditionalOnMissingBean
+    public RedisService redisService(RedisTemplate&lt;String, Object&gt; redisTemplate,
+                                      RedisCustomProperties properties) {
+        return new RedisService(redisTemplate, properties);
+    }
+}</pre>
+<h3>3.4 Spring Boot数据访问与安全（第22-23周）</h3>
+<table><thead><tr><th>知识点</th><th>掌握程度</th><th>重点/难点</th></tr></thead><tbody>
+<tr><td>Spring Data JPA</td><td>熟练</td><td>实体映射、JPQL、N+1问题</td></tr>
+<tr><td>Spring Data Redis</td><td>精通</td><td>RedisTemplate、缓存注解、序列化</td></tr>
+<tr><td>事务管理</td><td>精通</td><td>声明式事务、编程式事务</td></tr>
+<tr><td>Spring Security</td><td>熟练</td><td>认证授权、JWT、OAuth2</td></tr>
+<tr><td>HikariCP</td><td>精通</td><td>连接池配置与调优</td></tr>
+</tbody></table>
+<h3>3.5 MyBatis持久层框架（第24周）</h3>
+<table><thead><tr><th>知识点</th><th>掌握程度</th><th>重点/难点</th></tr></thead><tbody>
+<tr><td>核心原理</td><td>精通</td><td>SqlSessionFactory、MapperProxy动态代理</td></tr>
+<tr><td>动态SQL</td><td>精通</td><td>if/choose/foreach/where/set标签</td></tr>
+<tr><td>缓存机制</td><td>精通</td><td>一级缓存（SqlSession级）、二级缓存（Mapper级）</td></tr>
+<tr><td>MyBatis-Plus</td><td>熟练</td><td>CRUD增强、条件构造器、代码生成</td></tr>
+</tbody></table>
+<h3>3.6 阶段三推荐资源</h3>
+<div class="rc"><div class="rt">📘 Spring官方文档</div><div class="rl">https://spring.io/projects/spring-framework</div><div class="rd">Spring Framework官方参考</div></div>
+<div class="rc"><div class="rt">📘 Spring Boot官方文档</div><div class="rl">https://spring.io/projects/spring-boot</div><div class="rd">Spring Boot完整参考文档</div></div>
+<div class="rc"><div class="rt">📘 Spring Boot特性指南</div><div class="rl">https://docs.spring.io/spring-boot/docs/current/reference/html/features.html</div><div class="rd">Spring Boot核心特性详解</div></div>
+<div class="rc"><div class="rt">📘 Spring Initializr</div><div class="rl">https://start.spring.io/</div><div class="rd">Spring Boot项目初始化工具</div></div>
+<div class="rc"><div class="rt">📘 MyBatis官方文档</div><div class="rl">https://mybatis.org/mybatis-3/zh/index.html</div><div class="rd">MyBatis中文官方文档</div></div>
+<div class="rc"><div class="rt">📘 MyBatis-Plus官方文档</div><div class="rl">https://baomidou.com/</div><div class="rd">MyBatis-Plus中文文档</div></div>
+<div class="rc"><div class="rt">📕 《Spring实战（第6版）》</div><div class="rl">Craig Walls著，人民邮电出版社</div><div class="rd">Spring入门到精通</div></div>
+<div class="rc"><div class="rt">📘 Baeldung</div><div class="rl">https://www.baeldung.com/</div><div class="rd">高质量Java/Spring教程</div></div>
+<h2 class="ct"><span class="num">4</span>阶段四：分布式系统（第25-32周）</h2>
+<h3>4.1 阶段目标</h3><p>掌握微服务架构设计与Spring Cloud生态，理解分布式系统核心理论，熟练使用中间件。</p>
+<h3>4.2 微服务架构与Spring Cloud（第25-28周）</h3>
+<table><thead><tr><th>知识点</th><th>掌握程度</th><th>重点/难点</th></tr></thead><tbody>
+<tr><td>服务注册与发现</td><td>精通</td><td>Nacos/Eureka原理、CAP选择</td></tr>
+<tr><td>配置中心</td><td>熟练</td><td>Nacos Config/Apollo</td></tr>
+<tr><td>服务网关</td><td>精通</td><td>Spring Cloud Gateway、路由、限流</td></tr>
+<tr><td>服务容错</td><td>精通</td><td>Sentinel/Resilience4j</td></tr>
+<tr><td>分布式事务</td><td>精通</td><td>Seata(AT/TCC/Saga)</td></tr>
+<tr><td>链路追踪</td><td>熟练</td><td>SkyWalking/Zipkin</td></tr>
+</tbody></table>
+<h3>4.3 分布式系统理论（第29-30周）</h3>
+<table><thead><tr><th>知识点</th><th>掌握程度</th><th>重点/难点</th></tr></thead><tbody>
+<tr><td>CAP/BASE理论</td><td>精通</td><td>一致性、可用性、分区容错的权衡</td></tr>
+<tr><td>一致性算法</td><td>熟练</td><td>Raft、Paxos、ZAB</td></tr>
+<tr><td>分布式ID</td><td>精通</td><td>Snowflake、Leaf</td></tr>
+<tr><td>分布式锁</td><td>精通</td><td>Redis RedLock、Zookeeper</td></tr>
+<tr><td>分布式事务</td><td>精通</td><td>2PC、TCC、Saga、本地消息表</td></tr>
+</tbody></table>
+<h3>4.4 中间件技术应用（第31-32周）</h3>
+<table><thead><tr><th>中间件</th><th>掌握程度</th><th>核心知识点</th></tr></thead><tbody>
+<tr><td>Redis</td><td>精通</td><td>5大数据结构、持久化、集群、缓存策略</td></tr>
+<tr><td>RocketMQ</td><td>精通</td><td>顺序消息、事务消息、消费幂等</td></tr>
+<tr><td>Kafka</td><td>熟练</td><td>分区机制、消费者组、Exactly-Once</td></tr>
+<tr><td>Elasticsearch</td><td>熟练</td><td>倒排索引、DSL查询、聚合分析</td></tr>
+</tbody></table>
+<h3>4.5 阶段四推荐资源</h3>
+<div class="rc"><div class="rt">📘 Spring Cloud官方文档</div><div class="rl">https://spring.io/projects/spring-cloud</div><div class="rd">Spring Cloud微服务框架</div></div>
+<div class="rc"><div class="rt">📘 Nacos官方文档</div><div class="rl">https://nacos.io/zh-cn/docs/what-is-nacos.html</div><div class="rd">阿里服务注册与配置中心</div></div>
+<div class="rc"><div class="rt">📘 Sentinel官方文档</div><div class="rl">https://sentinelguard.io/zh-cn/docs/introduction.html</div><div class="rd">阿里流量防护组件</div></div>
+<div class="rc"><div class="rt">📘 Seata官方文档</div><div class="rl">https://seata.io/zh-cn/docs/overview/what-is-seata.html</div><div class="rd">阿里分布式事务</div></div>
+<div class="rc"><div class="rt">📘 RocketMQ官方文档</div><div class="rl">https://rocketmq.apache.org/docs/</div><div class="rd">Apache RocketMQ</div></div>
+<div class="rc"><div class="rt">📕 《数据密集型应用系统设计》</div><div class="rl">Martin Kleppmann著，中国电力出版社</div><div class="rd">分布式圣经</div></div>
+<h2 class="ct"><span class="num">5</span>阶段五：性能优化与架构设计（第33-36周）</h2>
+<h3>5.1 阶段目标</h3><p>精通数据库性能优化，掌握系统设计方法论，能设计高可用、高并发系统。</p>
+<h3>5.2 数据库性能优化（第33-34周）</h3>
+<table><thead><tr><th>知识点</th><th>掌握程度</th><th>重点/难点</th></tr></thead><tbody>
+<tr><td>MySQL架构</td><td>精通</td><td>InnoDB、Buffer Pool、Redo/Undo Log</td></tr>
+<tr><td>索引优化</td><td>精通</td><td>B+树、最左前缀、覆盖索引、索引失效</td></tr>
+<tr><td>事务与锁</td><td>精通</td><td>ACID、MVCC、间隙锁、死锁排查</td></tr>
+<tr><td>SQL调优</td><td>精通</td><td>EXPLAIN分析、慢查询优化</td></tr>
+<tr><td>分库分表</td><td>熟练</td><td>ShardingSphere、分片策略</td></tr>
+</tbody></table>
+<pre>// MySQL索引优化核心原则
+// 1. 最左前缀：idx_abc(a,b,c) 可命中 a | a,b | a,b,c
+// 2. 索引失效：函数/隐式转换/左模糊/OR非索引列
+// 3. 覆盖索引：避免回表，Using index
+// 4. EXPLAIN：type system&gt;const&gt;eq_ref&gt;ref&gt;range&gt;index&gt;ALL
+// Redis缓存三大问题
+// 穿透 → 布隆过滤器+空值缓存
+// 击穿 → 互斥锁+逻辑过期
+// 雪崩 → 随机TTL+多级缓存+限流</pre>
+<h3>5.3 系统设计方法论（第35-36周）</h3>
+<table><thead><tr><th>知识点</th><th>掌握程度</th><th>重点/难点</th></tr></thead><tbody>
+<tr><td>系统设计四步法</td><td>精通</td><td>需求澄清→高层设计→深入设计→总结权衡</td></tr>
+<tr><td>高可用设计</td><td>精通</td><td>限流/降级/熔断/超时/重试</td></tr>
+<tr><td>高并发设计</td><td>精通</td><td>缓存/异步/池化/水平扩展</td></tr>
+<tr><td>经典系统设计</td><td>熟练</td><td>秒杀/短链/Feed流/IM</td></tr>
+</tbody></table>
+<h3>5.4 阶段五推荐资源</h3>
+<div class="rc"><div class="rt">📘 MySQL官方文档</div><div class="rl">https://dev.mysql.com/doc/refman/8.0/en/</div><div class="rd">MySQL 8.0参考手册</div></div>
+<div class="rc"><div class="rt">📕 《高性能MySQL（第4版）》</div><div class="rl">Baron Schwartz等著，电子工业出版社</div><div class="rd">MySQL优化圣经</div></div>
+<div class="rc"><div class="rt">📘 System Design Primer</div><div class="rl">https://github.com/donnemartin/system-design-primer</div><div class="rd">GitHub最火系统设计资源</div></div>
+<div class="rc"><div class="rt">📘 ByteByteGo</div><div class="rl">https://bytebytego.com/</div><div class="rd">系统设计图文学习平台</div></div>
+<h2 class="ct"><span class="num">6</span>阶段六：项目实战与综合提升（第37-40周）</h2>
+<h3>6.1 阶段目标</h3><p>通过综合实战项目巩固所有技术栈，完成面试准备与模拟面试，达到P6面试水平。</p>
+<div class="wc"><div class="wh">第37-38周 | 微服务电商系统</div><ul class="wt"><li>✅ 技术栈：Spring Boot 3.x + Spring Cloud + Nacos + Sentinel + Seata</li><li>✅ 服务拆分：用户/商品/订单/支付/库存5个微服务</li><li>✅ 核心功能：分布式事务、服务容错、链路追踪</li><li>✅ 部署：Docker Compose一键启动</li></ul></div>
+<div class="wc"><div class="wh">第39-40周 | 秒杀系统 + 面试冲刺</div><ul class="wt"><li>✅ 秒杀系统：Redis预扣减 + MQ异步下单 + Sentinel限流</li><li>✅ 面试冲刺：核心知识点回顾、模拟面试、算法刷题</li><li>✅ 简历优化：项目经验包装、技术亮点提炼</li></ul></div>
+<h2 class="ct"><span class="num">🔨</span>实践项目清单</h2>
+<div class="proj"><div class="pn">📦 项目1：命令行待办事项应用（阶段一）</div><div class="pd2"><b>技术栈：</b>Java 17、集合框架、IO、Maven<br><b>需求：</b>支持增删改查、分类、搜索、文件持久化<br><b>实现要点：</b>使用ArrayList/HashMap存储、NIO文件读写、Records定义DTO</div></div>
+<div class="proj"><div class="pn">📦 项目2：简易HTTP服务器（阶段一）</div><div class="pd2"><b>技术栈：</b>Java NIO、多线程、Socket<br><b>需求：</b>支持GET/POST请求、静态文件服务、并发处理<br><b>实现要点：</b>Selector多路复用、线程池处理请求</div></div>
+<div class="proj"><div class="pn">📦 项目3：自定义线程池框架（阶段二）</div><div class="pd2"><b>技术栈：</b>JUC、AQS、CAS<br><b>需求：</b>实现核心线程/最大线程/队列/拒绝策略/监控<br><b>实现要点：</b>基于AQS实现、动态调优接口</div></div>
+<div class="proj"><div class="pn">📦 项目4：Maven多模块项目（阶段二）</div><div class="pd2"><b>技术栈：</b>Maven、Nexus私服<br><b>需求：</b>搭建3模块项目，配置私服，实现CI构建<br><b>实现要点：</b>父POM依赖管理、BOM统一版本</div></div>
+<div class="proj"><div class="pn">📦 项目5：Spring Boot自定义Starter（阶段三）</div><div class="pd2"><b>技术栈：</b>Spring Boot、@Conditional<br><b>需求：</b>开发Redis增强Starter，支持分布式锁、限流<br><b>实现要点：</b>自动配置类、条件装配、spring.factories</div></div>
+<div class="proj"><div class="pn">📦 项目6：电商后台管理系统（阶段三）</div><div class="pd2"><b>技术栈：</b>Spring Boot + MyBatis-Plus + Redis + MySQL + Spring Security<br><b>需求：</b>用户/商品/订单CRUD、JWT认证、Redis缓存<br><b>实现要点：</b>分层架构、统一异常处理、Swagger文档</div></div>
+<div class="proj"><div class="pn">📦 项目7：微服务电商系统（阶段四）</div><div class="pd2"><b>技术栈：</b>Spring Cloud + Nacos + Sentinel + Seata + RocketMQ<br><b>需求：</b>5个微服务、分布式事务、服务容错<br><b>实现要点：</b>服务拆分、网关路由、Seata AT模式</div></div>
+<div class="proj"><div class="pn">📦 项目8：秒杀系统（阶段五）</div><div class="pd2"><b>技术栈：</b>Redis + RocketMQ + Sentinel + 分布式锁<br><b>需求：</b>万级QPS秒杀、防超卖、限流降级<br><b>实现要点：</b>Redis Lua原子扣减、MQ异步下单、多级限流</div></div>
+<h2 class="ct"><span class="num">🔍</span>常见面试题解析</h2>
+<div class="ib iv"><div class="bt">Q1: HashMap底层实现原理？为什么用红黑树？</div><p><b>答：</b>JDK1.8采用数组+链表+红黑树。计算hash→定位下标→插入/遍历。链表长度≥8且数组≥64转红黑树（O(logn) vs O(n)）。红黑树节点≤6退化回链表。扩容：超过threshold(容量×0.75)时2倍扩容。</p></div>
+<div class="ib iv"><div class="bt">Q2: volatile的作用？为什么不能保证原子性？</div><p><b>答：</b>作用：1.保证可见性 2.禁止指令重排。不能保证原子性：i++的读取→修改→写回三步非原子。解决：AtomicInteger(CAS)或synchronized/ReentrantLock。应用：DCL单例、状态标志位。</p></div>
+<div class="ib iv"><div class="bt">Q3: 线程池核心参数？如何合理配置？</div><p><b>答：</b>7大参数：corePoolSize、maximumPoolSize、keepAliveTime、unit、workQueue、threadFactory、handler。CPU密集型：核数+1；IO密集型：核数×2。队列选有界防OOM。拒绝策略推荐CallerRunsPolicy。</p></div>
+<div class="ib iv"><div class="bt">Q4: G1和ZGC的区别？</div><p><b>答：</b>G1：基于Region分代收集，停顿可控但非确定性。ZGC：着色指针+读屏障，停顿&lt;10ms且与堆大小无关。选择：一般用G1；超低延迟或TB级堆选ZGC。</p></div>
+<div class="ib iv"><div class="bt">Q5: Spring Bean的生命周期？</div><p><b>答：</b>实例化→属性赋值→Aware接口→BeanPostProcessor.before→@PostConstruct/afterPropertiesSet/init-method→BeanPostProcessor.after(AOP代理)→就绪→@PreDestroy/destroy</p></div>
+<div class="ib iv"><div class="bt">Q6: Spring Boot自动配置原理？</div><p><b>答：</b>@EnableAutoConfiguration→AutoConfigurationImportSelector→加载spring.factories/imports文件→@Conditional条件过滤→满足条件的配置类注册Bean。核心：约定大于配置+条件装配。</p></div>
+<div class="ib iv"><div class="bt">Q7: CAP定理？如何取舍？</div><p><b>答：</b>CAP最多同时满足两个。P不可避免，所以CP(ZooKeeper)或AP(Nacos临时实例/Eureka)。互联网系统多选AP+最终一致性(BASE)。</p></div>
+<div class="ib iv"><div class="bt">Q8: MySQL MVCC原理？</div><p><b>答：</b>隐藏列DB_TRX_ID+DB_ROLL_PTR→Undo Log版本链→ReadView判断可见性。RC每次SELECT新ReadView；RR复用第一次的ReadView。读写不阻塞。</p></div>
+<div class="ib iv"><div class="bt">Q9: Maven依赖冲突如何解决？</div><p><b>答：</b>mvn dependency:tree查看依赖树。原则：最短路径优先→声明顺序优先。解决：exclusions排除、dependencyManagement统一版本、BOM导入。</p></div>
+<div class="ib iv"><div class="bt">Q10: JDK 17有哪些重要新特性？</div><p><b>答：</b>Records(不可变数据载体)、Sealed Classes(受限继承)、模式匹配instanceof、Switch表达式、Text Blocks(多行字符串)。Spring Boot 3.x要求最低JDK 17。</p></div>
+<h2 class="ct"><span class="num">📚</span>推荐学习资源汇总</h2>
+<h3>官方文档（必读）</h3>
+<table><thead><tr><th>技术</th><th>官网地址</th><th>说明</th></tr></thead><tbody>
+<tr><td>Java 17</td><td>https://docs.oracle.com/en/java/javase/17/</td><td>JDK 17 LTS官方文档</td></tr>
+<tr><td>Java学习</td><td>https://dev.java/learn/</td><td>Oracle官方学习平台</td></tr>
+<tr><td>OpenJDK 17</td><td>https://openjdk.org/projects/jdk/17/</td><td>JEP特性列表</td></tr>
+<tr><td>Spring Framework</td><td>https://spring.io/projects/spring-framework</td><td>Spring核心框架</td></tr>
+<tr><td>Spring Boot</td><td>https://spring.io/projects/spring-boot</td><td>Spring Boot文档</td></tr>
+<tr><td>Spring Initializr</td><td>https://start.spring.io/</td><td>项目初始化工具</td></tr>
+<tr><td>Spring Cloud</td><td>https://spring.io/projects/spring-cloud</td><td>微服务框架</td></tr>
+<tr><td>MyBatis</td><td>https://mybatis.org/mybatis-3/zh/index.html</td><td>MyBatis中文文档</td></tr>
+<tr><td>MyBatis-Plus</td><td>https://baomidou.com/</td><td>MyBatis-Plus中文文档</td></tr>
+<tr><td>Maven</td><td>https://maven.apache.org/guides/</td><td>Maven官方指南</td></tr>
+<tr><td>Maven中央仓库</td><td>https://search.maven.org/</td><td>依赖搜索</td></tr>
+<tr><td>MySQL</td><td>https://dev.mysql.com/doc/refman/8.0/en/</td><td>MySQL 8.0手册</td></tr>
+<tr><td>Redis</td><td>https://redis.io/docs/</td><td>Redis官方文档</td></tr>
+<tr><td>RocketMQ</td><td>https://rocketmq.apache.org/docs/</td><td>RocketMQ文档</td></tr>
+<tr><td>Nacos</td><td>https://nacos.io/zh-cn/docs/what-is-nacos.html</td><td>Nacos中文文档</td></tr>
+<tr><td>Sentinel</td><td>https://sentinelguard.io/zh-cn/docs/introduction.html</td><td>Sentinel中文文档</td></tr>
+<tr><td>Seata</td><td>https://seata.io/zh-cn/docs/overview/what-is-seata.html</td><td>Seata中文文档</td></tr>
+<tr><td>Docker</td><td>https://docs.docker.com/</td><td>Docker官方文档</td></tr>
+<tr><td>Kubernetes</td><td>https://kubernetes.io/zh-cn/docs/home/</td><td>K8s中文文档</td></tr>
+<tr><td>Arthas</td><td>https://arthas.aliyun.com/doc/</td><td>阿里JVM诊断工具</td></tr>
+</tbody></table>
+<h3>经典书籍（P6必读）</h3>
+<table><thead><tr><th>书名</th><th>作者/出版社</th><th>领域</th><th>优先级</th></tr></thead><tbody>
+<tr><td>《Effective Java（第3版）》</td><td>Joshua Bloch / 机械工业出版社</td><td>Java基础</td><td>⭐⭐⭐⭐⭐</td></tr>
+<tr><td>《Java核心技术（第12版）》</td><td>Cay S. Horstmann / 机械工业出版社</td><td>Java基础(JDK17)</td><td>⭐⭐⭐⭐⭐</td></tr>
+<tr><td>《Java并发编程实战》</td><td>Brian Goetz / 机械工业出版社</td><td>并发编程</td><td>⭐⭐⭐⭐⭐</td></tr>
+<tr><td>《深入理解Java虚拟机（第3版）》</td><td>周志明 / 机械工业出版社</td><td>JVM</td><td>⭐⭐⭐⭐⭐</td></tr>
+<tr><td>《数据密集型应用系统设计》</td><td>Martin Kleppmann / 中国电力出版社</td><td>分布式</td><td>⭐⭐⭐⭐⭐</td></tr>
+<tr><td>《高性能MySQL（第4版）》</td><td>Baron Schwartz / 电子工业出版社</td><td>数据库</td><td>⭐⭐⭐⭐⭐</td></tr>
+<tr><td>《Spring实战（第6版）》</td><td>Craig Walls / 人民邮电出版社</td><td>Spring</td><td>⭐⭐⭐⭐</td></tr>
+<tr><td>《Java并发编程的艺术》</td><td>方腾飞 / 机械工业出版社</td><td>并发</td><td>⭐⭐⭐⭐</td></tr>
+<tr><td>《Redis设计与实现》</td><td>黄健宏 / 机械工业出版社</td><td>Redis</td><td>⭐⭐⭐⭐</td></tr>
+<tr><td>《微服务架构设计模式》</td><td>Chris Richardson / 机械工业出版社</td><td>微服务</td><td>⭐⭐⭐⭐</td></tr>
+<tr><td>《系统设计面试》</td><td>Alex Xu / 北京大学出版社</td><td>系统设计</td><td>⭐⭐⭐⭐</td></tr>
+<tr><td>《Maven实战》</td><td>许晓斌 / 机械工业出版社</td><td>Maven</td><td>⭐⭐⭐</td></tr>
+</tbody></table>
+<h3>在线学习平台</h3>
+<table><thead><tr><th>平台</th><th>网址</th><th>说明</th></tr></thead><tbody>
+<tr><td>Baeldung</td><td>https://www.baeldung.com/</td><td>高质量Java/Spring教程</td></tr>
+<tr><td>LeetCode</td><td>https://leetcode.cn/</td><td>算法刷题平台</td></tr>
+<tr><td>廖雪峰Java教程</td><td>https://www.liaoxuefeng.com/wiki/1252599548343744</td><td>中文免费教程</td></tr>
+<tr><td>Refactoring.Guru</td><td>https://refactoring.guru/design-patterns</td><td>设计模式学习</td></tr>
+<tr><td>System Design Primer</td><td>https://github.com/donnemartin/system-design-primer</td><td>系统设计资源</td></tr>
+<tr><td>ByteByteGo</td><td>https://bytebytego.com/</td><td>系统设计图文平台</td></tr>
+<tr><td>JavaGuide</td><td>https://javaguide.cn/</td><td>Java面试指南</td></tr>
+<tr><td>美团技术团队</td><td>https://tech.meituan.com/</td><td>大厂技术博客</td></tr>
+</tbody></table>
+<h2 class="ct"><span class="num">🚀</span>职业发展与学习方法</h2>
+<h3>学习方法建议</h3>
+<div class="ib tip"><div class="bt">🎯 费曼学习法</div><p>学完一个知识点后，尝试用自己的话向他人解释。如果解释不清，说明理解不够深入，需要重新学习。</p></div>
+<div class="ib tip"><div class="bt">🔄 间隔重复法</div><p>利用艾宾浩斯遗忘曲线，在学习后第1/2/4/7/15天进行复习。推荐工具：Anki。</p></div>
+<div class="ib tip"><div class="bt">💻 项目驱动法</div><p>每学完一个技术栈，立即在项目中实践。理论+实践的比例建议3:7。</p></div>
+<div class="ib tip"><div class="bt">📝 输出倒逼输入</div><p>通过写技术博客、做技术分享来倒逼自己深入理解。推荐平台：掘金、CSDN、个人博客。</p></div>
+<h3>P6→P7职业发展路径</h3>
+<table><thead><tr><th>维度</th><th>P6高级工程师</th><th>P7技术专家</th></tr></thead><tbody>
+<tr><td>技术深度</td><td>精通某一领域</td><td>多个领域精通</td></tr>
+<tr><td>技术广度</td><td>了解相关技术栈</td><td>跨领域技术整合</td></tr>
+<tr><td>系统设计</td><td>能设计中等复杂度系统</td><td>能设计大规模复杂系统</td></tr>
+<tr><td>影响力</td><td>团队内技术贡献</td><td>跨团队技术影响力</td></tr>
+<tr><td>带人</td><td>指导初级工程师</td><td>带3-5人小团队</td></tr>
+</tbody></table>
+<h3>常见问题FAQ</h3>
+<div class="ib warn"><div class="bt">Q: 零基础可以直接学Spring Boot吗？</div><p><b>答：</b>不建议。Spring Boot建立在Java基础和Spring框架之上，跳过基础会导致理解困难。建议先完成阶段一和阶段二，再学习Spring Boot。</p></div>
+<div class="ib warn"><div class="bt">Q: JDK 17和JDK 8/11该选哪个？</div><p><b>答：</b>选JDK 17。它是LTS版本，Spring Boot 3.x要求最低JDK 17，新特性（Records/Sealed/模式匹配）大幅提升开发效率，且是当前互联网大厂的主流选择。</p></div>
+<div class="ib warn"><div class="bt">Q: Maven和Gradle该学哪个？</div><p><b>答：</b>优先学Maven。国内大厂以Maven为主，生态更成熟。掌握Maven后再了解Gradle即可。</p></div>
+<div class="ib warn"><div class="bt">Q: 学习时间不够怎么办？</div><p><b>答：</b>调整节奏，每个阶段可延长1-2周。关键是保持每天至少1-2小时的编码练习，周末集中做项目。不要追求速度，理解深度更重要。</p></div>
+</div>
+</body>
+</html>

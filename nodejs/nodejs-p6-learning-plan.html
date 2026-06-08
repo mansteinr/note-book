@@ -1,0 +1,2697 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Node.js P6高级工程师学习计划</title>
+<style>
+  @page {
+    size: A4;
+    margin: 20mm 18mm 20mm 18mm;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+    font-size: 11pt;
+    line-height: 1.7;
+    color: #1a1a2e;
+    background: #fff;
+  }
+  .cover {
+    page-break-after: always;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    text-align: center;
+    background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+    color: #fff;
+    padding: 60px 40px;
+  }
+  .cover-icon { font-size: 80px; margin-bottom: 30px; }
+  .cover h1 {
+    font-size: 36pt; font-weight: 800; margin-bottom: 10px; letter-spacing: 2px;
+    background: linear-gradient(90deg, #00d2ff, #3a7bd5, #00d2ff);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .cover h2 { font-size: 18pt; font-weight: 400; color: #b8c6db; margin-bottom: 40px; }
+  .cover-meta { font-size: 11pt; color: #8892b0; line-height: 2; }
+  .cover-meta span {
+    display: inline-block; background: rgba(255,255,255,0.08);
+    padding: 4px 16px; border-radius: 20px; margin: 4px 6px;
+  }
+  .cover-line {
+    width: 80px; height: 3px;
+    background: linear-gradient(90deg, #00d2ff, #3a7bd5);
+    margin: 30px auto; border-radius: 2px;
+  }
+  .toc { page-break-after: always; padding: 40px 0; }
+  .toc h2 {
+    font-size: 22pt; color: #302b63; text-align: center;
+    margin-bottom: 30px; padding-bottom: 10px; border-bottom: 3px solid #3a7bd5;
+  }
+  .toc-list { list-style: none; padding: 0 20px; }
+  .toc-list li {
+    padding: 8px 0; border-bottom: 1px dashed #ddd;
+    display: flex; justify-content: space-between;
+  }
+  .toc-list li.chapter {
+    font-weight: 700; font-size: 12pt; color: #302b63;
+    border-bottom: 1px solid #ccc; margin-top: 10px;
+  }
+  .toc-list li.section { padding-left: 24px; font-size: 10.5pt; color: #444; }
+  .content { padding: 0 10px; }
+  h2.chapter-title {
+    font-size: 20pt; color: #fff;
+    background: linear-gradient(135deg, #302b63, #24243e);
+    padding: 16px 24px; border-radius: 8px; margin: 40px 0 20px 0;
+    page-break-before: always;
+  }
+  h2.chapter-title:first-of-type { page-break-before: auto; }
+  h2.chapter-title .num {
+    display: inline-block; background: #3a7bd5; color: #fff;
+    width: 36px; height: 36px; line-height: 36px; text-align: center;
+    border-radius: 50%; font-size: 16pt; margin-right: 12px;
+  }
+  h3 {
+    font-size: 14pt; color: #302b63; margin: 24px 0 10px 0;
+    padding-left: 12px; border-left: 4px solid #3a7bd5;
+  }
+  h4 { font-size: 12pt; color: #24243e; margin: 16px 0 8px 0; }
+  p { margin: 8px 0; text-align: justify; }
+  table {
+    width: 100%; border-collapse: collapse; margin: 12px 0 20px 0; font-size: 10pt;
+  }
+  thead th {
+    background: linear-gradient(135deg, #302b63, #3a7bd5);
+    color: #fff; padding: 10px 12px; text-align: left; font-weight: 600;
+  }
+  tbody td { padding: 8px 12px; border-bottom: 1px solid #e8e8e8; }
+  tbody tr:nth-child(even) { background: #f8f9ff; }
+  pre {
+    background: #1e1e2e; color: #cdd6f4; padding: 16px 20px; border-radius: 8px;
+    font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+    font-size: 9.5pt; line-height: 1.6; overflow-x: auto; margin: 12px 0 16px 0;
+    page-break-inside: avoid; white-space: pre-wrap; word-wrap: break-word;
+  }
+  code {
+    font-family: "Cascadia Code", "Fira Code", "Consolas", monospace; font-size: 9.5pt;
+  }
+  .inline-code {
+    background: #eef1ff; color: #3a7bd5; padding: 2px 6px;
+    border-radius: 4px; font-size: 10pt;
+  }
+  .info-box {
+    border-radius: 8px; padding: 14px 18px; margin: 14px 0; page-break-inside: avoid;
+  }
+  .info-box.tip { background: #e8f5e9; border-left: 4px solid #4caf50; }
+  .info-box.warning { background: #fff3e0; border-left: 4px solid #ff9800; }
+  .info-box.important { background: #e3f2fd; border-left: 4px solid #2196f3; }
+  .info-box.interview { background: #fce4ec; border-left: 4px solid #e91e63; }
+  .info-box .box-title { font-weight: 700; margin-bottom: 6px; font-size: 11pt; }
+  .resource-card {
+    background: #f8f9ff; border: 1px solid #d0d7ff; border-radius: 8px;
+    padding: 12px 16px; margin: 8px 0; page-break-inside: avoid;
+  }
+  .resource-card .res-title { font-weight: 700; color: #302b63; font-size: 11pt; }
+  .resource-card .res-link { color: #3a7bd5; font-size: 9.5pt; word-break: break-all; }
+  .resource-card .res-desc { color: #666; font-size: 9.5pt; margin-top: 4px; }
+  ul, ol { margin: 8px 0 8px 24px; }
+  li { margin: 4px 0; }
+  .path-diagram {
+    background: linear-gradient(135deg, #f8f9ff, #eef1ff);
+    border-radius: 12px; padding: 24px; margin: 20px 0; text-align: center;
+  }
+  .path-step {
+    display: inline-block; background: linear-gradient(135deg, #302b63, #3a7bd5);
+    color: #fff; padding: 10px 18px; border-radius: 8px; margin: 6px;
+    font-size: 10pt; font-weight: 600;
+  }
+  .path-arrow {
+    display: inline-block; color: #3a7bd5; font-size: 20pt;
+    margin: 0 4px; vertical-align: middle;
+  }
+  .skill-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr);
+    gap: 12px; margin: 16px 0;
+  }
+  .skill-item {
+    background: #f8f9ff; border-radius: 8px; padding: 12px 16px;
+    border: 1px solid #d0d7ff;
+  }
+  .skill-item .skill-name { font-weight: 700; color: #302b63; font-size: 10.5pt; }
+  .skill-item .skill-level { font-size: 9pt; color: #666; }
+  .skill-dots { margin-top: 4px; }
+  .skill-dots .dot {
+    display: inline-block; width: 10px; height: 10px;
+    border-radius: 50%; margin-right: 3px;
+  }
+  .dot.filled { background: #3a7bd5; }
+  .dot.empty { background: #ddd; }
+  .week-card {
+    background: #fff; border: 1px solid #e0e0e0; border-radius: 8px;
+    padding: 14px 18px; margin: 10px 0; page-break-inside: avoid;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  }
+  .week-card .week-header {
+    font-weight: 700; color: #302b63; font-size: 12pt;
+    margin-bottom: 8px; padding-bottom: 6px; border-bottom: 2px solid #3a7bd5;
+  }
+  .week-card .week-tasks { font-size: 10pt; }
+  .week-card .week-tasks li { margin: 3px 0; }
+  @media print {
+    body { font-size: 10pt; }
+    .cover { min-height: auto; padding: 120px 40px; }
+    h2.chapter-title { page-break-before: always; }
+    pre { font-size: 8.5pt; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ==================== COVER PAGE ==================== -->
+<div class="cover">
+  <div class="cover-icon">⬢</div>
+  <h1>Node.js 学习计划</h1>
+  <h2>互联网大厂 P6 高级工程师技术路线</h2>
+  <div class="cover-line"></div>
+  <div class="cover-meta">
+    <span>📅 总周期：24周（6个月）</span>
+    <span>⏰ 每周投入：15-20小时</span>
+    <span>🎯 目标级别：P6高级工程师</span>
+    <span>📋 8大核心模块</span>
+    <span>💻 12个实战项目</span>
+    <span>🔍 100+面试题解析</span>
+  </div>
+</div>
+
+<!-- ==================== TABLE OF CONTENTS ==================== -->
+<div class="toc">
+  <h2>目 录</h2>
+  <ul class="toc-list">
+    <li class="chapter"><span>学习路径总览与时间规划</span></li>
+    <li class="section"><span>学习路径图</span></li>
+    <li class="section"><span>每周时间分配建议</span></li>
+    <li class="section"><span>P6技能评估标准</span></li>
+    <li class="chapter"><span>第一章 基础理论与环境搭建（第1-3周）</span></li>
+    <li class="section"><span>1.1 Node.js核心概念与架构</span></li>
+    <li class="section"><span>1.2 事件循环机制深入解析</span></li>
+    <li class="section"><span>1.3 异步编程模型</span></li>
+    <li class="section"><span>1.4 开发环境配置与工具链</span></li>
+    <li class="section"><span>1.5 推荐学习资源</span></li>
+    <li class="chapter"><span>第二章 核心技术深入（第4-6周）</span></li>
+    <li class="section"><span>2.1 模块化系统</span></li>
+    <li class="section"><span>2.2 文件系统操作</span></li>
+    <li class="section"><span>2.3 流(Streams)处理</span></li>
+    <li class="section"><span>2.4 Buffer与字符编码</span></li>
+    <li class="chapter"><span>第三章 网络编程（第7-9周）</span></li>
+    <li class="section"><span>3.1 HTTP/HTTPS协议实现</span></li>
+    <li class="section"><span>3.2 RESTful API设计与开发</span></li>
+    <li class="section"><span>3.3 WebSocket应用开发</span></li>
+    <li class="section"><span>3.4 TCP/UDP网络编程</span></li>
+    <li class="chapter"><span>第四章 数据库交互（第10-12周）</span></li>
+    <li class="section"><span>4.1 关系型数据库操作</span></li>
+    <li class="section"><span>4.2 NoSQL数据库应用</span></li>
+    <li class="section"><span>4.3 ORM框架使用</span></li>
+    <li class="chapter"><span>第五章 性能优化（第13-15周）</span></li>
+    <li class="section"><span>5.1 内存管理与泄漏排查</span></li>
+    <li class="section"><span>5.2 CPU密集型任务处理</span></li>
+    <li class="section"><span>5.3 集群模式应用</span></li>
+    <li class="section"><span>5.4 缓存策略设计</span></li>
+    <li class="chapter"><span>第六章 工程化实践（第16-18周）</span></li>
+    <li class="section"><span>6.1 代码规范与质量控制</span></li>
+    <li class="section"><span>6.2 单元测试与集成测试</span></li>
+    <li class="section"><span>6.3 CI/CD流程搭建</span></li>
+    <li class="section"><span>6.4 Docker容器化部署</span></li>
+    <li class="chapter"><span>第七章 框架与生态（第19-21周）</span></li>
+    <li class="section"><span>7.1 Express框架深入学习</span></li>
+    <li class="section"><span>7.2 Koa框架深入学习</span></li>
+    <li class="section"><span>7.3 NestJS框架深入学习</span></li>
+    <li class="section"><span>7.4 中间件开发与微服务架构</span></li>
+    <li class="chapter"><span>第八章 高级主题（第22-24周）</span></li>
+    <li class="section"><span>8.1 安全最佳实践</span></li>
+    <li class="section"><span>8.2 分布式系统设计</span></li>
+    <li class="section"><span>8.3 服务监控与日志系统</span></li>
+    <li class="section"><span>8.4 Node.js与前端工程结合</span></li>
+    <li class="chapter"><span>实践项目清单</span></li>
+    <li class="chapter"><span>常见面试题解析</span></li>
+    <li class="chapter"><span>推荐学习资源汇总</span></li>
+  </ul>
+</div>
+
+<!-- ==================== LEARNING PATH OVERVIEW ==================== -->
+<div class="content">
+
+<h2 class="chapter-title"><span class="num">⬢</span>学习路径总览与时间规划</h2>
+
+<h3>学习路径图</h3>
+<p>以下为从零基础到P6高级工程师的完整学习路径，共24周，分为8个核心模块，每个模块3周。建议按顺序学习，后期模块依赖前期基础。</p>
+
+<div class="path-diagram">
+  <div style="margin-bottom:12px;">
+    <span class="path-step">🏗️ 模块1<br>基础理论</span>
+    <span class="path-arrow">→</span>
+    <span class="path-step">⚙️ 模块2<br>核心技术</span>
+    <span class="path-arrow">→</span>
+    <span class="path-step">🌐 模块3<br>网络编程</span>
+    <span class="path-arrow">→</span>
+    <span class="path-step">🗄️ 模块4<br>数据库交互</span>
+  </div>
+  <div style="margin-top:12px;">
+    <span class="path-step">🚀 模块5<br>性能优化</span>
+    <span class="path-arrow">→</span>
+    <span class="path-step">🔧 模块6<br>工程化实践</span>
+    <span class="path-arrow">→</span>
+    <span class="path-step">📦 模块7<br>框架与生态</span>
+    <span class="path-arrow">→</span>
+    <span class="path-step">🛡️ 模块8<br>高级主题</span>
+  </div>
+</div>
+
+<h3>每周时间分配建议</h3>
+<table>
+  <thead><tr><th>活动类型</th><th>时间占比</th><th>每周时长</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td>📖 理论学习</td><td>30%</td><td>5-6小时</td><td>阅读文档、书籍、观看教程视频</td></tr>
+    <tr><td>💻 编码实践</td><td>40%</td><td>6-8小时</td><td>跟随示例编码、完成练习题</td></tr>
+    <tr><td>🔨 项目实战</td><td>20%</td><td>3-4小时</td><td>完成模块对应实战项目</td></tr>
+    <tr><td>📝 复习总结</td><td>10%</td><td>1.5-2小时</td><td>整理笔记、撰写博客、面试题练习</td></tr>
+  </tbody>
+</table>
+
+<h3>24周详细学习计划</h3>
+
+<div class="week-card">
+  <div class="week-header">第1周 | Node.js核心概念与安装配置</div>
+  <ul class="week-tasks">
+    <li>✅ 安装Node.js LTS版本，配置nvm版本管理</li>
+    <li>✅ 理解Node.js架构：V8 + libuv + C++ Bindings</li>
+    <li>✅ 掌握REPL交互式环境使用</li>
+    <li>✅ 了解Node.js与浏览器JavaScript的核心区别</li>
+    <li>✅ 编写第一个Node.js程序并运行</li>
+  </ul>
+</div>
+<div class="week-card">
+  <div class="week-header">第2周 | 事件循环与异步编程基础</div>
+  <ul class="week-tasks">
+    <li>✅ 深入学习事件循环6个阶段及执行顺序</li>
+    <li>✅ 理解microtask与macrotask优先级</li>
+    <li>✅ 掌握回调函数模式及回调地狱问题</li>
+    <li>✅ 学习Promise基本用法与链式调用</li>
+    <li>✅ 练习分析异步代码执行顺序</li>
+  </ul>
+</div>
+<div class="week-card">
+  <div class="week-header">第3周 | 异步编程进阶与开发工具链</div>
+  <ul class="week-tasks">
+    <li>✅ 精通async/await语法与错误处理</li>
+    <li>✅ 了解Generator函数与异步迭代</li>
+    <li>✅ 配置VS Code + ESLint + Prettier开发环境</li>
+    <li>✅ 掌握npm/yarn/pnpm包管理器使用</li>
+    <li>✅ 完成模块1实战项目：异步任务调度器</li>
+  </ul>
+</div>
+<div class="week-card">
+  <div class="week-header">第4周 | 模块化系统深入</div>
+  <ul class="week-tasks">
+    <li>✅ 深入理解CommonJS模块加载机制与缓存</li>
+    <li>✅ 掌握ES Modules配置与使用</li>
+    <li>✅ 理解两种模块系统的差异与互操作</li>
+    <li>✅ 了解循环依赖的处理方式</li>
+    <li>✅ 学习package.json配置与语义化版本</li>
+  </ul>
+</div>
+<div class="week-card">
+  <div class="week-header">第5周 | 文件系统与Buffer</div>
+  <ul class="week-tasks">
+    <li>✅ 掌握fs模块同步/异步/Promise API</li>
+    <li>✅ 理解文件描述符、权限与文件监听</li>
+    <li>✅ 掌握Buffer创建、操作与字符编码转换</li>
+    <li>✅ 了解Buffer与TypedArray的关系</li>
+    <li>✅ 实现文件批量处理工具</li>
+  </ul>
+</div>
+<div class="week-card">
+  <div class="week-header">第6周 | 流(Streams)处理</div>
+  <ul class="week-tasks">
+    <li>✅ 掌握四种流类型：Readable/Writable/Duplex/Transform</li>
+    <li>✅ 理解流动模式与暂停模式</li>
+    <li>✅ 掌握pipeline管道操作与错误处理</li>
+    <li>✅ 自定义Transform流实现数据转换</li>
+    <li>✅ 完成模块2实战项目：大文件日志分析器</li>
+  </ul>
+</div>
+<div class="week-card">
+  <div class="week-header">第7周 | HTTP服务器与客户端</div>
+  <ul class="week-tasks">
+    <li>✅ 掌握http/https模块创建服务器</li>
+    <li>✅ 理解HTTP请求/响应生命周期</li>
+    <li>✅ 掌握HTTPS证书配置</li>
+    <li>✅ 了解HTTP/2在Node.js中的实现</li>
+    <li>✅ 实现静态文件服务器</li>
+  </ul>
+</div>
+<div class="week-card">
+  <div class="week-header">第8周 | RESTful API设计</div>
+  <ul class="week-tasks">
+    <li>✅ 掌握RESTful API设计原则与规范</li>
+    <li>✅ 理解HTTP方法语义与状态码</li>
+    <li>✅ 实现请求验证、错误处理与版本管理</li>
+    <li>✅ 了解OpenAPI/Swagger文档规范</li>
+    <li>✅ 设计并实现完整的CRUD API</li>
+  </ul>
+</div>
+<div class="week-card">
+  <div class="week-header">第9周 | WebSocket与TCP/UDP</div>
+  <ul class="week-tasks">
+    <li>✅ 掌握ws库实现WebSocket服务器</li>
+    <li>✅ 实现实时聊天室应用</li>
+    <li>✅ 掌握net模块创建TCP服务器/客户端</li>
+    <li>✅ 理解TCP粘包问题与解决方案</li>
+    <li>✅ 完成模块3实战项目：实时协作白板</li>
+  </ul>
+</div>
+<div class="week-card">
+  <div class="week-header">第10周 | 关系型数据库</div>
+  <ul class="week-tasks">
+    <li>✅ 掌握MySQL2/pg驱动使用与连接池配置</li>
+    <li>✅ 理解事务处理与隔离级别</li>
+    <li>✅ 掌握SQL注入防护（预处理语句）</li>
+    <li>✅ 实现数据库连接池管理模块</li>
+    <li>✅ 学习数据库索引优化基础</li>
+  </ul>
+</div>
+<div class="week-card">
+  <div class="week-header">第11周 | NoSQL数据库</div>
+  <ul class="week-tasks">
+    <li>✅ 掌握MongoDB CRUD操作与聚合管道</li>
+    <li>✅ 掌握Redis数据结构与应用场景</li>
+    <li>✅ 实现Cache-Aside缓存策略</li>
+    <li>✅ 理解Redis发布/订阅模式</li>
+    <li>✅ 实现分布式锁</li>
+  </ul>
+</div>
+<div class="week-card">
+  <div class="week-header">第12周 | ORM框架</div>
+  <ul class="week-tasks">
+    <li>✅ 掌握Sequelize模型定义与关联关系</li>
+    <li>✅ 掌握TypeORM装饰器与Repository模式</li>
+    <li>✅ 理解N+1查询问题与预加载</li>
+    <li>✅ 掌握数据库迁移(Migration)管理</li>
+    <li>✅ 完成模块4实战项目：电商订单系统后端</li>
+  </ul>
+</div>
+<div class="week-card">
+  <div class="week-header">第13周 | 内存管理</div>
+  <ul class="week-tasks">
+    <li>✅ 理解V8内存管理与垃圾回收机制</li>
+    <li>✅ 掌握内存泄漏的常见原因与排查方法</li>
+    <li>✅ 使用heapdump/v8-profiler进行内存分析</li>
+    <li>✅ 了解WeakRef/FinalizationRegistry</li>
+    <li>✅ 实现内存监控中间件</li>
+  </ul>
+</div>
+<div class="week-card">
+  <div class="week-header">第14周 | CPU优化与Worker Threads</div>
+  <ul class="week-tasks">
+    <li>✅ 理解Node.js单线程对CPU密集型任务的影响</li>
+    <li>✅ 掌握worker_threads多线程方案</li>
+    <li>✅ 了解child_process多进程方案</li>
+    <li>✅ 实现任务队列与分发策略</li>
+    <li>✅ 完成图片批量处理服务</li>
+  </ul>
+</div>
+<div class="week-card">
+  <div class="week-header">第15周 | 集群与缓存策略</div>
+  <ul class="week-tasks">
+    <li>✅ 掌握Cluster模块实现多进程</li>
+    <li>✅ 掌握PM2进程管理工具</li>
+    <li>✅ 理解缓存穿透/击穿/雪崩及解决方案</li>
+    <li>✅ 实现多级缓存架构</li>
+    <li>✅ 完成模块5实战项目：高并发短链服务</li>
+  </ul>
+</div>
+<div class="week-card">
+  <div class="week-header">第16周 | 代码规范与质量控制</div>
+  <ul class="week-tasks">
+    <li>✅ 配置ESLint + Prettier + TypeScript</li>
+    <li>✅ 掌握Husky + lint-staged Git钩子</li>
+    <li>✅ 理解Commitlint提交规范</li>
+    <li>✅ 学习代码审查(Code Review)最佳实践</li>
+    <li>✅ 为已有项目配置完整的代码规范体系</li>
+  </ul>
+</div>
+<div class="week-card">
+  <div class="week-header">第17周 | 单元测试与集成测试</div>
+  <ul class="week-tasks">
+    <li>✅ 掌握Jest测试框架使用</li>
+    <li>✅ 理解测试金字塔与测试策略</li>
+    <li>✅ 掌握Mock/Stub/Spy技巧</li>
+    <li>✅ 了解Supertest进行API集成测试</li>
+    <li>✅ 为项目编写测试，覆盖率达到80%+</li>
+  </ul>
+</div>
+<div class="week-card">
+  <div class="week-header">第18周 | CI/CD与Docker</div>
+  <ul class="week-tasks">
+    <li>✅ 掌握GitHub Actions / GitLab CI配置</li>
+    <li>✅ 掌握Dockerfile编写与多阶段构建</li>
+    <li>✅ 掌握docker-compose服务编排</li>
+    <li>✅ 搭建完整的CI/CD流水线</li>
+    <li>✅ 完成模块6实战项目：全自动化部署的API服务</li>
+  </ul>
+</div>
+<div class="week-card">
+  <div class="week-header">第19周 | Express框架</div>
+  <ul class="week-tasks">
+    <li>✅ 深入理解Express中间件机制（洋葱模型）</li>
+    <li>✅ 掌握路由、错误处理与请求生命周期</li>
+    <li>✅ 实现自定义中间件（认证、日志、限流）</li>
+    <li>✅ 了解Express性能优化与安全配置</li>
+    <li>✅ 使用Express构建完整RESTful API</li>
+  </ul>
+</div>
+<div class="week-card">
+  <div class="week-header">第20周 | Koa框架</div>
+  <ul class="week-tasks">
+    <li>✅ 理解Koa的async/await中间件模型</li>
+    <li>✅ 掌握Koa核心：context/request/response</li>
+    <li>✅ 对比Express与Koa的设计哲学差异</li>
+    <li>✅ 实现Koa自定义中间件</li>
+    <li>✅ 使用Koa重构API服务</li>
+  </ul>
+</div>
+<div class="week-card">
+  <div class="week-header">第21周 | NestJS与微服务</div>
+  <ul class="week-tasks">
+    <li>✅ 掌握NestJS模块/控制器/服务架构</li>
+    <li>✅ 理解依赖注入(DI)与控制反转(IoC)</li>
+    <li>✅ 掌握NestJS守卫/拦截器/管道</li>
+    <li>✅ 了解微服务架构设计与通信模式</li>
+    <li>✅ 完成模块7实战项目：微服务架构博客平台</li>
+  </ul>
+</div>
+<div class="week-card">
+  <div class="week-header">第22周 | 安全最佳实践</div>
+  <ul class="week-tasks">
+    <li>✅ 掌握JWT/OAuth2.0认证授权实现</li>
+    <li>✅ 理解XSS/CSRF/SQL注入/SSRF等攻击防护</li>
+    <li>✅ 掌握helmet/cors/rate-limit等安全中间件</li>
+    <li>✅ 了解加密算法与密钥管理</li>
+    <li>✅ 实现完整的安全认证体系</li>
+  </ul>
+</div>
+<div class="week-card">
+  <div class="week-header">第23周 | 分布式系统与监控</div>
+  <ul class="week-tasks">
+    <li>✅ 理解CAP定理与分布式一致性</li>
+    <li>✅ 掌握消息队列(RabbitMQ/Kafka)应用</li>
+    <li>✅ 实现分布式链路追踪</li>
+    <li>✅ 掌握Winston/Pino日志系统</li>
+    <li>✅ 配置Prometheus + Grafana监控</li>
+  </ul>
+</div>
+<div class="week-card">
+  <div class="week-header">第24周 | 前端工程结合与综合实战</div>
+  <ul class="week-tasks">
+    <li>✅ 掌握SSR(Next.js/Nuxt.js)原理与实现</li>
+    <li>✅ 了解BFF(Backend For Frontend)架构</li>
+    <li>✅ 掌握Webpack/Vite与Node.js的结合</li>
+    <li>✅ 完成模块8实战项目：全栈电商平台</li>
+    <li>✅ 全面复习，准备模拟面试</li>
+  </ul>
+</div>
+
+<h3>P6技能评估标准</h3>
+<p>达到P6级别需满足以下技能要求：</p>
+
+<div class="skill-grid">
+  <div class="skill-item">
+    <div class="skill-name">Node.js核心原理</div>
+    <div class="skill-level">深入理解事件循环、V8引擎、libuv</div>
+    <div class="skill-dots">
+      <span class="dot filled"></span><span class="dot filled"></span><span class="dot filled"></span><span class="dot filled"></span><span class="dot empty"></span>
+    </div>
+  </div>
+  <div class="skill-item">
+    <div class="skill-name">异步编程</div>
+    <div class="skill-level">精通Promise/async-await/Generator</div>
+    <div class="skill-dots">
+      <span class="dot filled"></span><span class="dot filled"></span><span class="dot filled"></span><span class="dot filled"></span><span class="dot filled"></span>
+    </div>
+  </div>
+  <div class="skill-item">
+    <div class="skill-name">网络编程</div>
+    <div class="skill-level">独立设计RESTful API、WebSocket应用</div>
+    <div class="skill-dots">
+      <span class="dot filled"></span><span class="dot filled"></span><span class="dot filled"></span><span class="dot filled"></span><span class="dot empty"></span>
+    </div>
+  </div>
+  <div class="skill-item">
+    <div class="skill-name">数据库</div>
+    <div class="skill-level">熟练使用SQL/NoSQL及ORM框架</div>
+    <div class="skill-dots">
+      <span class="dot filled"></span><span class="dot filled"></span><span class="dot filled"></span><span class="dot filled"></span><span class="dot empty"></span>
+    </div>
+  </div>
+  <div class="skill-item">
+    <div class="skill-name">性能优化</div>
+    <div class="skill-level">能排查内存泄漏、设计缓存策略</div>
+    <div class="skill-dots">
+      <span class="dot filled"></span><span class="dot filled"></span><span class="dot filled"></span><span class="dot filled"></span><span class="dot empty"></span>
+    </div>
+  </div>
+  <div class="skill-item">
+    <div class="skill-name">工程化</div>
+    <div class="skill-level">CI/CD、Docker、测试体系搭建</div>
+    <div class="skill-dots">
+      <span class="dot filled"></span><span class="dot filled"></span><span class="dot filled"></span><span class="dot filled"></span><span class="dot empty"></span>
+    </div>
+  </div>
+  <div class="skill-item">
+    <div class="skill-name">框架应用</div>
+    <div class="skill-level">精通至少一个主流框架，了解微服务</div>
+    <div class="skill-dots">
+      <span class="dot filled"></span><span class="dot filled"></span><span class="dot filled"></span><span class="dot filled"></span><span class="dot empty"></span>
+    </div>
+  </div>
+  <div class="skill-item">
+    <div class="skill-name">系统设计</div>
+    <div class="skill-level">分布式设计、安全防护、监控体系</div>
+    <div class="skill-dots">
+      <span class="dot filled"></span><span class="dot filled"></span><span class="dot filled"></span><span class="dot empty"></span><span class="dot empty"></span>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== CHAPTER 1 ==================== -->
+<h2 class="chapter-title"><span class="num">1</span>基础理论与环境搭建（第1-3周）</h2>
+
+<h3>1.1 Node.js核心概念与架构</h3>
+
+<h4>学习目标</h4>
+<ul>
+  <li>理解Node.js的设计理念与适用场景</li>
+  <li>掌握Node.js架构组成：V8引擎 + libuv + C++ Bindings</li>
+  <li>了解Node.js与浏览器JavaScript的区别</li>
+  <li>掌握Node.js的版本管理策略（LTS vs Current）</li>
+</ul>
+
+<h4>核心知识点</h4>
+<p>Node.js是基于Chrome V8引擎的JavaScript运行时，采用单线程事件驱动架构。其核心架构由以下层次组成：</p>
+
+<table>
+  <thead><tr><th>层次</th><th>组件</th><th>职责</th></tr></thead>
+  <tbody>
+    <tr><td>应用层</td><td>JavaScript代码</td><td>业务逻辑编写</td></tr>
+    <tr><td>绑定层</td><td>C++ Bindings</td><td>桥接JS与底层C++库</td></tr>
+    <tr><td>引擎层</td><td>V8 Engine</td><td>JavaScript编译执行</td></tr>
+    <tr><td>平台层</td><td>libuv</td><td>异步I/O、事件循环</td></tr>
+    <tr><td>系统层</td><td>操作系统API</td><td>文件、网络等系统调用</td></tr>
+  </tbody>
+</table>
+
+<div class="info-box important">
+  <div class="box-title">📌 核心要点</div>
+  <p>Node.js并非真正的单线程——V8引擎和libuv内部都使用了线程池。所谓"单线程"是指JavaScript代码的执行是单线程的，I/O操作则由libuv的线程池和操作系统异步机制处理。</p>
+</div>
+
+<h3>1.2 事件循环机制深入解析</h3>
+
+<h4>学习目标</h4>
+<ul>
+  <li>掌握事件循环的6个阶段及其执行顺序</li>
+  <li>理解microtask与macrotask的优先级</li>
+  <li>能分析复杂异步代码的执行顺序</li>
+</ul>
+
+<h4>事件循环6个阶段</h4>
+<pre>   ┌───────────────────────────┐
+┌─&gt;│         timers             │  ← setTimeout / setInterval
+│  └─────────────┬─────────────┘
+│  ┌─────────────┴─────────────┐
+│  │     pending callbacks      │  ← 系统级回调（如TCP错误回调）
+│  └─────────────┬─────────────┘
+│  ┌─────────────┴─────────────┐
+│  │       idle, prepare        │  ← 内部使用
+│  └─────────────┬─────────────┘
+│  ┌─────────────┴─────────────┐
+│  │         poll               │  ← 检索新I/O事件，执行I/O回调
+│  └─────────────┬─────────────┘
+│  ┌─────────────┴─────────────┐
+│  │         check              │  ← setImmediate 回调
+│  └─────────────┬─────────────┘
+│  ┌─────────────┴─────────────┐
+│  │     close callbacks        │  ← socket.on('close', ...)
+│  └─────────────┬─────────────┘
+│                │
+└────────────────┘</pre>
+
+<h4>关键代码示例</h4>
+<pre>console.log('1 - 同步代码开始');
+
+setTimeout(() =&gt; {
+  console.log('2 - setTimeout 宏任务');
+}, 0);
+
+setImmediate(() =&gt; {
+  console.log('3 - setImmediate 宏任务');
+});
+
+Promise.resolve().then(() =&gt; {
+  console.log('4 - Promise 微任务');
+});
+
+process.nextTick(() =&gt; {
+  console.log('5 - nextTick 微任务（优先级最高）');
+});
+
+console.log('6 - 同步代码结束');
+
+// 输出顺序: 1 → 6 → 5 → 4 → 2/3（2和3顺序不确定）</pre>
+
+<div class="info-box interview">
+  <div class="box-title">🎯 面试考点</div>
+  <p><b>Q: process.nextTick 与 Promise.then 的区别？</b><br>
+  A: process.nextTick属于微任务队列，但优先级高于Promise微任务。nextTick在当前操作完成后立即执行，Promise.then在微任务队列的下一批执行。大量nextTick可能导致I/O饥饿。</p>
+</div>
+
+<h3>1.3 异步编程模型</h3>
+
+<h4>学习目标</h4>
+<ul>
+  <li>掌握回调函数模式及其问题（回调地狱）</li>
+  <li>精通Promise链式调用与错误处理</li>
+  <li>熟练使用async/await语法糖</li>
+  <li>了解Generator函数与异步迭代</li>
+</ul>
+
+<h4>异步编程演进</h4>
+<table>
+  <thead><tr><th>阶段</th><th>模式</th><th>优点</th><th>缺点</th></tr></thead>
+  <tbody>
+    <tr><td>1.0</td><td>回调函数</td><td>简单直接</td><td>回调地狱、错误处理困难</td></tr>
+    <tr><td>2.0</td><td>Promise</td><td>链式调用、统一错误处理</td><td>语义不够直观</td></tr>
+    <tr><td>3.0</td><td>Generator + co</td><td>同步写法</td><td>需要执行器、不够原生</td></tr>
+    <tr><td>4.0</td><td>async/await</td><td>同步语义、原生支持</td><td>需注意并发控制</td></tr>
+  </tbody>
+</table>
+
+<h4>async/await最佳实践</h4>
+<pre>class UserService {
+  async getUserById(id) {
+    try {
+      const user = await UserModel.findById(id);
+      if (!user) {
+        throw new NotFoundError('用户不存在');
+      }
+      return user;
+    } catch (error) {
+      logger.error('获取用户失败', { id, error: error.message });
+      throw error;
+    }
+  }
+
+  async getUsersByIds(ids) {
+    const promises = ids.map(id =&gt; this.getUserById(id));
+    return Promise.allSettled(promises);
+  }
+
+  async createUser(data) {
+    const existing = await UserModel.findOne({ email: data.email });
+    if (existing) {
+      throw new ConflictError('邮箱已注册');
+    }
+    return UserModel.create(data);
+  }
+}</pre>
+
+<div class="info-box tip">
+  <div class="box-title">💡 实践建议</div>
+  <p>1. 始终对async函数进行try/catch错误处理<br>
+  2. 使用Promise.allSettled替代Promise.all处理批量请求<br>
+  3. 避免在循环中使用await，改用Promise.all并发<br>
+  4. 使用AbortController实现可取消的异步操作</p>
+</div>
+
+<h3>1.4 开发环境配置与工具链</h3>
+
+<h4>学习目标</h4>
+<ul>
+  <li>掌握nvm/n进行Node.js版本管理</li>
+  <li>配置ESLint + Prettier代码规范</li>
+  <li>掌握npm/yarn/pnpm包管理器使用</li>
+  <li>配置VS Code高效开发环境</li>
+</ul>
+
+<h4>推荐工具链</h4>
+<table>
+  <thead><tr><th>类别</th><th>推荐工具</th><th>用途</th></tr></thead>
+  <tbody>
+    <tr><td>版本管理</td><td>nvm-windows / n</td><td>管理多个Node.js版本</td></tr>
+    <tr><td>包管理器</td><td>pnpm（推荐）/ yarn</td><td>依赖管理、monorepo支持</td></tr>
+    <tr><td>代码规范</td><td>ESLint + Prettier</td><td>代码检查与格式化</td></tr>
+    <tr><td>类型检查</td><td>TypeScript</td><td>静态类型系统</td></tr>
+    <tr><td>调试工具</td><td>VS Code Debugger / ndb</td><td>断点调试</td></tr>
+    <tr><td>API测试</td><td>Postman / HTTPie</td><td>接口调试</td></tr>
+    <tr><td>进程管理</td><td>pm2 / nodemon</td><td>开发/生产进程管理</td></tr>
+  </tbody>
+</table>
+
+<h3>1.5 推荐学习资源</h3>
+
+<div class="resource-card">
+  <div class="res-title">📘 Node.js官方文档</div>
+  <div class="res-link">https://nodejs.org/docs/latest/api/</div>
+  <div class="res-desc">最权威的参考文档，建议通读核心模块API</div>
+</div>
+<div class="resource-card">
+  <div class="res-title">📘 Node.js官网</div>
+  <div class="res-link">https://nodejs.org/</div>
+  <div class="res-desc">Node.js官方网站，包含下载、文档、社区资源</div>
+</div>
+<div class="resource-card">
+  <div class="res-title">📘 Node.js Best Practices</div>
+  <div class="res-link">https://github.com/goldbergyoni/nodebestpractices</div>
+  <div class="res-desc">社区最佳实践合集，涵盖架构、安全、性能等</div>
+</div>
+<div class="resource-card">
+  <div class="res-title">📕 《Node.js设计模式（第3版）》</div>
+  <div class="res-desc">Mario Casciaroma著，深入设计模式与架构，P6必读</div>
+</div>
+<div class="resource-card">
+  <div class="res-title">📕 《深入浅出Node.js》</div>
+  <div class="res-desc">朴灵著，中文经典，深入底层原理</div>
+</div>
+<div class="resource-card">
+  <div class="res-title">🎥 Node.js Official YouTube</div>
+  <div class="res-link">https://www.youtube.com/@Nodejs</div>
+  <div class="res-desc">官方频道，包含Node.js Conf演讲视频</div>
+</div>
+
+<!-- ==================== CHAPTER 2 ==================== -->
+<h2 class="chapter-title"><span class="num">2</span>核心技术深入（第4-6周）</h2>
+
+<h3>2.1 模块化系统</h3>
+
+<h4>学习目标</h4>
+<ul>
+  <li>深入理解CommonJS模块加载机制</li>
+  <li>掌握ES Modules的使用与配置</li>
+  <li>理解两种模块系统的差异与互操作</li>
+  <li>了解模块缓存机制与循环依赖处理</li>
+</ul>
+
+<h4>CommonJS vs ES Modules对比</h4>
+<table>
+  <thead><tr><th>特性</th><th>CommonJS</th><th>ES Modules</th></tr></thead>
+  <tbody>
+    <tr><td>语法</td><td>require() / module.exports</td><td>import / export</td></tr>
+    <tr><td>加载方式</td><td>运行时加载（同步）</td><td>编译时静态分析（异步）</td></tr>
+    <tr><td>输出</td><td>值的拷贝</td><td>值的引用（绑定）</td></tr>
+    <tr><td>this指向</td><td>module.exports</td><td>undefined</td></tr>
+    <tr><td>循环依赖</td><td>返回已执行部分的快照</td><td>引用绑定，可能获取未初始化值</td></tr>
+    <tr><td>Tree Shaking</td><td>不支持</td><td>支持</td></tr>
+    <tr><td>启用方式</td><td>默认（.js）</td><td>package.json "type":"module" 或 .mjs</td></tr>
+  </tbody>
+</table>
+
+<h4>CommonJS模块缓存机制</h4>
+<pre>const cache = require.cache;
+
+function requireUncached(modulePath) {
+  delete cache[require.resolve(modulePath)];
+  return require(modulePath);
+}
+
+function inspectModuleCache() {
+  const modules = Object.keys(cache);
+  console.log(`当前缓存了 ${modules.length} 个模块`);
+  modules.forEach(m =&gt; {
+    if (!m.includes('node_modules')) {
+      console.log(`  - ${m}`);
+    }
+  });
+}</pre>
+
+<div class="info-box interview">
+  <div class="box-title">🎯 面试考点</div>
+  <p><b>Q: require的加载过程？</b><br>
+  A: 1. 解析模块路径（相对/绝对/内置/node_modules）<br>
+  2. 检查缓存，有则直接返回module.exports<br>
+  3. 无缓存则创建新module对象<br>
+  4. 根据扩展名(.js/.json/.node)用不同方式加载<br>
+  5. 编译执行，将exports返回并缓存</p>
+</div>
+
+<h3>2.2 文件系统操作</h3>
+
+<h4>学习目标</h4>
+<ul>
+  <li>掌握fs模块的同步/异步/Promise API</li>
+  <li>理解文件描述符与权限管理</li>
+  <li>掌握文件监听（watch）机制</li>
+  <li>了解fs.promises API的最佳实践</li>
+</ul>
+
+<h4>fs.promises最佳实践</h4>
+<pre>const fs = require('fs').promises;
+const path = require('path');
+
+async function ensureDir(dirPath) {
+  try {
+    await fs.access(dirPath);
+  } catch {
+    await fs.mkdir(dirPath, { recursive: true });
+  }
+}
+
+async function safeReadFile(filePath, encoding = 'utf-8') {
+  try {
+    const content = await fs.readFile(filePath, encoding);
+    return content;
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function writeJsonFile(filePath, data) {
+  const dir = path.dirname(filePath);
+  await ensureDir(dir);
+  await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
+}</pre>
+
+<h3>2.3 流(Streams)处理</h3>
+
+<h4>学习目标</h4>
+<ul>
+  <li>掌握四种基本流类型：Readable、Writable、Duplex、Transform</li>
+  <li>理解流的两种模式：流动模式(flowing)与暂停模式(paused)</li>
+  <li>掌握pipeline管道操作与错误处理</li>
+  <li>能自定义Transform流实现数据处理</li>
+</ul>
+
+<h4>流的四种类型</h4>
+<table>
+  <thead><tr><th>类型</th><th>描述</th><th>典型示例</th></tr></thead>
+  <tbody>
+    <tr><td>Readable</td><td>可读流，数据的来源</td><td>fs.createReadStream, HTTP请求</td></tr>
+    <tr><td>Writable</td><td>可写流，数据的目的地</td><td>fs.createWriteStream, HTTP响应</td></tr>
+    <tr><td>Duplex</td><td>双工流，可读可写（独立）</td><td>net.Socket, TLS套接字</td></tr>
+    <tr><td>Transform</td><td>变换流，读入数据变换后输出</td><td>zlib.createGzip, crypto流</td></tr>
+  </tbody>
+</table>
+
+<h4>自定义Transform流示例</h4>
+<pre>const { Transform } = require('stream');
+
+class JsonLineTransform extends Transform {
+  constructor(options = {}) {
+    super({ ...options, objectMode: true });
+    this.buffer = '';
+  }
+
+  _transform(chunk, encoding, callback) {
+    this.buffer += chunk.toString();
+    const lines = this.buffer.split('\n');
+    this.buffer = lines.pop();
+
+    for (const line of lines) {
+      if (line.trim()) {
+        try {
+          const obj = JSON.parse(line);
+          this.push(obj);
+        } catch (e) {
+          callback(new Error(`JSON解析失败: ${line}`));
+          return;
+        }
+      }
+    }
+    callback();
+  }
+
+  _flush(callback) {
+    if (this.buffer.trim()) {
+      try {
+        this.push(JSON.parse(this.buffer));
+      } catch (e) {
+        callback(new Error(`JSON解析失败: ${this.buffer}`));
+        return;
+      }
+    }
+    callback();
+  }
+}
+
+const { pipeline } = require('stream/promises');
+const fs = require('fs');
+
+async function processLargeJsonFile(inputPath, outputPath) {
+  await pipeline(
+    fs.createReadStream(inputPath),
+    new JsonLineTransform(),
+    async function* (source) {
+      for await (const obj of source) {
+        yield JSON.stringify({ ...obj, processed: true }) + '\n';
+      }
+    },
+    fs.createWriteStream(outputPath)
+  );
+}</pre>
+
+<div class="info-box important">
+  <div class="box-title">📌 核心要点</div>
+  <p>始终使用pipeline替代pipe方法！pipe不会正确传播错误，可能导致内存泄漏。pipeline能确保流结束时正确清理资源，并统一处理错误。</p>
+</div>
+
+<h3>2.4 Buffer与字符编码</h3>
+
+<h4>学习目标</h4>
+<ul>
+  <li>理解Buffer的内存分配机制（Slab分配）</li>
+  <li>掌握字符编码转换（utf8/ascii/base64/hex）</li>
+  <li>了解Buffer与TypedArray的关系</li>
+  <li>掌握Buffer的性能优化技巧</li>
+</ul>
+
+<h4>Buffer核心操作</h4>
+<pre>const buf = Buffer.alloc(256);
+const strBuf = Buffer.from('Hello Node.js', 'utf-8');
+
+console.log(strBuf.toString('hex'));
+console.log(strBuf.toString('base64'));
+
+const combined = Buffer.concat([Buffer.from('Hello '), Buffer.from('World')]);
+
+const sliced = combined.subarray(0, 5);
+sliced[0] = 74;
+console.log(combined.toString());
+
+const base64Buf = Buffer.from('SGVsbG8gV29ybGQ=', 'base64');
+console.log(base64Buf.toString('utf-8'));
+
+function compareBuffers(a, b) {
+  return Buffer.compare(a, b);
+}</pre>
+
+<div class="resource-card">
+  <div class="res-title">📘 Node.js Stream官方文档</div>
+  <div class="res-link">https://nodejs.org/docs/latest/api/stream.html</div>
+  <div class="res-desc">流的完整API参考，包含所有事件和方法说明</div>
+</div>
+<div class="resource-card">
+  <div class="res-title">📘 Node.js Buffer官方文档</div>
+  <div class="res-link">https://nodejs.org/docs/latest/api/buffer.html</div>
+  <div class="res-desc">Buffer API完整参考</div>
+</div>
+<div class="resource-card">
+  <div class="res-title">📘 Node.js FS官方文档</div>
+  <div class="res-link">https://nodejs.org/docs/latest/api/fs.html</div>
+  <div class="res-desc">文件系统模块完整API参考</div>
+</div>
+
+<!-- ==================== CHAPTER 3 ==================== -->
+<h2 class="chapter-title"><span class="num">3</span>网络编程（第7-9周）</h2>
+
+<h3>3.1 HTTP/HTTPS协议实现</h3>
+
+<h4>学习目标</h4>
+<ul>
+  <li>掌握http/https模块创建服务器与客户端</li>
+  <li>理解HTTP请求/响应生命周期</li>
+  <li>掌握HTTPS证书配置</li>
+  <li>了解HTTP/2在Node.js中的实现</li>
+</ul>
+
+<h4>HTTP服务器核心代码</h4>
+<pre>const http = require('http');
+const https = require('https');
+const fs = require('fs');
+
+const httpApp = http.createServer((req, res) =&gt; {
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ message: 'HTTP Server' }));
+});
+
+const httpsOptions = {
+  key: fs.readFileSync('./cert/key.pem'),
+  cert: fs.readFileSync('./cert/cert.pem'),
+};
+
+const httpsApp = https.createServer(httpsOptions, (req, res) =&gt; {
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ message: 'HTTPS Server' }));
+});
+
+httpApp.listen(80, () =&gt; console.log('HTTP on :80'));
+httpsApp.listen(443, () =&gt; console.log('HTTPS on :443'));</pre>
+
+<h3>3.2 RESTful API设计与开发</h3>
+
+<h4>学习目标</h4>
+<ul>
+  <li>掌握RESTful API设计原则与规范</li>
+  <li>理解HTTP方法语义（GET/POST/PUT/PATCH/DELETE）</li>
+  <li>掌握请求验证、错误处理与版本管理</li>
+  <li>了解OpenAPI/Swagger文档规范</li>
+</ul>
+
+<h4>RESTful API设计规范</h4>
+<table>
+  <thead><tr><th>HTTP方法</th><th>路径</th><th>功能</th><th>是否幂等</th></tr></thead>
+  <tbody>
+    <tr><td>GET</td><td>/api/users</td><td>获取用户列表</td><td>是</td></tr>
+    <tr><td>GET</td><td>/api/users/:id</td><td>获取单个用户</td><td>是</td></tr>
+    <tr><td>POST</td><td>/api/users</td><td>创建用户</td><td>否</td></tr>
+    <tr><td>PUT</td><td>/api/users/:id</td><td>全量更新用户</td><td>是</td></tr>
+    <tr><td>PATCH</td><td>/api/users/:id</td><td>部分更新用户</td><td>否</td></tr>
+    <tr><td>DELETE</td><td>/api/users/:id</td><td>删除用户</td><td>是</td></tr>
+  </tbody>
+</table>
+
+<h4>统一响应格式设计</h4>
+<pre>class ApiResponse {
+  static success(data, message = 'success') {
+    return {
+      code: 0,
+      message,
+      data,
+      timestamp: Date.now(),
+    };
+  }
+
+  static error(code, message, details = null) {
+    return {
+      code,
+      message,
+      details,
+      timestamp: Date.now(),
+    };
+  }
+
+  static paginated(data, total, page, pageSize) {
+    return {
+      code: 0,
+      message: 'success',
+      data,
+      pagination: {
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      },
+      timestamp: Date.now(),
+    };
+  }
+}</pre>
+
+<h3>3.3 WebSocket应用开发</h3>
+
+<h4>学习目标</h4>
+<ul>
+  <li>理解WebSocket协议与HTTP长轮询的区别</li>
+  <li>掌握ws库的使用</li>
+  <li>实现实时聊天、推送等应用</li>
+  <li>了解Socket.IO的封装与使用场景</li>
+</ul>
+
+<h4>WebSocket服务器实现</h4>
+<pre>const WebSocket = require('ws');
+
+const wss = new WebSocket.Server({ port: 8080 });
+
+const rooms = new Map();
+
+wss.on('connection', (ws, req) =&gt; {
+  const userId = extractUserId(req);
+
+  ws.on('message', (data) =&gt; {
+    const msg = JSON.parse(data);
+    switch (msg.type) {
+      case 'join':
+        joinRoom(ws, msg.roomId, userId);
+        break;
+      case 'chat':
+        broadcastToRoom(msg.roomId, {
+          type: 'chat',
+          from: userId,
+          content: msg.content,
+          time: Date.now(),
+        }, ws);
+        break;
+      case 'leave':
+        leaveRoom(msg.roomId, userId);
+        break;
+    }
+  });
+
+  ws.on('close', () =&gt; {
+    cleanupUser(userId);
+  });
+});
+
+function broadcastToRoom(roomId, message, excludeWs) {
+  const room = rooms.get(roomId);
+  if (!room) return;
+  for (const client of room) {
+    if (client !== excludeWs &amp;&amp; client.readyState === WebSocket.OPEN) {
+      client.send(JSON.stringify(message));
+    }
+  }
+}</pre>
+
+<h3>3.4 TCP/UDP网络编程</h3>
+
+<h4>学习目标</h4>
+<ul>
+  <li>掌握net模块创建TCP服务器/客户端</li>
+  <li>掌握dgram模块实现UDP通信</li>
+  <li>理解TCP粘包问题与解决方案</li>
+  <li>了解Socket连接状态管理</li>
+</ul>
+
+<h4>TCP服务器与粘包处理</h4>
+<pre>const net = require('net');
+
+class PacketParser {
+  constructor() {
+    this.buffer = Buffer.alloc(0);
+  }
+
+  parse(data) {
+    this.buffer = Buffer.concat([this.buffer, data]);
+    const packets = [];
+
+    while (this.buffer.length &gt;= 4) {
+      const length = this.buffer.readUInt32BE(0);
+      if (this.buffer.length &lt; 4 + length) break;
+
+      const payload = this.buffer.subarray(4, 4 + length);
+      this.buffer = this.buffer.subarray(4 + length);
+      packets.push(JSON.parse(payload.toString('utf-8')));
+    }
+
+    return packets;
+  }
+}
+
+const server = net.createServer((socket) =&gt; {
+  const parser = new PacketParser();
+
+  socket.on('data', (data) =&gt; {
+    const packets = parser.parse(data);
+    for (const packet of packets) {
+      handlePacket(socket, packet);
+    }
+  });
+
+  socket.on('error', (err) =&gt; {
+    console.error('Socket error:', err.message);
+  });
+});
+
+server.listen(3000, () =&gt; console.log('TCP Server on :3000'));</pre>
+
+<div class="resource-card">
+  <div class="res-title">📘 Node.js HTTP官方文档</div>
+  <div class="res-link">https://nodejs.org/docs/latest/api/http.html</div>
+  <div class="res-desc">HTTP模块完整API参考</div>
+</div>
+<div class="resource-card">
+  <div class="res-title">📘 Node.js Net官方文档</div>
+  <div class="res-link">https://nodejs.org/docs/latest/api/net.html</div>
+  <div class="res-desc">TCP/IPC网络模块完整API参考</div>
+</div>
+<div class="resource-card">
+  <div class="res-title">📘 ws库文档</div>
+  <div class="res-link">https://github.com/websockets/ws</div>
+  <div class="res-desc">最流行的Node.js WebSocket实现</div>
+</div>
+<div class="resource-card">
+  <div class="res-title">📘 Socket.IO官方文档</div>
+  <div class="res-link">https://socket.io/docs/v4/</div>
+  <div class="res-desc">支持回退、房间、命名空间的WebSocket框架</div>
+</div>
+
+<!-- ==================== CHAPTER 4 ==================== -->
+<h2 class="chapter-title"><span class="num">4</span>数据库交互（第10-12周）</h2>
+
+<h3>4.1 关系型数据库操作</h3>
+
+<h4>学习目标</h4>
+<ul>
+  <li>掌握MySQL/PostgreSQL的Node.js驱动使用</li>
+  <li>理解连接池管理与配置优化</li>
+  <li>掌握事务处理与隔离级别</li>
+  <li>了解SQL注入防护</li>
+</ul>
+
+<h4>MySQL连接池与事务</h4>
+<pre>const mysql = require('mysql2/promise');
+
+const pool = mysql.createPool({
+  host: 'localhost',
+  user: 'root',
+  password: 'password',
+  database: 'app_db',
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+  enableKeepAlive: true,
+});
+
+async function transferBalance(fromId, toId, amount) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const [from] = await conn.execute(
+      'SELECT balance FROM accounts WHERE id = ? FOR UPDATE',
+      [fromId]
+    );
+
+    if (from[0].balance &lt; amount) {
+      throw new Error('余额不足');
+    }
+
+    await conn.execute(
+      'UPDATE accounts SET balance = balance - ? WHERE id = ?',
+      [amount, fromId]
+    );
+
+    await conn.execute(
+      'UPDATE accounts SET balance = balance + ? WHERE id = ?',
+      [amount, toId]
+    );
+
+    await conn.commit();
+  } catch (error) {
+    await conn.rollback();
+    throw error;
+  } finally {
+    conn.release();
+  }
+}</pre>
+
+<h4>PostgreSQL使用pg库</h4>
+<pre>const { Pool } = require('pg');
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000,
+});
+
+async function findUserByEmail(email) {
+  const { rows } = await pool.query(
+    'SELECT * FROM users WHERE email = $1',
+    [email]
+  );
+  return rows[0] || null;
+}</pre>
+
+<h3>4.2 NoSQL数据库应用</h3>
+
+<h4>学习目标</h4>
+<ul>
+  <li>掌握MongoDB的CRUD操作与聚合管道</li>
+  <li>掌握Redis的数据结构与应用场景</li>
+  <li>理解MongoDB的索引优化</li>
+  <li>掌握Redis缓存策略（Cache-Aside/Write-Through）</li>
+</ul>
+
+<h4>MongoDB聚合管道示例</h4>
+<pre>const { MongoClient } = require('mongodb');
+
+async function getUserOrderStats(db) {
+  return db.collection('orders').aggregate([
+    { $match: { status: 'completed', createdAt: { $gte: new Date('2024-01-01') } } },
+    { $group: {
+        _id: '$userId',
+        totalOrders: { $sum: 1 },
+        totalAmount: { $sum: '$amount' },
+        avgAmount: { $avg: '$amount' },
+    }},
+    { $sort: { totalAmount: -1 } },
+    { $limit: 100 },
+    { $lookup: {
+        from: 'users',
+        localField: '_id',
+        foreignField: '_id',
+        as: 'user',
+    }},
+    { $unwind: '$user' },
+    { $project: {
+        userId: '$_id',
+        username: '$user.name',
+        totalOrders: 1,
+        totalAmount: 1,
+        avgAmount: { $round: ['$avgAmount', 2] },
+    }},
+  ]).toArray();
+}</pre>
+
+<h4>Redis缓存策略实现</h4>
+<pre>const Redis = require('ioredis');
+
+const redis = new Redis({
+  host: 'localhost',
+  port: 6379,
+  retryStrategy(times) {
+    return Math.min(times * 50, 2000);
+  },
+});
+
+class CacheService {
+  constructor(prefix = 'app', defaultTTL = 3600) {
+    this.prefix = prefix;
+    this.defaultTTL = defaultTTL;
+  }
+
+  _key(key) {
+    return `${this.prefix}:${key}`;
+  }
+
+  async get(key) {
+    const data = await redis.get(this._key(key));
+    return data ? JSON.parse(data) : null;
+  }
+
+  async set(key, value, ttl = this.defaultTTL) {
+    await redis.set(this._key(key), JSON.stringify(value), 'EX', ttl);
+  }
+
+  async getOrSet(key, fetchFn, ttl = this.defaultTTL) {
+    const cached = await this.get(key);
+    if (cached !== null) return cached;
+
+    const data = await fetchFn();
+    await this.set(key, data, ttl);
+    return data;
+  }
+
+  async invalidate(pattern) {
+    const keys = await redis.keys(this._key(pattern));
+    if (keys.length &gt; 0) {
+      await redis.del(...keys);
+    }
+  }
+}</pre>
+
+<h3>4.3 ORM框架使用</h3>
+
+<h4>学习目标</h4>
+<ul>
+  <li>掌握Sequelize模型定义与关联关系</li>
+  <li>掌握TypeORM装饰器与Repository模式</li>
+  <li>理解N+1查询问题与预加载(eager loading)</li>
+  <li>掌握数据库迁移(Migration)管理</li>
+</ul>
+
+<h4>TypeORM实体定义</h4>
+<pre>import { Entity, PrimaryGeneratedColumn, Column, OneToMany, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Order } from './Order';
+
+@Entity('users')
+export class User {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column({ unique: true })
+  email: string;
+
+  @Column()
+  name: string;
+
+  @Column({ select: false })
+  passwordHash: string;
+
+  @Column({ default: 'active' })
+  status: string;
+
+  @OneToMany(() =&gt; Order, order =&gt; order.user)
+  orders: Order[];
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
+}</pre>
+
+<div class="resource-card">
+  <div class="res-title">📘 MySQL2官方文档</div>
+  <div class="res-link">https://github.com/sidorares/node-mysql2</div>
+  <div class="res-desc">Node.js MySQL客户端，支持Promise和预处理语句</div>
+</div>
+<div class="resource-card">
+  <div class="res-title">📘 PostgreSQL pg文档</div>
+  <div class="res-link">https://node-postgres.com/</div>
+  <div class="res-desc">PostgreSQL Node.js客户端完整文档</div>
+</div>
+<div class="resource-card">
+  <div class="res-title">📘 MongoDB Node.js Driver</div>
+  <div class="res-link">https://www.mongodb.com/docs/drivers/node/current/</div>
+  <div class="res-desc">MongoDB官方Node.js驱动文档</div>
+</div>
+<div class="resource-card">
+  <div class="res-title">📘 Redis ioredis文档</div>
+  <div class="res-link">https://github.com/redis/ioredis</div>
+  <div class="res-desc">功能最全的Node.js Redis客户端</div>
+</div>
+<div class="resource-card">
+  <div class="res-title">📘 TypeORM官方文档</div>
+  <div class="res-link">https://typeorm.io/</div>
+  <div class="res-desc">TypeScript ORM框架，支持多种数据库</div>
+</div>
+<div class="resource-card">
+  <div class="res-title">📘 Sequelize官方文档</div>
+  <div class="res-link">https://sequelize.org/</div>
+  <div class="res-desc">最流行的Node.js ORM，支持PostgreSQL/MySQL等</div>
+</div>
+
+<!-- ==================== CHAPTER 5 ==================== -->
+<h2 class="chapter-title"><span class="num">5</span>性能优化（第13-15周）</h2>
+
+<h3>5.1 内存管理与泄漏排查</h3>
+
+<h4>学习目标</h4>
+<ul>
+  <li>理解V8内存管理与垃圾回收机制</li>
+  <li>掌握内存泄漏的常见原因与排查方法</li>
+  <li>熟练使用heapdump/v8-profiler等工具</li>
+  <li>了解WeakRef/FinalizationRegistry的使用</li>
+</ul>
+
+<h4>V8垃圾回收策略</h4>
+<table>
+  <thead><tr><th>算法</th><th>适用区域</th><th>特点</th></tr></thead>
+  <tbody>
+    <tr><td>Scavenge（副GC）</td><td>新生代（Young Generation）</td><td>速度快、空间小、频繁执行</td></tr>
+    <tr><td>Mark-Sweep（主GC）</td><td>老生代（Old Generation）</td><td>标记清除、停顿较长</td></tr>
+    <tr><td>Mark-Compact</td><td>老生代</td><td>标记整理、解决内存碎片</td></tr>
+    <tr><td>Incremental Marking</td><td>老生代</td><td>增量标记、减少停顿</td></tr>
+  </tbody>
+</table>
+
+<h4>内存泄漏排查</h4>
+<pre>const v8 = require('v8');
+const fs = require('fs');
+
+function takeHeapSnapshot(label) {
+  const fileName = `heapdump-${label}-${Date.now()}.heapsnapshot`;
+  const stream = v8.getHeapSnapshot();
+  const file = fs.createWriteStream(fileName);
+  stream.pipe(file);
+  console.log(`Heap snapshot saved: ${fileName}`);
+}
+
+setInterval(() =&gt; {
+  const usage = process.memoryUsage();
+  console.log({
+    rss: `${(usage.rss / 1024 / 1024).toFixed(2)} MB`,
+    heapTotal: `${(usage.heapTotal / 1024 / 1024).toFixed(2)} MB`,
+    heapUsed: `${(usage.heapUsed / 1024 / 1024).toFixed(2)} MB`,
+    external: `${(usage.external / 1024 / 1024).toFixed(2)} MB`,
+  });
+}, 60000);</pre>
+
+<div class="info-box warning">
+  <div class="box-title">⚠️ 常见内存泄漏场景</div>
+  <p>1. 全局变量持续增长（如缓存无上限）<br>
+  2. 闭包引用未释放的大对象<br>
+  3. 事件监听器未移除（EventEmitter泄漏）<br>
+  4. 定时器未清理<br>
+  5. 数据库连接/文件描述符未关闭</p>
+</div>
+
+<h3>5.2 CPU密集型任务处理</h3>
+
+<h4>学习目标</h4>
+<ul>
+  <li>理解Node.js单线程对CPU密集型任务的影响</li>
+  <li>掌握worker_threads多线程方案</li>
+  <li>了解child_process多进程方案</li>
+  <li>掌握任务队列与分发策略</li>
+</ul>
+
+<h4>Worker Threads使用</h4>
+<pre>const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
+
+if (isMainThread) {
+  function runHeavyTask(data) {
+    return new Promise((resolve, reject) =&gt; {
+      const worker = new Worker(__filename, { workerData: data });
+      worker.on('message', resolve);
+      worker.on('error', reject);
+      worker.on('exit', (code) =&gt; {
+        if (code !== 0) reject(new Error(`Worker stopped with exit code ${code}`));
+      });
+    });
+  }
+
+  async function processBatch(items) {
+    const cpuCount = require('os').cpus().length;
+    const chunkSize = Math.ceil(items.length / cpuCount);
+    const chunks = [];
+
+    for (let i = 0; i &lt; items.length; i += chunkSize) {
+      chunks.push(items.slice(i, i + chunkSize));
+    }
+
+    const results = await Promise.all(chunks.map(chunk =&gt; runHeavyTask(chunk)));
+    return results.flat();
+  }
+} else {
+  const result = workerData.map(item =&gt; heavyComputation(item));
+  parentPort.postMessage(result);
+}</pre>
+
+<h3>5.3 集群模式应用</h3>
+
+<h4>学习目标</h4>
+<ul>
+  <li>掌握Cluster模块实现多进程</li>
+  <li>理解主从进程间通信</li>
+  <li>掌握PM2进程管理工具</li>
+  <li>了解sticky session实现</li>
+</ul>
+
+<h4>Cluster模式实现</h4>
+<pre>const cluster = require('cluster');
+const os = require('os');
+
+if (cluster.isPrimary) {
+  const cpuCount = os.cpus().length;
+  console.log(`Primary ${process.pid} running`);
+
+  for (let i = 0; i &lt; cpuCount; i++) {
+    cluster.fork();
+  }
+
+  cluster.on('exit', (worker, code, signal) =&gt; {
+    console.log(`Worker ${worker.process.pid} died. Restarting...`);
+    cluster.fork();
+  });
+
+  cluster.on('listening', (worker, address) =&gt; {
+    console.log(`Worker ${worker.process.pid} listening on ${address.port}`);
+  });
+} else {
+  require('./server');
+}</pre>
+
+<h4>PM2配置文件</h4>
+<pre>// ecosystem.config.js
+module.exports = {
+  apps: [{
+    name: 'my-app',
+    script: './dist/main.js',
+    instances: 'max',
+    exec_mode: 'cluster',
+    max_memory_restart: '1G',
+    env: {
+      NODE_ENV: 'production',
+      PORT: 3000,
+    },
+    logging: {
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
+      error_file: './logs/error.log',
+      out_file: './logs/out.log',
+      merge_logs: true,
+    },
+  }],
+};</pre>
+
+<h3>5.4 缓存策略设计</h3>
+
+<h4>学习目标</h4>
+<ul>
+  <li>掌握多级缓存架构设计</li>
+  <li>理解缓存穿透/击穿/雪崩及解决方案</li>
+  <li>掌握缓存更新策略</li>
+  <li>了解分布式缓存一致性</li>
+</ul>
+
+<h4>缓存问题与解决方案</h4>
+<table>
+  <thead><tr><th>问题</th><th>描述</th><th>解决方案</th></tr></thead>
+  <tbody>
+    <tr><td>缓存穿透</td><td>查询不存在的数据，请求直达数据库</td><td>布隆过滤器、缓存空值</td></tr>
+    <tr><td>缓存击穿</td><td>热点key过期，大量请求同时打到数据库</td><td>互斥锁、永不过期+异步刷新</td></tr>
+    <tr><td>缓存雪崩</td><td>大量key同时过期</td><td>随机TTL、多级缓存、限流降级</td></tr>
+  </tbody>
+</table>
+
+<h4>多级缓存架构</h4>
+<pre>class MultiLevelCache {
+  constructor() {
+    this.l1 = new Map();
+    this.l2 = redisClient;
+    this.l3 = databaseClient;
+  }
+
+  async get(key) {
+    if (this.l1.has(key)) return this.l1.get(key);
+
+    const l2Data = await this.l2.get(key);
+    if (l2Data) {
+      this.l1.set(key, l2Data);
+      return l2Data;
+    }
+
+    const l3Data = await this.l3.findById(key);
+    if (l3Data) {
+      await this.l2.set(key, l3Data, 3600);
+      this.l1.set(key, l3Data);
+    }
+    return l3Data;
+  }
+
+  invalidate(key) {
+    this.l1.delete(key);
+    return this.l2.del(key);
+  }
+}</pre>
+
+<div class="resource-card">
+  <div class="res-title">📘 Node.js Performance官方指南</div>
+  <div class="res-link">https://nodejs.org/en/docs/guides/simple-profiling</div>
+  <div class="res-desc">Node.js性能分析入门指南</div>
+</div>
+<div class="resource-card">
+  <div class="res-title">📘 Clinic.js</div>
+  <div class="res-link">https://clinicjs.org/</div>
+  <div class="res-desc">Node.js性能诊断工具套件，可视化分析</div>
+</div>
+<div class="resource-card">
+  <div class="res-title">📘 PM2官方文档</div>
+  <div class="res-link">https://pm2.keymetrics.io/docs/usage/quick-start/</div>
+  <div class="res-desc">Node.js生产进程管理器完整文档</div>
+</div>
+
+<!-- ==================== CHAPTER 6 ==================== -->
+<h2 class="chapter-title"><span class="num">6</span>工程化实践（第16-18周）</h2>
+
+<h3>6.1 代码规范与质量控制</h3>
+
+<h4>学习目标</h4>
+<ul>
+  <li>配置ESLint + Prettier + TypeScript</li>
+  <li>掌握Husky + lint-staged Git钩子</li>
+  <li>理解Commitlint提交规范</li>
+  <li>掌握SonarQube代码质量分析</li>
+</ul>
+
+<h4>ESLint配置示例</h4>
+<pre>// .eslintrc.json
+{
+  "root": true,
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "module"
+  },
+  "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/recommended",
+    "plugin:node/recommended",
+    "prettier"
+  ],
+  "rules": {
+    "no-console": ["warn", { "allow": ["warn", "error"] }],
+    "@typescript-eslint/no-explicit-any": "error",
+    "@typescript-eslint/explicit-function-return-type": "warn",
+    "node/no-unsupported-features/es-syntax": "off"
+  }
+}</pre>
+
+<h3>6.2 单元测试与集成测试</h3>
+
+<h4>学习目标</h4>
+<ul>
+  <li>掌握Jest测试框架的使用</li>
+  <li>理解测试金字塔（单元→集成→E2E）</li>
+  <li>掌握Mock/Stub/Spy技巧</li>
+  <li>了解测试覆盖率与Istanbul</li>
+</ul>
+
+<h4>Jest测试示例</h4>
+<pre>const UserService = require('../services/UserService');
+const UserModel = require('../models/User');
+
+jest.mock('../models/User');
+
+describe('UserService', () =&gt; {
+  let userService;
+
+  beforeEach(() =&gt; {
+    userService = new UserService();
+    jest.clearAllMocks();
+  });
+
+  describe('getUserById', () =&gt; {
+    it('should return user when found', async () =&gt; {
+      const mockUser = { id: '1', name: 'Test', email: 'test@test.com' };
+      UserModel.findById.mockResolvedValue(mockUser);
+
+      const result = await userService.getUserById('1');
+
+      expect(result).toEqual(mockUser);
+      expect(UserModel.findById).toHaveBeenCalledWith('1');
+    });
+
+    it('should throw NotFoundError when user not found', async () =&gt; {
+      UserModel.findById.mockResolvedValue(null);
+
+      await expect(userService.getUserById('999'))
+        .rejects.toThrow('用户不存在');
+    });
+  });
+});</pre>
+
+<h3>6.3 CI/CD流程搭建</h3>
+
+<h4>学习目标</h4>
+<ul>
+  <li>掌握GitHub Actions / GitLab CI配置</li>
+  <li>理解CI/CD流水线设计原则</li>
+  <li>掌握自动化测试与部署流程</li>
+  <li>了解蓝绿部署与金丝雀发布</li>
+</ul>
+
+<h4>GitHub Actions配置</h4>
+<pre>name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm test --coverage
+      - run: pnpm build
+
+  deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to production
+        run: |
+          docker build -t myapp:${{ github.sha }} .
+          docker push myregistry/myapp:${{ github.sha }}</pre>
+
+<h3>6.4 Docker容器化部署</h3>
+
+<h4>学习目标</h4>
+<ul>
+  <li>掌握Dockerfile编写最佳实践</li>
+  <li>理解多阶段构建优化镜像大小</li>
+  <li>掌握docker-compose编排</li>
+  <li>了解Kubernetes基础概念</li>
+</ul>
+
+<h4>多阶段Dockerfile</h4>
+<pre>FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package.json pnpm-lock.yaml ./
+RUN corepack enable &amp;&amp; pnpm install --frozen-lockfile
+COPY . .
+RUN pnpm build &amp;&amp; pnpm prune --prod
+
+FROM node:20-alpine AS runtime
+WORKDIR /app
+RUN addgroup -g 1001 -S appgroup &amp;&amp; adduser -S appuser -u 1001
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/package.json ./
+USER appuser
+EXPOSE 3000
+CMD ["node", "dist/main.js"]</pre>
+
+<h4>docker-compose编排</h4>
+<pre>version: '3.8'
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgres://user:pass@db:5432/app
+      - REDIS_URL=redis://cache:6379
+    depends_on:
+      - db
+      - cache
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  cache:
+    image: redis:7-alpine
+    volumes:
+      - redisdata:/data
+
+volumes:
+  pgdata:
+  redisdata:</pre>
+
+<div class="resource-card">
+  <div class="res-title">📘 Jest官方文档</div>
+  <div class="res-link">https://jestjs.io/docs/getting-started</div>
+  <div class="res-desc">JavaScript测试框架完整文档</div>
+</div>
+<div class="resource-card">
+  <div class="res-title">📘 GitHub Actions文档</div>
+  <div class="res-link">https://docs.github.com/en/actions</div>
+  <div class="res-desc">GitHub CI/CD平台完整文档</div>
+</div>
+<div class="resource-card">
+  <div class="res-title">📘 Docker官方文档</div>
+  <div class="res-link">https://docs.docker.com/</div>
+  <div class="res-desc">Docker容器化平台完整文档</div>
+</div>
+<div class="resource-card">
+  <div class="res-title">📘 ESLint官方文档</div>
+  <div class="res-link">https://eslint.org/docs/latest/</div>
+  <div class="res-desc">JavaScript代码检查工具完整文档</div>
+</div>
+
+<!-- ==================== CHAPTER 7 ==================== -->
+<h2 class="chapter-title"><span class="num">7</span>框架与生态（第19-21周）</h2>
+
+<h3>7.1 Express框架深入学习</h3>
+
+<h4>学习目标</h4>
+<ul>
+  <li>深入理解Express中间件机制（洋葱模型）</li>
+  <li>掌握路由、错误处理与请求生命周期</li>
+  <li>实现自定义中间件（认证、日志、限流）</li>
+  <li>了解Express性能优化与安全配置</li>
+</ul>
+
+<h4>Express中间件架构</h4>
+<pre>const express = require('express');
+const app = express();
+
+const requestLogger = (req, res, next) =&gt; {
+  const start = Date.now();
+  res.on('finish', () =&gt; {
+    const duration = Date.now() - start;
+    console.log(`${req.method} ${req.path} ${res.statusCode} ${duration}ms`);
+  });
+  next();
+};
+
+const rateLimiter = (maxRequests = 100, windowMs = 60000) =&gt; {
+  const requests = new Map();
+  return (req, res, next) =&gt; {
+    const key = req.ip;
+    const now = Date.now();
+    const record = requests.get(key) || { count: 0, startTime: now };
+
+    if (now - record.startTime &gt; windowMs) {
+      record.count = 0;
+      record.startTime = now;
+    }
+
+    record.count++;
+    requests.set(key, record);
+
+    if (record.count &gt; maxRequests) {
+      return res.status(429).json({ error: '请求过于频繁' });
+    }
+    next();
+  };
+};
+
+app.use(express.json());
+app.use(requestLogger);
+app.use(rateLimiter(100, 60000));
+
+app.use('/api', require('./routes'));
+
+app.use((err, req, res, next) =&gt; {
+  console.error(err.stack);
+  res.status(err.status || 500).json({
+    code: err.code || 'INTERNAL_ERROR',
+    message: err.message,
+  });
+});
+
+app.listen(3000);</pre>
+
+<h3>7.2 Koa框架深入学习</h3>
+
+<h4>学习目标</h4>
+<ul>
+  <li>理解Koa的async/await中间件模型</li>
+  <li>掌握Koa核心：context/request/response</li>
+  <li>对比Express与Koa的设计哲学差异</li>
+  <li>实现Koa自定义中间件</li>
+</ul>
+
+<h4>Express vs Koa对比</h4>
+<table>
+  <thead><tr><th>特性</th><th>Express</th><th>Koa</th></tr></thead>
+  <tbody>
+    <tr><td>中间件模型</td><td>线性（callback）</td><td>洋葱模型（async/await）</td></tr>
+    <tr><td>错误处理</td><td>回调风格</td><td>try/catch</td></tr>
+    <tr><td>内置功能</td><td>丰富（路由、静态文件等）</td><td>极简（仅HTTP服务）</td></tr>
+    <tr><td>Context</td><td>req/res分离</td><td>统一ctx对象</td></tr>
+    <tr><td>灵活性</td><td>约定大于配置</td><td>高度可定制</td></tr>
+    <tr><td>学习曲线</td><td>较低</td><td>中等</td></tr>
+  </tbody>
+</table>
+
+<h4>Koa洋葱模型示例</h4>
+<pre>const Koa = require('koa');
+const app = new Koa();
+
+app.use(async (ctx, next) =&gt; {
+  console.log('1 - 进入第一层中间件');
+  const start = Date.now();
+  await next();
+  const duration = Date.now() - start;
+  ctx.set('X-Response-Time', `${duration}ms`);
+  console.log(`1 - 第一层中间件耗时: ${duration}ms`);
+});
+
+app.use(async (ctx, next) =&gt; {
+  console.log('2 - 进入第二层中间件');
+  await next();
+  console.log('2 - 第二层中间件完成');
+});
+
+app.use(async (ctx) =&gt; {
+  console.log('3 - 处理请求');
+  ctx.body = { message: 'Hello Koa' };
+});
+
+app.listen(3000);
+
+// 输出顺序: 1进入 → 2进入 → 3处理 → 2完成 → 1完成</pre>
+
+<h3>7.3 NestJS框架深入学习</h3>
+
+<h4>学习目标</h4>
+<ul>
+  <li>掌握NestJS模块/控制器/服务架构</li>
+  <li>理解依赖注入(DI)与控制反转(IoC)</li>
+  <li>掌握NestJS守卫/拦截器/管道</li>
+  <li>了解NestJS微服务传输层</li>
+</ul>
+
+<h4>NestJS核心架构</h4>
+<pre>import { Module, Controller, Get, Post, Body, Injectable, UseGuards } from '@nestjs/common';
+
+@Injectable()
+export class UsersService {
+  constructor(
+    @InjectRepository(User) private userRepo: Repository&lt;User&gt;,
+    private cacheService: CacheService,
+  ) {}
+
+  async findById(id: string): Promise&lt;User&gt; {
+    const cached = await this.cacheService.get(`user:${id}`);
+    if (cached) return cached;
+
+    const user = await this.userRepo.findOne({ where: { id } });
+    if (!user) throw new NotFoundException('用户不存在');
+
+    await this.cacheService.set(`user:${id}`, user, 3600);
+    return user;
+  }
+}
+
+@Controller('users')
+@UseGuards(AuthGuard)
+export class UsersController {
+  constructor(private usersService: UsersService) {}
+
+  @Get(':id')
+  async findOne(@Param('id') id: string) {
+    return this.usersService.findById(id);
+  }
+
+  @Post()
+  async create(@Body() createUserDto: CreateUserDto) {
+    return this.usersService.create(createUserDto);
+  }
+}
+
+@Module({
+  imports: [TypeOrmModule.forFeature([User])],
+  controllers: [UsersController],
+  providers: [UsersService],
+  exports: [UsersService],
+})
+export class UsersModule {}</pre>
+
+<h3>7.4 中间件开发与微服务架构</h3>
+
+<h4>学习目标</h4>
+<ul>
+  <li>掌握通用中间件设计模式</li>
+  <li>理解微服务通信模式（同步/异步）</li>
+  <li>了解服务注册与发现</li>
+  <li>掌握API网关设计</li>
+</ul>
+
+<h4>微服务通信模式</h4>
+<table>
+  <thead><tr><th>模式</th><th>技术</th><th>适用场景</th></tr></thead>
+  <tbody>
+    <tr><td>同步HTTP</td><td>REST/gRPC</td><td>简单查询、低延迟要求</td></tr>
+    <tr><td>异步消息</td><td>RabbitMQ/Kafka</td><td>事件驱动、解耦服务</td></tr>
+    <tr><td>服务发现</td><td>Consul/Etcd</td><td>动态服务注册与发现</td></tr>
+    <tr><td>API网关</td><td>NestJS Gateway/Kong</td><td>统一入口、限流、鉴权</td></tr>
+  </tbody>
+</table>
+
+<div class="resource-card">
+  <div class="res-title">📘 Express官方文档</div>
+  <div class="res-link">https://expressjs.com/</div>
+  <div class="res-desc">Express框架完整API文档与指南</div>
+</div>
+<div class="resource-card">
+  <div class="res-title">📘 Koa官方文档</div>
+  <div class="res-link">https://koajs.com/</div>
+  <div class="res-desc">Koa框架官方文档</div>
+</div>
+<div class="resource-card">
+  <div class="res-title">📘 NestJS官方文档</div>
+  <div class="res-link">https://docs.nestjs.com/</div>
+  <div class="res-desc">NestJS框架完整文档，包含微服务、GraphQL等</div>
+</div>
+<div class="resource-card">
+  <div class="res-title">📘 Fastify官方文档</div>
+  <div class="res-link">https://fastify.dev/</div>
+  <div class="res-desc">高性能Node.js Web框架</div>
+</div>
+
+<!-- ==================== CHAPTER 8 ==================== -->
+<h2 class="chapter-title"><span class="num">8</span>高级主题（第22-24周）</h2>
+
+<h3>8.1 安全最佳实践</h3>
+
+<h4>学习目标</h4>
+<ul>
+  <li>掌握JWT/OAuth2.0认证授权实现</li>
+  <li>理解XSS/CSRF/SQL注入/SSRF等攻击防护</li>
+  <li>掌握helmet/cors/rate-limit等安全中间件</li>
+  <li>了解加密算法与密钥管理</li>
+</ul>
+
+<h4>JWT认证实现</h4>
+<pre>const jwt = require('jsonwebtoken');
+const bcrypt = require('bcrypt');
+
+class AuthService {
+  constructor(jwtSecret, jwtExpiry = '7d') {
+    this.jwtSecret = jwtSecret;
+    this.jwtExpiry = jwtExpiry;
+  }
+
+  async hashPassword(password) {
+    return bcrypt.hash(password, 12);
+  }
+
+  async verifyPassword(password, hash) {
+    return bcrypt.compare(password, hash);
+  }
+
+  generateToken(payload) {
+    return jwt.sign(payload, this.jwtSecret, {
+      expiresIn: this.jwtExpiry,
+      algorithm: 'HS256',
+    });
+  }
+
+  verifyToken(token) {
+    try {
+      return jwt.verify(token, this.jwtSecret, { algorithms: ['HS256'] });
+    } catch {
+      return null;
+    }
+  }
+
+  generateTokenPair(payload) {
+    const accessToken = this.generateToken(payload);
+    const refreshToken = jwt.sign(payload, this.jwtSecret, {
+      expiresIn: '30d',
+      algorithm: 'HS256',
+    });
+    return { accessToken, refreshToken };
+  }
+}</pre>
+
+<h4>安全防护清单</h4>
+<table>
+  <thead><tr><th>威胁</th><th>防护措施</th><th>工具/库</th></tr></thead>
+  <tbody>
+    <tr><td>XSS</td><td>输入过滤、CSP策略、输出编码</td><td>helmet、DOMPurify</td></tr>
+    <tr><td>CSRF</td><td>CSRF Token、SameSite Cookie</td><td>csurf</td></tr>
+    <tr><td>SQL注入</td><td>预处理语句、ORM</td><td>mysql2、Sequelize</td></tr>
+    <tr><td>暴力破解</td><td>限流、账户锁定</td><td>express-rate-limit</td></tr>
+    <tr><td>信息泄露</td><td>错误处理、隐藏版本号</td><td>helmet hidePoweredBy</td></tr>
+    <tr><td>中间人攻击</td><td>HTTPS、HSTS</td><td>helmet、Let's Encrypt</td></tr>
+    <tr><td>依赖漏洞</td><td>定期审计、自动更新</td><td>npm audit、Snyk</td></tr>
+  </tbody>
+</table>
+
+<h3>8.2 分布式系统设计</h3>
+
+<h4>学习目标</h4>
+<ul>
+  <li>理解CAP定理与分布式一致性</li>
+  <li>掌握消息队列(RabbitMQ/Kafka)应用</li>
+  <li>了解分布式事务（2PC/Saga模式）</li>
+  <li>掌握分布式锁实现</li>
+</ul>
+
+<h4>CAP定理与权衡</h4>
+<table>
+  <thead><tr><th>策略</th><th>保证</th><th>牺牲</th><th>典型系统</th></tr></thead>
+  <tbody>
+    <tr><td>CP</td><td>一致性 + 分区容错</td><td>可用性</td><td>Zookeeper、Etcd</td></tr>
+    <tr><td>AP</td><td>可用性 + 分区容错</td><td>强一致性</td><td>Cassandra、DynamoDB</td></tr>
+    <tr><td>CA</td><td>一致性 + 可用性</td><td>分区容错</td><td>单机MySQL（理论）</td></tr>
+  </tbody>
+</table>
+
+<h4>分布式锁实现</h4>
+<pre>class RedisDistributedLock {
+  constructor(redisClient) {
+    this.redis = redisClient;
+  }
+
+  async acquire(key, ttl = 10000, retryCount = 3, retryDelay = 200) {
+    const token = crypto.randomUUID();
+
+    for (let i = 0; i &lt; retryCount; i++) {
+      const result = await this.redis.set(key, token, 'PX', ttl, 'NX');
+      if (result === 'OK') return token;
+
+      await new Promise(resolve =&gt; setTimeout(resolve, retryDelay));
+    }
+
+    throw new Error(`获取锁失败: ${key}`);
+  }
+
+  async release(key, token) {
+    const script = `
+      if redis.call("get", KEYS[1]) == ARGV[1] then
+        return redis.call("del", KEYS[1])
+      else
+        return 0
+      end
+    `;
+    return this.redis.eval(script, 1, key, token);
+  }
+}</pre>
+
+<h3>8.3 服务监控与日志系统</h3>
+
+<h4>学习目标</h4>
+<ul>
+  <li>掌握Winston/Pino结构化日志</li>
+  <li>理解APM（应用性能监控）原理</li>
+  <li>掌握Prometheus + Grafana监控体系</li>
+  <li>了解分布式链路追踪（Jaeger/Zipkin）</li>
+</ul>
+
+<h4>结构化日志系统</h4>
+<pre>const winston = require('winston');
+
+const logger = winston.createLogger({
+  level: process.env.LOG_LEVEL || 'info',
+  format: winston.format.combine(
+    winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss.SSS' }),
+    winston.format.errors({ stack: true }),
+    winston.format.json(),
+  ),
+  defaultMeta: {
+    service: 'my-app',
+    version: process.env.APP_VERSION || '1.0.0',
+    environment: process.env.NODE_ENV,
+  },
+  transports: [
+    new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.printf(({ timestamp, level, message, ...meta }) =&gt; {
+          return `${timestamp} [${level}]: ${message} ${Object.keys(meta).length ? JSON.stringify(meta) : ''}`;
+        }),
+      ),
+    }),
+    new winston.transports.File({
+      filename: 'logs/error.log',
+      level: 'error',
+      maxsize: 10485760,
+      maxFiles: 5,
+    }),
+    new winston.transports.File({
+      filename: 'logs/combined.log',
+      maxsize: 10485760,
+      maxFiles: 10,
+    }),
+  ],
+});
+
+class RequestLogger {
+  static logRequest(req, res, duration) {
+    logger.info('HTTP Request', {
+      method: req.method,
+      path: req.path,
+      status: res.statusCode,
+      duration,
+      ip: req.ip,
+      userAgent: req.get('user-agent'),
+      userId: req.user?.id,
+    });
+  }
+}</pre>
+
+<h4>Prometheus指标采集</h4>
+<pre>const client = require('prom-client');
+
+const register = new client.Registry();
+client.collectDefaultMetrics({ register });
+
+const httpRequestsTotal = new client.Counter({
+  name: 'http_requests_total',
+  help: 'Total number of HTTP requests',
+  labelNames: ['method', 'path', 'status'],
+  registers: [register],
+});
+
+const httpRequestDuration = new client.Histogram({
+  name: 'http_request_duration_seconds',
+  help: 'Duration of HTTP requests in seconds',
+  labelNames: ['method', 'path', 'status'],
+  buckets: [0.1, 0.5, 1, 2, 5],
+  registers: [register],
+});
+
+function metricsMiddleware(req, res, next) {
+  const start = Date.now();
+  res.on('finish', () =&gt; {
+    const duration = (Date.now() - start) / 1000;
+    const labels = { method: req.method, path: req.route?.path || req.path, status: res.statusCode };
+    httpRequestsTotal.inc(labels);
+    httpRequestDuration.observe(labels, duration);
+  });
+  next();
+}</pre>
+
+<h3>8.4 Node.js与前端工程结合</h3>
+
+<h4>学习目标</h4>
+<ul>
+  <li>掌握SSR(Next.js/Nuxt.js)原理与实现</li>
+  <li>了解BFF(Backend For Frontend)架构</li>
+  <li>掌握Webpack/Vite与Node.js的结合</li>
+  <li>了解Isomorphic/Universal JavaScript</li>
+</ul>
+
+<h4>BFF架构设计</h4>
+<pre>class BFFRouter {
+  constructor() {
+    this.aggregators = new Map();
+  }
+
+  register(path, aggregator) {
+    this.aggregators.set(path, aggregator);
+  }
+
+  async handle(path, params, userContext) {
+    const aggregator = this.aggregators.get(path);
+    if (!aggregator) throw new Error(`路由不存在: ${path}`);
+
+    const results = {};
+    const tasks = Object.entries(aggregator.sources).map(async ([key, config]) =&gt; {
+      if (config.requiredRoles &amp;&amp; !config.requiredRoles.some(r =&gt; userContext.roles.includes(r))) {
+        results[key] = { error: '无权限访问' };
+        return;
+      }
+      try {
+        results[key] = await this.fetchFromService(config, params, userContext);
+      } catch (error) {
+        if (config.required) throw error;
+        results[key] = null;
+      }
+    });
+
+    await Promise.all(tasks);
+    return aggregator.transform(results);
+  }
+}</pre>
+
+<div class="resource-card">
+  <div class="res-title">📘 OWASP Node.js安全指南</div>
+  <div class="res-link">https://cheatsheetseries.owasp.org/cheatsheets/Nodejs_Security_Cheat_Sheet.html</div>
+  <div class="res-desc">OWASP官方Node.js安全实践清单</div>
+</div>
+<div class="resource-card">
+  <div class="res-title">📘 Prometheus Node.js客户端</div>
+  <div class="res-link">https://github.com/siimon/prom-client</div>
+  <div class="res-desc">Node.js Prometheus指标采集库</div>
+</div>
+<div class="resource-card">
+  <div class="res-title">📘 Winston官方文档</div>
+  <div class="res-link">https://github.com/winstonjs/winston</div>
+  <div class="res-desc">Node.js多传输日志库</div>
+</div>
+<div class="resource-card">
+  <div class="res-title">📘 Next.js官方文档</div>
+  <div class="res-link">https://nextjs.org/docs</div>
+  <div class="res-desc">React SSR框架完整文档</div>
+</div>
+
+<!-- ==================== PRACTICE PROJECTS ==================== -->
+<h2 class="chapter-title"><span class="num">🔨</span>实践项目清单</h2>
+
+<p>以下12个实战项目覆盖所有核心模块，建议按顺序完成。每个项目都对应特定技能点，完成后可独立运行展示。</p>
+
+<table>
+  <thead><tr><th>序号</th><th>项目名称</th><th>对应模块</th><th>核心技能点</th><th>难度</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>异步任务调度器</td><td>模块1</td><td>事件循环、Promise、并发控制</td><td>⭐⭐</td></tr>
+    <tr><td>2</td><td>大文件日志分析器</td><td>模块2</td><td>Stream、Buffer、文件系统</td><td>⭐⭐⭐</td></tr>
+    <tr><td>3</td><td>实时协作白板</td><td>模块3</td><td>WebSocket、TCP、HTTP</td><td>⭐⭐⭐</td></tr>
+    <tr><td>4</td><td>电商订单系统后端</td><td>模块4</td><td>MySQL事务、MongoDB、Redis缓存</td><td>⭐⭐⭐⭐</td></tr>
+    <tr><td>5</td><td>高并发短链服务</td><td>模块5</td><td>缓存策略、Cluster、性能优化</td><td>⭐⭐⭐⭐</td></tr>
+    <tr><td>6</td><td>全自动化部署API服务</td><td>模块6</td><td>Docker、CI/CD、测试</td><td>⭐⭐⭐⭐</td></tr>
+    <tr><td>7</td><td>微服务架构博客平台</td><td>模块7</td><td>NestJS、中间件、微服务通信</td><td>⭐⭐⭐⭐⭐</td></tr>
+    <tr><td>8</td><td>全栈电商平台</td><td>模块8</td><td>SSR、BFF、安全、监控</td><td>⭐⭐⭐⭐⭐</td></tr>
+    <tr><td>9</td><td>CLI脚手架工具</td><td>模块2</td><td>文件操作、命令行交互、模板引擎</td><td>⭐⭐⭐</td></tr>
+    <tr><td>10</td><td>API网关服务</td><td>模块7</td><td>反向代理、限流、服务发现</td><td>⭐⭐⭐⭐</td></tr>
+    <tr><td>11</td><td>实时消息推送系统</td><td>模块3+8</td><td>WebSocket、Redis Pub/Sub、集群</td><td>⭐⭐⭐⭐</td></tr>
+    <tr><td>12</td><td>分布式任务调度平台</td><td>模块5+8</td><td>分布式锁、消息队列、监控</td><td>⭐⭐⭐⭐⭐</td></tr>
+  </tbody>
+</table>
+
+<h3>项目1：异步任务调度器 详细设计</h3>
+<pre>class TaskScheduler {
+  constructor(concurrency = 5) {
+    this.concurrency = concurrency;
+    this.running = 0;
+    this.queue = [];
+  }
+
+  schedule(taskFn, priority = 0) {
+    return new Promise((resolve, reject) =&gt; {
+      this.queue.push({ taskFn, resolve, reject, priority });
+      this.queue.sort((a, b) =&gt; b.priority - a.priority);
+      this.run();
+    });
+  }
+
+  async run() {
+    while (this.running &lt; this.concurrency &amp;&amp; this.queue.length &gt; 0) {
+      const { taskFn, resolve, reject } = this.queue.shift();
+      this.running++;
+
+      try {
+        const result = await taskFn();
+        resolve(result);
+      } catch (error) {
+        reject(error);
+      } finally {
+        this.running--;
+        this.run();
+      }
+    }
+  }
+}
+
+const scheduler = new TaskScheduler(3);
+
+async function fetchData(url) {
+  const res = await fetch(url);
+  return res.json();
+}
+
+const results = await Promise.all([
+  scheduler.schedule(() =&gt; fetchData('/api/users'), 2),
+  scheduler.schedule(() =&gt; fetchData('/api/orders'), 1),
+  scheduler.schedule(() =&gt; fetchData('/api/products'), 1),
+]);</pre>
+
+<!-- ==================== INTERVIEW QUESTIONS ==================== -->
+<h2 class="chapter-title"><span class="num">🎯</span>常见面试题解析</h2>
+
+<h3>一、Node.js核心原理</h3>
+
+<div class="info-box interview">
+  <div class="box-title">Q1: Node.js的事件循环和浏览器的事件循环有什么区别？</div>
+  <p><b>答：</b>主要区别在于：<br>
+  1. Node.js基于libuv实现，有6个阶段（timers → pending → idle/prepare → poll → check → close），浏览器只有宏任务和微任务两个队列<br>
+  2. Node.js中process.nextTick优先级高于Promise微任务<br>
+  3. Node.js的微任务在每个阶段切换时执行，浏览器在每个宏任务后执行<br>
+  4. Node.js有setImmediate（check阶段），浏览器没有</p>
+</div>
+
+<div class="info-box interview">
+  <div class="box-title">Q2: 什么是Node.js的Reactor模式？</div>
+  <p><b>答：</b>Reactor模式是Node.js异步I/O的核心设计模式。它由以下组件构成：<br>
+  1. <b>资源</b>：I/O操作的来源（文件、网络等）<br>
+  2. <b>事件多路分解器</b>：libuv的epoll/kqueue/IOCP，负责监听多个I/O事件<br>
+  3. <b>事件队列</b>：存储已就绪的事件<br>
+  4. <b>事件循环</b>：从队列中取出事件，分发给对应的回调函数<br>
+  5. <b>请求处理器</b>：应用程序定义的回调函数</p>
+</div>
+
+<div class="info-box interview">
+  <div class="box-title">Q3: V8的垃圾回收机制是怎样的？</div>
+  <p><b>答：</b>V8采用分代式垃圾回收：<br>
+  1. <b>新生代</b>（1-8MB）：使用Scavenge算法，将堆分为From和To两个半空间，存活对象从From复制到To，然后交换<br>
+  2. <b>老生代</b>：使用Mark-Sweep（标记清除）和Mark-Compact（标记整理），还引入增量标记（Incremental Marking）减少停顿<br>
+  3. 晋升条件：经历过一次Scavenge回收或To空间使用超过25%的对象会被移到老生代</p>
+</div>
+
+<h3>二、异步编程</h3>
+
+<div class="info-box interview">
+  <div class="box-title">Q4: Promise.all和Promise.allSettled的区别？</div>
+  <p><b>答：</b><br>
+  - <b>Promise.all</b>：所有Promise都fulfilled才fulfilled，任一rejected就rejected（快速失败）<br>
+  - <b>Promise.allSettled</b>：等待所有Promise都settled（无论fulfilled还是rejected），返回每个Promise的状态和值<br>
+  实际应用中，批量请求推荐使用allSettled避免单个失败导致整体失败。</p>
+</div>
+
+<div class="info-box interview">
+  <div class="box-title">Q5: 如何实现一个并发控制的异步任务执行器？</div>
+  <p><b>答：</b>核心思路是维护一个运行计数器和等待队列，当运行数小于并发限制时从队列取出任务执行：</p>
+<pre>async function asyncPool(limit, items, iteratorFn) {
+  const results = [];
+  const executing = new Set();
+
+  for (const [index, item] of items.entries()) {
+    const p = Promise.resolve().then(() =&gt; iteratorFn(item, index));
+    results.push(p);
+    executing.add(p);
+    p.finally(() =&gt; executing.delete(p));
+
+    if (executing.size &gt;= limit) {
+      await Promise.race(executing);
+    }
+  }
+
+  return Promise.all(results);
+}</pre>
+</div>
+
+<h3>三、网络编程</h3>
+
+<div class="info-box interview">
+  <div class="box-title">Q6: HTTP/1.1、HTTP/2和HTTP/3的主要区别？</div>
+  <p><b>答：</b><br>
+  - <b>HTTP/1.1</b>：文本协议、队头阻塞、需要多个TCP连接实现并发<br>
+  - <b>HTTP/2</b>：二进制帧、多路复用（单连接并发）、头部压缩（HPACK）、服务器推送<br>
+  - <b>HTTP/3</b>：基于QUIC（UDP）、解决了TCP层的队头阻塞、0-RTT连接建立、内置TLS 1.3</p>
+</div>
+
+<div class="info-box interview">
+  <div class="box-title">Q7: 如何设计一个高可用的WebSocket集群？</div>
+  <p><b>答：</b>核心问题是多节点间的消息同步：<br>
+  1. 使用Redis Pub/Sub作为消息总线，节点间通过Redis转发消息<br>
+  2. 使用Sticky Session确保同一用户连接到同一节点<br>
+  3. 设计房间(Room)概念，将用户分组管理<br>
+  4. 实现心跳检测和断线重连机制<br>
+  5. 使用消息确认机制确保消息不丢失</p>
+</div>
+
+<h3>四、性能优化</h3>
+
+<div class="info-box interview">
+  <div class="box-title">Q8: 如何排查Node.js内存泄漏？</div>
+  <p><b>答：</b>排查步骤：<br>
+  1. 使用process.memoryUsage()监控内存趋势<br>
+  2. 使用v8.getHeapSnapshot()生成堆快照<br>
+  3. 使用Chrome DevTools的Memory面板对比快照<br>
+  4. 关注Retained Size最大的对象<br>
+  5. 检查Dominator Tree找到GC根引用链<br>
+  6. 常见原因：全局变量、闭包引用、事件监听器未移除、定时器未清理</p>
+</div>
+
+<div class="info-box interview">
+  <div class="box-title">Q9: Cluster模式和Worker Threads的区别与选择？</div>
+  <p><b>答：</b><br>
+  - <b>Cluster</b>：多进程，每个进程独立V8实例和内存空间，进程间通过IPC通信，适合利用多核CPU处理HTTP请求<br>
+  - <b>Worker Threads</b>：多线程，共享ArrayBuffer，通信开销更小，适合CPU密集型计算任务<br>
+  - 选择原则：网络服务用Cluster，计算任务用Worker Threads</p>
+</div>
+
+<h3>五、安全</h3>
+
+<div class="info-box interview">
+  <div class="box-title">Q10: JWT和Session认证的优缺点？</div>
+  <p><b>答：</b><br>
+  - <b>JWT</b>：无状态、可跨域、自包含信息；但无法主动失效、token较大、刷新机制复杂<br>
+  - <b>Session</b>：服务端可控、可即时失效、token小；但需服务端存储、跨域困难、扩展性差<br>
+  - 推荐方案：Access Token(JWT短期) + Refresh Token(长期) + Redis黑名单</p>
+</div>
+
+<h3>六、系统设计</h3>
+
+<div class="info-box interview">
+  <div class="box-title">Q11: 如何设计一个支持百万并发的短链服务？</div>
+  <p><b>答：</b><br>
+  1. <b>短链生成</b>：分布式ID生成器（Snowflake）+ Base62编码<br>
+  2. <b>存储</b>：MySQL持久化 + Redis缓存热点短链<br>
+  3. <b>读取</b>：Redis缓存命中直接302跳转，未命中回源MySQL<br>
+  4. <b>高可用</b>：Cluster多进程 + Nginx负载均衡 + 读写分离<br>
+  5. <b>防刷</b>：布隆过滤器防恶意短链 + 限流 + 黑名单<br>
+  6. <b>监控</b>：访问统计 + Prometheus指标 + 告警</p>
+</div>
+
+<div class="info-box interview">
+  <div class="box-title">Q12: 什么是Saga模式？如何实现分布式事务？</div>
+  <p><b>答：</b>Saga模式将长事务拆分为多个本地事务，每个本地事务有对应的补偿操作：<br>
+  1. <b>编排式(Choreography)</b>：各服务通过事件通信，无中心协调器，松耦合但难追踪<br>
+  2. <b>协调式(Orchestration)</b>：中央协调器控制流程，集中管理但耦合度高<br>
+  3. Node.js实现：可使用消息队列（RabbitMQ）+ 补偿事务 + 状态机<br>
+  4. 注意幂等性设计，确保补偿操作可重复执行</p>
+</div>
+
+<!-- ==================== RESOURCES SUMMARY ==================== -->
+<h2 class="chapter-title"><span class="num">📚</span>推荐学习资源汇总</h2>
+
+<h3>官方文档与网站</h3>
+<table>
+  <thead><tr><th>资源名称</th><th>网址</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td>Node.js官网</td><td>https://nodejs.org/</td><td>官方下载、文档入口</td></tr>
+    <tr><td>Node.js API文档</td><td>https://nodejs.org/docs/latest/api/</td><td>核心模块API参考</td></tr>
+    <tr><td>Node.js Best Practices</td><td>https://github.com/goldbergyoni/nodebestpractices</td><td>社区最佳实践合集</td></tr>
+    <tr><td>Express官方文档</td><td>https://expressjs.com/</td><td>Express框架文档</td></tr>
+    <tr><td>Koa官方文档</td><td>https://koajs.com/</td><td>Koa框架文档</td></tr>
+    <tr><td>NestJS官方文档</td><td>https://docs.nestjs.com/</td><td>NestJS框架文档</td></tr>
+    <tr><td>Fastify官方文档</td><td>https://fastify.dev/</td><td>高性能Web框架文档</td></tr>
+    <tr><td>TypeScript官方文档</td><td>https://www.typescriptlang.org/docs/</td><td>TypeScript语言文档</td></tr>
+    <tr><td>MongoDB Node.js Driver</td><td>https://www.mongodb.com/docs/drivers/node/current/</td><td>MongoDB驱动文档</td></tr>
+    <tr><td>Redis ioredis</td><td>https://github.com/redis/ioredis</td><td>Redis客户端文档</td></tr>
+    <tr><td>MySQL2</td><td>https://github.com/sidorares/node-mysql2</td><td>MySQL客户端文档</td></tr>
+    <tr><td>PostgreSQL pg</td><td>https://node-postgres.com/</td><td>PostgreSQL客户端文档</td></tr>
+    <tr><td>TypeORM</td><td>https://typeorm.io/</td><td>TypeScript ORM文档</td></tr>
+    <tr><td>Sequelize</td><td>https://sequelize.org/</td><td>Node.js ORM文档</td></tr>
+    <tr><td>Socket.IO</td><td>https://socket.io/docs/v4/</td><td>WebSocket框架文档</td></tr>
+    <tr><td>ws</td><td>https://github.com/websockets/ws</td><td>WebSocket库文档</td></tr>
+    <tr><td>Jest</td><td>https://jestjs.io/docs/getting-started</td><td>测试框架文档</td></tr>
+    <tr><td>Docker</td><td>https://docs.docker.com/</td><td>Docker容器化文档</td></tr>
+    <tr><td>PM2</td><td>https://pm2.keymetrics.io/docs/usage/quick-start/</td><td>进程管理器文档</td></tr>
+    <tr><td>Clinic.js</td><td>https://clinicjs.org/</td><td>性能诊断工具</td></tr>
+    <tr><td>Next.js</td><td>https://nextjs.org/docs</td><td>React SSR框架文档</td></tr>
+    <tr><td>OWASP Node.js安全</td><td>https://cheatsheetseries.owasp.org/cheatsheets/Nodejs_Security_Cheat_Sheet.html</td><td>安全实践清单</td></tr>
+    <tr><td>GitHub Actions</td><td>https://docs.github.com/en/actions</td><td>CI/CD平台文档</td></tr>
+    <tr><td>ESLint</td><td>https://eslint.org/docs/latest/</td><td>代码检查工具文档</td></tr>
+    <tr><td>Prometheus prom-client</td><td>https://github.com/siimon/prom-client</td><td>指标采集库文档</td></tr>
+    <tr><td>Winston</td><td>https://github.com/winstonjs/winston</td><td>日志库文档</td></tr>
+  </tbody>
+</table>
+
+<h3>推荐书籍</h3>
+<table>
+  <thead><tr><th>书名</th><th>作者</th><th>重点章节</th></tr></thead>
+  <tbody>
+    <tr><td>《Node.js设计模式（第3版）》</td><td>Mario Casciaroma</td><td>设计模式、流、集群、微服务</td></tr>
+    <tr><td>《深入浅出Node.js》</td><td>朴灵</td><td>事件循环、异步编程、内存管理</td></tr>
+    <tr><td>《Node.js实战（第2版）》</td><td>Alex Young等</td><td>项目实战、Express、数据库</td></tr>
+    <tr><td>《Node.js硬实战：核心模块与原生API》</td><td>潘俊昌</td><td>核心模块深入、网络编程</td></tr>
+    <tr><td>《分布式系统设计》</td><td>Zhuoqing Morley Mao</td><td>CAP、一致性、分布式事务</td></tr>
+  </tbody>
+</table>
+
+<h3>推荐在线课程</h3>
+<table>
+  <thead><tr><th>平台</th><th>课程名称</th><th>网址</th></tr></thead>
+  <tbody>
+    <tr><td>Udemy</td><td>Node.js - The Complete Guide</td><td>https://www.udemy.com/course/nodejs-the-complete-guide/</td></tr>
+    <tr><td>Frontend Masters</td><td>Production-Grade Node.js</td><td>https://frontendmasters.com/courses/production-node/</td></tr>
+    <tr><td>Pluralsight</td><td>Node.js Advanced</td><td>https://www.pluralsight.com/paths/nodejs-advanced</td></tr>
+    <tr><td>慕课网</td><td>Node.js高级编程</td><td>https://www.imooc.com/</td></tr>
+  </tbody>
+</table>
+
+<h3>技术博客与社区</h3>
+<table>
+  <thead><tr><th>名称</th><th>网址</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td>Node.js Blog</td><td>https://nodejs.org/en/blog</td><td>官方博客，版本发布说明</td></tr>
+    <tr><td>Node Weekly</td><td>https://nodeweekly.com/</td><td>每周Node.js新闻邮件</td></tr>
+    <tr><td>Dev.to Node.js</td><td>https://dev.to/t/node</td><td>开发者社区Node.js话题</td></tr>
+    <tr><td>Stack Overflow</td><td>https://stackoverflow.com/questions/tagged/node.js</td><td>问答社区</td></tr>
+    <tr><td>掘金</td><td>https://juejin.cn/tag/Node.js</td><td>中文技术社区</td></tr>
+  </tbody>
+</table>
+
+<div class="info-box tip">
+  <div class="box-title">💡 学习建议</div>
+  <p>1. <b>以项目驱动学习</b>：每学完一个模块立即完成对应实战项目<br>
+  2. <b>阅读源码</b>：选择Express/Koa等框架的核心源码进行阅读<br>
+  3. <b>写技术博客</b>：将学习心得整理成博客，加深理解<br>
+  4. <b>参与开源</b>：为Node.js生态项目提交PR，提升工程能力<br>
+  5. <b>模拟面试</b>：每周至少练习5道面试题，培养系统设计思维<br>
+  6. <b>持续关注</b>：订阅Node.js Blog和Node Weekly，跟进最新动态</p>
+</div>
+
+<div style="text-align:center; padding:40px 0; color:#8892b0; font-size:10pt; border-top:1px solid #eee; margin-top:40px;">
+  <p>⬢ Node.js P6高级工程师学习计划 | 总周期24周 | 8大核心模块 | 12个实战项目</p>
+  <p>坚持学习，持续精进，祝早日达到P6技术水平！</p>
+</div>
+
+</div>
+</body>
+</html>
