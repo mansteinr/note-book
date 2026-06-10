@@ -9,20 +9,1017 @@
 ## 📊 学习路线总览
 
 ```
-第一阶段：夯实基础（1-2个月）
+第一阶段：Node.js 基础学习（2-3周）
     ↓
-第二阶段：企业级框架精通（2-3个月）
+第二阶段：底层原理深度掌握（1-2个月）
     ↓
-第三阶段：架构设计能力（1-2个月）
+第三阶段：企业级框架精通（2-3个月）
     ↓
-第四阶段：性能调优与高可用（1个月）
+第四阶段：架构设计能力（1-2个月）
+    ↓
+第五阶段：性能调优与高可用（1个月）
     ↓
 面试冲刺准备
 ```
 
 ---
 
-## 第一阶段：底层原理深度掌握
+## 第一阶段：Node.js 基础学习（2-3周）
+
+### 阶段目标
+- 掌握 Node.js 核心概念与基础 API
+- 理解 CommonJS 和 ESM 模块系统
+- 熟练使用异步编程（回调、Promise、async/await）
+- 能够使用 Node.js 构建简单的 Web 应用
+- 掌握 npm/yarn/pnpm 包管理工具
+
+### 1.1 Node.js 简介与环境配置
+
+#### 核心知识点
+- Node.js 是什么？它的特点和应用场景
+- V8 引擎与 libuv 的角色
+- Node.js 版本管理（nvm/nvs）
+- REPL 环境的使用
+
+#### 学习资源
+
+| 资源类型 | 名称 | 地址 |
+|---------|------|------|
+| 官方文档 | Node.js 官方文档 | https://nodejs.org/zh-cn/docs/ |
+| 官方文档 | Node.js 官方入门指南 | https://nodejs.org/zh-cn/docs/guides/getting-started/ |
+| GitHub 仓库 | nvm-windows | https://github.com/coreybutler/nvm-windows |
+
+#### 实践案例
+```bash
+# 案例1：使用 nvm 安装 Node.js
+nvm install 18
+nvm use 18
+node --version
+npm --version
+
+# 案例2：使用 REPL 测试代码
+node
+> console.log('Hello, Node.js!')
+> 2 + 3
+> const fs = require('fs')
+> .exit
+
+# 案例3：查看 Node.js 进程信息
+node
+> process.versions
+> process.platform
+> process.env
+```
+
+#### 自测题目
+1. Node.js 与浏览器环境的 JavaScript 有什么区别？
+2. 什么是 V8 引擎？它的作用是什么？
+3. 如何使用 nvm 切换 Node.js 版本？
+4. 什么是 REPL？它有什么用途？
+
+---
+
+### 1.2 核心模块基础
+
+#### 核心知识点
+- 文件系统模块（fs）：同步 vs 异步 API
+- 路径模块（path）：路径处理与跨平台兼容
+- 事件模块（events）：EventEmitter 的使用
+- 流模块（stream）：可读流、可写流基础
+- HTTP 模块：创建简单的 HTTP 服务器
+- URL 模块：URL 解析与构建
+- 子进程模块（child_process）：执行系统命令
+- 工具模块（util）：常用工具函数
+- 控制台模块（console）：日志记录与调试
+
+#### 学习资源
+
+| 资源类型 | 名称 | 地址 |
+|---------|------|------|
+| 官方文档 | fs 模块 | https://nodejs.org/zh-cn/docs/api/fs.html |
+| 官方文档 | path 模块 | https://nodejs.org/zh-cn/docs/api/path.html |
+| 官方文档 | events 模块 | https://nodejs.org/zh-cn/docs/api/events.html |
+| 官方文档 | http 模块 | https://nodejs.org/zh-cn/docs/api/http.html |
+
+#### 实践案例
+```javascript
+// 案例1：文件读写操作
+const fs = require('fs');
+const path = require('path');
+
+// 同步读取
+try {
+  const data = fs.readFileSync(path.join(__dirname, 'test.txt'), 'utf8');
+  console.log('Sync read:', data);
+} catch (err) {
+  console.error('Error reading file:', err);
+}
+
+// 异步读取（回调）
+fs.readFile(path.join(__dirname, 'test.txt'), 'utf8', (err, data) => {
+  if (err) {
+    console.error('Error reading file:', err);
+    return;
+  }
+  console.log('Async read:', data);
+});
+
+// 异步读取（Promise）
+const fsPromises = fs.promises;
+async function readFileAsync() {
+  try {
+    const data = await fsPromises.readFile(path.join(__dirname, 'test.txt'), 'utf8');
+    console.log('Async read (Promise):', data);
+  } catch (err) {
+    console.error('Error reading file:', err);
+  }
+}
+readFileAsync();
+
+// 写入文件
+fs.writeFile(path.join(__dirname, 'output.txt'), 'Hello, Node.js!', 'utf8', (err) => {
+  if (err) {
+    console.error('Error writing file:', err);
+    return;
+  }
+  console.log('File written successfully');
+});
+```
+
+```javascript
+// 案例2：EventEmitter 自定义事件
+const EventEmitter = require('events');
+
+class Server extends EventEmitter {
+  constructor() {
+    super();
+    this.count = 0;
+  }
+
+  start() {
+    this.emit('start', new Date());
+    setInterval(() => {
+      this.count++;
+      this.emit('count', this.count);
+    }, 1000);
+  }
+}
+
+const server = new Server();
+
+// 监听事件
+server.on('start', (date) => {
+  console.log('Server started at:', date);
+});
+
+server.on('count', (count) => {
+  console.log('Current count:', count);
+  if (count === 5) {
+    server.emit('stop');
+  }
+});
+
+server.once('stop', () => {
+  console.log('Server stopped');
+  process.exit();
+});
+
+// 启动服务器
+server.start();
+```
+
+```javascript
+// 案例3：简单的 HTTP 服务器
+const http = require('http');
+const url = require('url');
+
+const server = http.createServer((req, res) => {
+  const parsedUrl = url.parse(req.url, true);
+  
+  // 设置响应头
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  
+  // 路由处理
+  if (parsedUrl.pathname === '/hello') {
+    const name = parsedUrl.query.name || 'World';
+    res.end(JSON.stringify({ message: `Hello, ${name}!` }));
+  } else if (parsedUrl.pathname === '/about') {
+    res.end(JSON.stringify({ version: '1.0.0', author: 'Node.js' }));
+  } else {
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Not found' }));
+  }
+});
+
+server.listen(3000, () => {
+  console.log('Server listening on http://localhost:3000');
+});
+```
+
+#### 自测题目
+1. fs 模块的同步和异步 API 有什么区别？
+2. 什么是 EventEmitter？它的核心方法有哪些？
+3. 如何使用 path 模块处理跨平台路径问题？
+4. 如何创建一个简单的 HTTP 服务器？
+
+---
+
+### 1.3 模块系统
+
+#### 核心知识点
+- CommonJS 模块系统（require/module.exports/exports）
+- ESM 模块系统（import/export）
+- 模块加载机制与缓存
+- 模块导出的多种方式
+- 内置模块、第三方模块、本地模块的区别
+- package.json 配置与依赖管理
+
+#### 学习资源
+
+| 资源类型 | 名称 | 地址 |
+|---------|------|------|
+| 官方文档 | Modules | https://nodejs.org/zh-cn/docs/api/modules.html |
+| 官方文档 | ECMAScript modules | https://nodejs.org/zh-cn/docs/api/esm.html |
+| 官方文档 | package.json 字段 | https://docs.npmjs.com/cli/v9/configuring-npm/package-json |
+
+#### 实践案例
+```javascript
+// 案例1：CommonJS 模块导出与导入
+// math.js - 导出模块
+const add = (a, b) => a + b;
+const subtract = (a, b) => a - b;
+
+module.exports = {
+  add,
+  subtract,
+  PI: 3.14159
+};
+
+// app.js - 导入模块
+const math = require('./math');
+
+console.log(math.add(2, 3)); // 5
+console.log(math.subtract(5, 2)); // 3
+console.log(math.PI); // 3.14159
+```
+
+```javascript
+// 案例2：ESM 模块（需要在 package.json 中设置 "type": "module"）
+// utils.js
+export const capitalize = (str) => str.charAt(0).toUpperCase() + str.slice(1);
+export const truncate = (str, length = 50) => {
+  if (str.length > length) {
+    return str.substring(0, length) + '...';
+  }
+  return str;
+};
+export default {
+  capitalize,
+  truncate
+};
+
+// app.js
+import { capitalize, truncate } from './utils.js';
+import utils from './utils.js';
+
+console.log(capitalize('hello')); // Hello
+console.log(truncate('A very long string...', 10)); // A very long...
+console.log(utils.capitalize('world')); // World
+```
+
+```json
+// 案例3：package.json 配置
+{
+  "name": "my-project",
+  "version": "1.0.0",
+  "description": "My Node.js project",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "test": "jest",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "lodash": "^4.17.21"
+  },
+  "devDependencies": {
+    "jest": "^29.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
+```
+
+```javascript
+// 案例4：模块缓存
+// cache-example.js
+let count = 0;
+module.exports = {
+  increment: () => count++,
+  getCount: () => count
+};
+
+// app.js
+const cacheA = require('./cache-example');
+const cacheB = require('./cache-example');
+
+cacheA.increment();
+console.log(cacheB.getCount()); // 1 - 证明模块被缓存了
+```
+
+#### 自测题目
+1. CommonJS 和 ESM 有什么区别？如何选择？
+2. Node.js 模块是如何被缓存的？
+3. 什么是模块循环依赖？如何避免？
+4. package.json 中的 scripts、dependencies、devDependencies 分别有什么作用？
+
+---
+
+### 1.4 异步编程基础
+
+#### 核心知识点
+- 回调函数：异步编程的基础
+- Promise：状态、链式调用、错误处理
+- async/await：语法糖与同步风格的异步代码
+- 错误处理：try/catch、Promise.catch
+- Promise 静态方法：all、allSettled、any、race、resolve、reject
+- 事件循环基础与异步代码执行顺序
+
+#### 学习资源
+
+| 资源类型 | 名称 | 地址 |
+|---------|------|------|
+| 官方文档 | Promise | https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/Promise |
+| 官方文档 | async function | https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Statements/async_function |
+| 官方文档 | await | https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Operators/await |
+
+#### 实践案例
+```javascript
+// 案例1：回调函数的使用
+const fs = require('fs');
+
+// 回调地狱问题
+fs.readFile('file1.txt', 'utf8', (err, data1) => {
+  if (err) {
+    console.error(err);
+    return;
+  }
+  fs.readFile('file2.txt', 'utf8', (err, data2) => {
+    if (err) {
+      console.error(err);
+      return;
+    }
+    fs.readFile('file3.txt', 'utf8', (err, data3) => {
+      if (err) {
+        console.error(err);
+        return;
+      }
+      console.log(data1 + data2 + data3);
+    });
+  });
+});
+```
+
+```javascript
+// 案例2：Promise 的使用
+const fsPromises = require('fs/promises');
+
+// Promise 链式调用避免回调地狱
+fsPromises.readFile('file1.txt', 'utf8')
+  .then(data1 => {
+    return fsPromises.readFile('file2.txt', 'utf8')
+      .then(data2 => [data1, data2]);
+  })
+  .then(([data1, data2]) => {
+    return fsPromises.readFile('file3.txt', 'utf8')
+      .then(data3 => [data1, data2, data3]);
+  })
+  .then(([data1, data2, data3]) => {
+    console.log(data1 + data2 + data3);
+  })
+  .catch(err => {
+    console.error(err);
+  });
+```
+
+```javascript
+// 案例3：async/await 的使用
+const fsPromises = require('fs/promises');
+
+async function readFiles() {
+  try {
+    const [data1, data2, data3] = await Promise.all([
+      fsPromises.readFile('file1.txt', 'utf8'),
+      fsPromises.readFile('file2.txt', 'utf8'),
+      fsPromises.readFile('file3.txt', 'utf8')
+    ]);
+    console.log(data1 + data2 + data3);
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+readFiles();
+```
+
+```javascript
+// 案例4：Promise 静态方法
+async function promiseStaticMethods() {
+  // Promise.all - 所有 Promise 成功后才成功
+  try {
+    const [result1, result2, result3] = await Promise.all([
+      Promise.resolve('A'),
+      Promise.resolve('B'),
+      Promise.resolve('C')
+    ]);
+    console.log('Promise.all:', result1, result2, result3);
+  } catch (err) {
+    console.error(err);
+  }
+
+  // Promise.allSettled - 不管成功失败都等待所有 Promise 完成
+  const results = await Promise.allSettled([
+    Promise.resolve('Success'),
+    Promise.reject(new Error('Failure')),
+    Promise.resolve('Another success')
+  ]);
+  console.log('Promise.allSettled:', results);
+
+  // Promise.race - 第一个完成的 Promise（无论成功失败）
+  try {
+    const winner = await Promise.race([
+      new Promise(resolve => setTimeout(() => resolve('Slow'), 2000)),
+      new Promise(resolve => setTimeout(() => resolve('Fast'), 1000)),
+      Promise.reject(new Error('Rejection'))
+    ]);
+    console.log('Promise.race:', winner);
+  } catch (err) {
+    console.error(err);
+  }
+
+  // Promise.any - 第一个成功的 Promise
+  try {
+    const firstSuccess = await Promise.any([
+      Promise.reject(new Error('First failure')),
+      Promise.resolve('Success'),
+      Promise.reject(new Error('Second failure'))
+    ]);
+    console.log('Promise.any:', firstSuccess);
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+promiseStaticMethods();
+```
+
+#### 自测题目
+1. Promise 的三种状态是什么？
+2. 什么是回调地狱？如何避免？
+3. async/await 与 Promise 有什么关系？
+4. Promise.all 和 Promise.allSettled 有什么区别？
+5. 如何同时执行多个异步任务并等待它们全部完成？
+
+---
+
+### 1.5 调试与错误处理
+
+#### 核心知识点
+- console 模块的详细使用
+- 调试技巧（断点调试、console.trace）
+- 错误处理模式
+- 自定义错误类型
+- 错误对象的属性与堆栈跟踪
+- process 事件与错误捕获
+
+#### 学习资源
+
+| 资源类型 | 名称 | 地址 |
+|---------|------|------|
+| 官方文档 | console | https://nodejs.org/zh-cn/docs/api/console.html |
+| 官方文档 | Error | https://nodejs.org/zh-cn/docs/api/errors.html |
+| 官方文档 | process | https://nodejs.org/zh-cn/docs/api/process.html |
+
+#### 实践案例
+```javascript
+// 案例1：console 模块的高级用法
+// 基本日志
+console.log('Hello, World!');
+console.info('Information message');
+console.warn('Warning message');
+console.error('Error message');
+
+// 格式化输出
+console.log('User: %s, Age: %d', 'John', 30);
+console.log('Object: %o', { name: 'John', age: 30 });
+
+// 表格输出
+const users = [
+  { name: 'John', age: 30, email: 'john@example.com' },
+  { name: 'Jane', age: 25, email: 'jane@example.com' },
+  { name: 'Bob', age: 35, email: 'bob@example.com' }
+];
+console.table(users);
+
+// 性能计时
+console.time('loop');
+for (let i = 0; i < 1000000; i++) {
+  // 执行一些操作
+}
+console.timeEnd('loop');
+
+// 堆栈跟踪
+function func1() { func2(); }
+function func2() { func3(); }
+function func3() { console.trace('Trace from func3'); }
+func1();
+
+// 断言
+console.assert(1 === 1, '1 should equal 1');
+console.assert(1 === 2, '1 should equal 2 - this will fail');
+
+// 分组
+console.group('User data');
+console.log('Name: John');
+console.log('Age: 30');
+console.groupEnd();
+
+// 计数
+for (let i = 0; i < 3; i++) {
+  console.count('Loop iteration');
+}
+```
+
+```javascript
+// 案例2：错误处理与自定义错误
+class HttpError extends Error {
+  constructor(statusCode, message) {
+    super(message);
+    this.statusCode = statusCode;
+    this.name = 'HttpError';
+    Error.captureStackTrace(this, this.constructor);
+  }
+}
+
+class ValidationError extends Error {
+  constructor(message, field) {
+    super(message);
+    this.field = field;
+    this.name = 'ValidationError';
+    Error.captureStackTrace(this, this.constructor);
+  }
+}
+
+// 使用自定义错误
+async function processRequest(data) {
+  if (!data) {
+    throw new HttpError(400, 'Bad Request - Missing data');
+  }
+  
+  if (!data.email) {
+    throw new ValidationError('Email is required', 'email');
+  }
+  
+  // 处理逻辑...
+  return { success: true };
+}
+
+// 统一错误处理
+async function handleRequest(data) {
+  try {
+    return await processRequest(data);
+  } catch (error) {
+    console.error('Request error:', error);
+    
+    if (error instanceof ValidationError) {
+      return { error: true, field: error.field, message: error.message };
+    } else if (error instanceof HttpError) {
+      return { error: true, status: error.statusCode, message: error.message };
+    } else {
+      return { error: true, message: 'Internal Server Error' };
+    }
+  }
+}
+
+// 测试
+handleRequest({ email: 'test@example.com' })
+  .then(result => console.log(result));
+
+handleRequest()
+  .then(result => console.log(result));
+
+handleRequest({})
+  .then(result => console.log(result));
+```
+
+```javascript
+// 案例3：process 事件与错误捕获
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception:', err);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled rejection at:', promise, 'reason:', reason);
+});
+
+process.on('SIGINT', () => {
+  console.log('\nReceived SIGINT, shutting down gracefully...');
+  process.exit(0);
+});
+
+// 模拟错误
+setTimeout(() => {
+  // 这个会被 uncaughtException 捕获
+  throw new Error('Uncaught error');
+}, 1000);
+
+Promise.reject(new Error('Unhandled promise rejection'))
+  // 注释掉 catch 来测试 unhandledRejection
+  // .catch(err => console.error('Caught promise rejection:', err));
+  ;
+```
+
+#### 自测题目
+1. console.error 和 console.log 有什么区别？
+2. 如何自定义错误类型？
+3. 如何捕获未处理的异步错误？
+4. process.on('uncaughtException') 有什么限制？
+5. 如何查看错误堆栈信息？
+
+---
+
+### 1.6 包管理工具
+
+#### 核心知识点
+- npm：Node.js 默认包管理器
+- yarn：Facebook 开发的包管理器
+- pnpm：快速、节省磁盘空间的包管理器
+- 语义化版本（Semantic Versioning）
+- package-lock.json/yarn.lock/pnpm-lock.yaml 的作用
+- 依赖安装与更新
+- 本地包与全局包的区别
+
+#### 学习资源
+
+| 资源类型 | 名称 | 地址 |
+|---------|------|------|
+| 官方文档 | npm Docs | https://docs.npmjs.com/ |
+| 官方文档 | Yarn | https://yarnpkg.com/ |
+| 官方文档 | pnpm | https://pnpm.io/zh/ |
+| 官方文档 | Semantic Versioning | https://semver.org/ |
+
+#### 实践案例
+```bash
+# 案例1：npm 基本用法
+# 初始化项目
+npm init
+npm init -y
+
+# 安装依赖
+npm install express
+npm install --save-dev jest
+npm install lodash@4.17.21
+
+# 查看依赖
+npm list
+npm list --depth=0
+
+# 运行脚本
+npm start
+npm run dev
+npm run build
+
+# 卸载包
+npm uninstall express
+
+# 安装全局包
+npm install -g nodemon
+
+# 更新依赖
+npm update
+npm outdated
+
+# 清理缓存
+npm cache clean --force
+
+# 查看包信息
+npm info express
+```
+
+```bash
+# 案例2：语义化版本与 package.json
+# ^1.2.3 >=1.2.3 <2.0.0
+# ~1.2.3 >=1.2.3 <1.3.0
+# 1.2.3 精确版本
+# 1.x.x 任何 1.x 版本
+# * 任何版本
+
+# 检查安全漏洞
+npm audit
+npm audit fix --force
+```
+
+```bash
+# 案例3：pnpm 使用
+# 安装 pnpm
+npm install -g pnpm
+
+# 初始化项目
+pnpm init
+
+# 安装依赖
+pnpm add express
+pnpm add -D jest
+
+# 运行脚本
+pnpm dev
+pnpm build
+
+# pnpm 独有特性
+pnpm add -w express  # 工作区
+pnpm store prune    # 清理存储
+```
+
+#### 自测题目
+1. npm、yarn 和 pnpm 有什么区别？
+2. package-lock.json 文件的作用是什么？
+3. 语义化版本号的格式是什么？各部分代表什么含义？
+4. dependencies 和 devDependencies 有什么区别？
+5. 如何安全地更新依赖包？
+
+---
+
+### 1.7 Express.js 基础 Web 应用开发
+
+#### 核心知识点
+- Express 框架介绍与安装
+- 路由定义与处理
+- 中间件概念与使用
+- 模板引擎（EJS/Pug）
+- 请求与响应处理
+- 静态文件服务
+- 错误处理中间件
+- Express 生成器
+
+#### 学习资源
+
+| 资源类型 | 名称 | 地址 |
+|---------|------|------|
+| 官方文档 | Express | https://expressjs.com/zh-cn/ |
+| GitHub | Express | https://github.com/expressjs/express |
+
+#### 实践案例
+```javascript
+// 案例1：Express 简单服务器
+const express = require('express');
+const app = express();
+const port = 3000;
+
+// 中间件
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// 路由
+app.get('/', (req, res) => {
+  res.send('Hello, Express!');
+});
+
+app.get('/api/users', (req, res) => {
+  res.json({
+    users: [
+      { id: 1, name: 'John', email: 'john@example.com' },
+      { id: 2, name: 'Jane', email: 'jane@example.com' }
+    ]
+  });
+});
+
+app.get('/api/users/:id', (req, res) => {
+  const userId = req.params.id;
+  res.json({ id: userId, name: `User ${userId}` });
+});
+
+app.post('/api/users', (req, res) => {
+  const newUser = req.body;
+  console.log('New user:', newUser);
+  res.status(201).json({ success: true, user: newUser });
+});
+
+// 错误处理
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).send('Something went wrong!');
+});
+
+app.listen(port, () => {
+  console.log(`Server running on http://localhost:${port}`);
+});
+```
+
+```javascript
+// 案例2：Express 中间件
+// my-middleware.js
+const express = require('express');
+const app = express();
+const port = 3000;
+
+// 应用级中间件
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+  next();
+});
+
+// 路由级中间件
+app.get('/secret', (req, res, next) => {
+  // 简单的认证中间件
+  const authenticated = true; // 实际应用中需要从请求中验证
+  if (!authenticated) {
+    return res.status(401).send('Unauthorized');
+  }
+  next(); // 通过认证，继续处理
+}, (req, res) => {
+  res.send('Secret page!');
+});
+
+// 内置中间件
+app.use(express.static('public'));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// 错误处理中间件
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).send('Internal Server Error');
+});
+
+// 测试路由
+app.get('/', (req, res) => res.send('Hello World'));
+
+app.listen(port, () => {
+  console.log(`Server running on http://localhost:${port}`);
+});
+```
+
+```javascript
+// 案例3：模块化 Express 应用
+// 目录结构：
+// - app.js
+// - routes/
+//   - users.js
+//   - products.js
+// - controllers/
+//   - usersController.js
+//   - productsController.js
+
+// app.js
+const express = require('express');
+const app = express();
+const usersRouter = require('./routes/users');
+const productsRouter = require('./routes/products');
+
+app.use(express.json());
+app.use('/api/users', usersRouter);
+app.use('/api/products', productsRouter);
+
+// routes/users.js
+const express = require('express');
+const router = express.Router();
+const usersController = require('../controllers/usersController');
+
+router.get('/', usersController.getUsers);
+router.get('/:id', usersController.getUserById);
+router.post('/', usersController.createUser);
+router.put('/:id', usersController.updateUser);
+router.delete('/:id', usersController.deleteUser);
+
+module.exports = router;
+
+// controllers/usersController.js
+const users = [
+  { id: 1, name: 'John', email: 'john@example.com' },
+  { id: 2, name: 'Jane', email: 'jane@example.com' }
+];
+
+exports.getUsers = (req, res) => {
+  res.json(users);
+};
+
+exports.getUserById = (req, res) => {
+  const user = users.find(u => u.id === parseInt(req.params.id));
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+  res.json(user);
+};
+
+exports.createUser = (req, res) => {
+  const newUser = {
+    id: users.length + 1,
+    name: req.body.name,
+    email: req.body.email
+  };
+  users.push(newUser);
+  res.status(201).json(newUser);
+};
+
+exports.updateUser = (req, res) => {
+  const index = users.findIndex(u => u.id === parseInt(req.params.id));
+  if (index === -1) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+  
+  users[index] = {
+    ...users[index],
+    name: req.body.name || users[index].name,
+    email: req.body.email || users[index].email
+  };
+  
+  res.json(users[index]);
+};
+
+exports.deleteUser = (req, res) => {
+  const index = users.findIndex(u => u.id === parseInt(req.params.id));
+  if (index === -1) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+  
+  users.splice(index, 1);
+  res.json({ success: true });
+};
+```
+
+#### 自测题目
+1. Express 的核心特点是什么？
+2. 什么是中间件？Express 中间件有哪些类型？
+3. 如何在 Express 中定义路由？
+4. Express 的错误处理中间件有什么特殊之处？
+5. 如何使用 Express 服务静态文件？
+
+---
+
+### 1.8 基础学习阶段综合实战项目
+
+#### 项目要求
+- 使用 Express 构建一个简单的博客 API
+- 实现用户认证（JWT）
+- 实现文章 CRUD 功能
+- 使用 JSON 文件作为数据存储
+- 实现请求日志记录
+- 使用环境变量配置
+
+#### 项目结构
+```
+blog-api/
+├── config/
+│   └── config.js
+├── controllers/
+│   ├── authController.js
+│   └── articleController.js
+├── middlewares/
+│   ├── authMiddleware.js
+│   └── loggerMiddleware.js
+├── routes/
+│   ├── authRoutes.js
+│   └── articleRoutes.js
+├── data/
+│   ├── users.json
+│   └── articles.json
+├── .env
+├── .gitignore
+├── app.js
+├── package.json
+└── README.md
+```
+
+#### 项目步骤
+1. 初始化项目结构
+2. 实现用户注册与登录
+3. 实现文章管理功能
+4. 实现权限控制
+5. 添加日志记录
+6. 编写测试用例
+7. 完善文档
+
+---
+
+### 1.9 基础学习阶段完成标准
+
+- [ ] 能够使用 Node.js 核心模块（fs、path、http、events）
+- [ ] 理解并能正确使用 CommonJS 和 ESM 模块系统
+- [ ] 熟练掌握异步编程（Promise、async/await）
+- [ ] 能够使用 Express 构建简单的 Web 应用
+- [ ] 能够使用 npm/yarn/pnpm 管理依赖
+- [ ] 掌握基本的调试和错误处理技巧
+- [ ] 完成基础学习阶段的综合实战项目
+
+---
+
+## 第二阶段：底层原理深度掌握
 
 ### 阶段目标
 - 深入理解 Node.js 事件循环机制，能够分析复杂异步代码
@@ -1795,6 +2792,11 @@ async function cacheWithRandomTTL(key, fetchFn, baseTTL = 3600) {
 ---
 
 ## 实战项目路径
+
+### 项目零：基础博客 API（1-2周）
+- 技术栈：Express + JSON 文件存储
+- 功能：用户认证（JWT）、文章 CRUD、请求日志
+- 目标：掌握 Node.js 基础与 Express
 
 ### 项目一：个人博客系统（1-2周）
 - 技术栈：Express + MongoDB + EJS
