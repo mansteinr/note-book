@@ -622,6 +622,130 @@ def multi_query_retrieval(query, llm, vector_store):
 
 **优势**：兼顾检索精准度与上下文完整性，避免"命中片段过碎导致模型理解困难"的问题；**权衡**：返回的父块较长会增加 Token 消耗，且父子关系映射需要在索引阶段额外维护。
 
+#### 6.5.4 RAG-Fusion：智能结果融合
+
+RAG-Fusion（智能结果融合）是一种在 RAG 检索阶段将多源、多路检索结果进行智能融合与重排序的技术。它在 Multi-Query 检索的基础上进一步引入 RRF（Reciprocal Rank Fusion，倒数排名融合）等融合算法，将来自不同查询、不同检索策略（稠密向量、稀疏关键词、知识图谱等）的互补结果统一汇聚、加权排序，从而在保证召回覆盖率的同时显著提升 Top-N 结果的相关性精度。
+
+**核心思想**：单一查询与单一检索策略都存在固有偏差——用户表述可能不精准、稠密检索易遗漏精确匹配、稀疏检索缺乏语义理解。RAG-Fusion 通过"多角度 Query 生成 + 多路并发检索 + 排名级融合"三段式架构，让多源结果相互补位：被多路检索共同命中的文档在融合后排名上升，单路噪声结果被稀释，最终输出兼具语义广度与匹配精度的融合排序。
+
+**适用场景**：复杂多意图问题、跨领域知识问答、长尾问题召回不足、对召回率与精度同时要求较高的企业级知识库场景。
+
+```mermaid
+graph TB
+    subgraph RAG-Fusion 架构
+        Q[用户原始 Query] --> QG[Query 生成器<br/>多角度改写]
+        QG --> Q1[子查询 Q1]
+        QG --> Q2[子查询 Q2]
+        QG --> Q3[子查询 Q3]
+        
+        Q1 --> R1[检索器1<br/>稠密向量]
+        Q2 --> R2[检索器2<br/>BM25 稀疏]
+        Q3 --> R3[检索器3<br/>知识图谱]
+        
+        R1 --> L1[结果列表 L1<br/>带排名]
+        R2 --> L2[结果列表 L2<br/>带排名]
+        R3 --> L3[结果列表 L3<br/>带排名]
+        
+        L1 --> FUS[融合引擎<br/>RRF / 加权融合]
+        L2 --> FUS
+        L3 --> FUS
+        
+        FUS --> DED[去重 + 归一化]
+        DED --> CTX[上下文感知筛选]
+        CTX --> OUT[最终 Top-N 结果]
+    end
+
+    style QG fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style FUS fill:#fce4ec,stroke:#ad1457,stroke-width:2px
+    style OUT fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+```
+
+**关键算法详解**：
+
+1. **RRF（Reciprocal Rank Fusion）倒数排名融合**：RAG-Fusion 的默认融合策略，仅依赖文档在各路检索中的排名（而非原始分数），对多路分数尺度不一致的问题具有天然鲁棒性。公式为 `RRF_score(d) = Σ 1 / (k + rank_i(d))`，其中 `k` 为平滑常数（通常取 60），`rank_i(d)` 为文档 d 在第 i 路结果中的排名。被多路共同命中的文档得分累加，自然提升排名。
+
+2. **加权融合策略**：当不同检索源的可信度存在差异时，在 RRF 基础上引入源权重 `w_i`，公式扩展为 `Score(d) = Σ w_i × 1/(k + rank_i(d))`。例如对权威知识图谱检索结果赋予更高权重，对 BM25 结果在专有名词场景赋予更高权重。权重可通过验证集离线学习或在线反馈动态调整。
+
+3. **相关性排序优化**：融合后可进一步叠加 Cross-Encoder 重排（如 bge-reranker），对 Top-K 候选进行 Query-Doc 联合编码精排，弥补排名级融合未考虑语义细粒度匹配的不足。形成"多路召回 → RRF 粗融合 → Cross-Encoder 精排"的三级漏斗。
+
+4. **上下文感知融合机制**：在融合阶段引入上下文信号进行结果筛选与重排，包括：① **冗余去重**：基于语义相似度聚类，同类结果仅保留最优代表，避免上下文冗余；② **多样性保障**：通过 MMR（Maximal Marginal Relevance）在相关性与多样性间平衡，防止 Top-N 全部集中于同一子主题；③ **元数据感知**：结合来源权威性、时间新鲜度、文档层级等元数据调整最终排序。
+
+```python
+def rag_fusion(query, llm, retrievers, top_n=5, k=60, weights=None):
+    """
+    RAG-Fusion 核心实现：多 Query 生成 + 多路检索 + RRF 融合
+    :param query: 用户原始查询
+    :param llm: 大语言模型，用于 Query 改写
+    :param retrievers: 多路检索器列表 [dense_retriever, bm25_retriever, ...]
+    :param top_n: 最终返回结果数
+    :param k: RRF 平滑常数
+    :param weights: 各检索路权重，None 时等权
+    """
+    # 1. 多角度 Query 生成
+    prompt = f"将以下问题改写为 3 个不同角度的子查询，每行一个：\n{query}"
+    sub_queries = llm.generate(prompt).strip().split("\n")
+    sub_queries.append(query)  # 保留原始查询
+
+    # 2. 多路并发检索，收集每路结果的排名
+    rank_map = {}  # doc_id -> {retriever_idx: rank}
+    doc_store = {}  # doc_id -> doc
+    if weights is None:
+        weights = [1.0] * len(retrievers)
+
+    for r_idx, retriever in enumerate(retrievers):
+        for sq in sub_queries:
+            results = retriever.search(sq, k=10)
+            for rank, doc in enumerate(results, start=1):
+                if doc.id not in rank_map:
+                    rank_map[doc.id] = {}
+                    doc_store[doc.id] = doc
+                # 同一检索器对同一文档取最优排名
+                if r_idx not in rank_map[doc.id] or rank < rank_map[doc.id][r_idx]:
+                    rank_map[doc.id][r_idx] = rank
+
+    # 3. RRF 加权融合打分
+    fused_scores = {}
+    for doc_id, ranks in rank_map.items():
+        score = 0.0
+        for r_idx, rank in ranks.items():
+            score += weights[r_idx] * (1.0 / (k + rank))
+        fused_scores[doc_id] = score
+
+    # 4. 按融合分数排序，取 Top-N
+    ranked_ids = sorted(fused_scores, key=lambda d: -fused_scores[d])
+    return [doc_store[did] for did in ranked_ids[:top_n]]
+
+
+# 典型调用示例
+results = rag_fusion(
+    query="如何提升 RAG 系统的召回率",
+    llm=llm,
+    retrievers=[dense_retriever, bm25_retriever, kg_retriever],
+    top_n=5,
+    weights=[1.0, 0.8, 1.2],  # 知识图谱权重略高
+)
+```
+
+**与 Multi-Query 检索的关系**：RAG-Fusion 是 Multi-Query 检索的增强版。Multi-Query 仅做"多路检索 + 简单去重"，结果列表仍是各路结果的并集，未对跨路排名信息加以利用；RAG-Fusion 则进一步通过 RRF 等算法对多路排名进行融合打分，使被多路共同命中的文档获得更高排序权重，从而在召回率提升的基础上额外优化精度。
+
+**与混合检索（Hybrid Retrieval）的区别**：混合检索通常指"稠密 + 稀疏"两路在同一 Query 上的融合；RAG-Fusion 则是"多 Query × 多检索器"的二维扩展，融合维度更广，适合更复杂的多意图问题。
+
+**优势**：
+- 显著提升召回覆盖率，多角度 Query + 多路检索降低单一表述偏差与单一策略盲区。
+- 排名级融合对分数尺度不敏感，工程上易于跨检索器整合。
+- 被多路共同命中的结果自然获得更高权重，精度提升明显。
+
+**权衡**：
+- 多 Query 生成 + 多路检索带来更高延迟与 Token 成本，需通过并发与缓存缓解。
+- 融合参数（权重、k 值）需基于验证集调优，冷启动阶段表现可能不稳定。
+- 多路结果去重与归一化增加工程复杂度，需维护统一的文档 ID 体系。
+
+**工程实践建议**：
+- 子查询数量控制在 3-5 个，避免成本失控。
+- 多路检索并发执行，配合查询缓存降低重复 Query 开销。
+- 融合后接入 Cross-Encoder 重排，形成"召回-融合-精排"三级漏斗。
+- 对高频 Query 离线预计算融合结果并缓存，保障在线延迟。
+
 ---
 
 ## 7. 结果重排技术（Reranking）
