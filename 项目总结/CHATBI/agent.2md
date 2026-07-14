@@ -1,0 +1,1381 @@
+# Chat 模块 - 智能语义对话引擎
+
+## 一、模块概述
+
+### 1.1 定位与职责
+
+`chat` 是 `supersonic` 项目中的核心业务模块，位于项目架构的**对话层**。它实现了一个**基于大语言模型（LLM）的智能语义对话引擎**，核心职责是：
+
+- **接收**用户的自然语言输入
+- **理解**用户意图，将自然语言映射到结构化语义
+- **转换**为可执行的 SQL 查询语句或第三方插件调用
+- **执行**查询并返回格式化结果
+- **学习**从历史查询中积累经验，持续优化解析质量
+
+### 1.2 核心能力全景
+
+| 能力 | 解释 | 关键技术 |
+|------|------|----------|
+| **NL2SQL** | 将自然语言（如"上个月北京地区的销售额是多少？"）自动转换为 SQL 语句 | LLM + 规则引擎 + 语义映射 |
+| **多轮对话** | 结合历史对话上下文理解当前问题（如"它呢？"→"上个月上海地区的销售额呢？"） | LLM Prompt 改写 |
+| **插件系统** | 支持第三方插件扩展，如调用外部 API 获取数据 | Embedding 向量检索 + 语义参数匹配 |
+| **记忆增强** | 自动评估和存储高质量 SQL 示例，为后续查询提供参考 | LLM 评估 + 向量数据库 |
+| **权限管理** | 基于用户和角色的访问控制 | 用户认证 + 权限校验 |
+
+### 1.3 架构设计原则
+
+1. **扩展性**：通过 SPI 机制支持动态加载解析器、执行器和处理器
+2. **分层解耦**：Controller → Service → Parser/Executor 各层职责清晰
+3. **策略组合**：多种解析策略（规则/LLM）和多种执行模式（SQL/插件/文本）灵活组合
+4. **渐进式解析**：从宽松到严格的逐步匹配策略，兼顾精度和召回率
+
+### 1.4 项目结构
+
+```
+chat/
+├── pom.xml                          # 父 POM，聚合 api 和 server 子模块
+├── api/                             # API 接口层（请求/响应对象）
+│   └── pom.xml
+└── server/                          # 服务端核心实现
+    ├── pom.xml
+    └── src/main/
+        ├── java/com/tencent/supersonic/chat/server/
+        │   ├── agent/               # Agent 模型定义
+        │   ├── config/              # 聊天配置模型
+        │   ├── executor/            # 查询执行器
+        │   ├── memory/              # 记忆评估任务
+        │   ├── parser/              # 自然语言解析器
+        │   ├── plugin/              # 插件系统
+        │   ├── pojo/                # 内部 POJO
+        │   ├── processor/           # 结果处理器
+        │   ├── rest/                # REST 控制器
+        │   ├── service/             # 服务接口层
+        │   └── util/                # 工具类
+        └── resources/mapper/        # MyBatis XML 映射
+```
+
+### 1.5 技术栈
+
+| 技术 | 用途 |
+|------|------|
+| **Spring Boot** | 基础框架，IoC 容器 |
+| **MyBatis** | 数据持久化 |
+| **MySQL** | 关系型数据库 |
+| **LangChain4j** | LLM 集成框架，提供 Prompt 模板、模型调用能力 |
+| **ECharts** | 数据可视化（前端） |
+| **Embedding Service** | 向量检索，用于插件识别和示例召回 |
+| **Lombok** | 简化 Java POJO 开发 |
+
+---
+
+## 二、文件清单
+
+| 层级 | 包路径 | 文件 | 数量 |
+|------|--------|------|------|
+| 配置 | - | `pom.xml` (父、api、server) | 3 |
+| 模型 | `agent/` | `Agent.java`, `AgentTool.java`, `AgentToolType.java`, `DatasetTool.java`, `PluginTool.java`, `ToolConfig.java`, `VisualConfig.java` | 7 |
+| 模型 | `config/` | `ChatConfig.java`, `ChatConfigFilterInternal.java` | 2 |
+| 模型 | `pojo/` | `ChatContext.java`, `ChatMemory.java`, `ExecuteContext.java`, `ParseContext.java` | 4 |
+| 接口 | `parser/` | `ChatQueryParser.java`, `NL2SQLParser.java`, `NL2PluginParser.java`, `PlainTextParser.java` | 4 |
+| 接口 | `executor/` | `ChatQueryExecutor.java`, `PlainTextExecutor.java`, `PluginExecutor.java`, `SqlExecutor.java` | 4 |
+| 接口 | `processor/` | `ResultProcessor.java` | 1 |
+| 插件 | `plugin/` | `ChatPlugin.java`, `ParseMode.java`, `PluginManager.java`, `PluginParseConfig.java`, `PluginParseResult.java`, `PluginQueryManager.java`, `PluginRecallResult.java` | 7 |
+| 控制器 | `rest/` | `AgentController.java`, `ChatConfigController.java`, `ChatController.java`, `ChatQueryController.java`, `MemoryController.java`, `PluginController.java` | 6 |
+| 服务 | `service/` | `AgentService.java`, `ChatContextService.java`, `ChatManageService.java`, `ChatQueryService.java`, `ConfigService.java`, `MemoryService.java`, `PluginService.java`, `RecommendService.java`, `StatisticsService.java` | 9 |
+| 工具 | `util/` | `ChatConfigHelper.java`, `ComponentFactory.java`, `QueryReqConverter.java`, `ResultFormatter.java` | 4 |
+| 任务 | `memory/` | `MemoryReviewTask.java` | 1 |
+| 映射 | `mapper/` | `ChatMapper.xml`, `ChatParseMapper.xml`, `ChatConfigMapper.xml`, `ChatContextMapper.xml`, `StatisticsMapper.xml`, `ShowCaseCustomMapper.xml` | 6 |
+| **总计** | | | **54** |
+
+---
+
+## 三、模块功能详解
+
+### 3.1 Agent 模块（`agent/`）
+
+#### 3.1.1 设计目的
+
+Agent（智能体）是对话系统的**核心抽象**，代表一个具有特定能力和配置的对话助手。不同的 Agent 可以配置不同的数据集工具、插件工具和 LLM 应用，从而服务于不同的业务场景。
+
+#### 3.1.2 Agent 类深度解析
+
+**类继承关系：**
+```
+Agent → RecordInfo
+```
+- `RecordInfo` 提供了创建者、创建时间、更新者、更新时间等基础审计字段
+
+**核心属性详解：**
+
+| 属性 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `id` | Integer | - | 唯一标识，由数据库自增生成 |
+| `name` | String | - | Agent 名称，用于前端展示 |
+| `description` | String | - | 描述信息，用于提示 LLM 理解 Agent 的用途 |
+| `status` | Integer | 1 (ONLINE) | 0=离线, 1=在线。离线 Agent 不可用 |
+| `enableSearch` | Integer | 1 (ENABLED) | 是否启用搜索推荐功能 |
+| `enableFeedback` | Integer | 0 (DISABLED) | 是否启用用户反馈（点赞/点踩） |
+| `toolConfig` | String | - | **JSON 格式**的工具配置，是 Agent 的核心配置 |
+| `chatAppConfig` | Map<String, ChatApp> | 空 Map | LLM 应用配置，key 为应用标识符 |
+| `visualConfig` | VisualConfig | - | 可视化配置，控制前端展示模式 |
+| `admins/viewers` | List<String> | 空列表 | 管理员/查看者用户列表 |
+| `adminOrgs/viewOrgs` | List<String> | 空列表 | 管理员/查看者组织列表 |
+| `isOpen` | Integer | 0 | 是否对所有人开放 |
+
+**`toolConfig` JSON 结构示例：**
+```json
+{
+  "tools": [
+    {
+      "id": "tool_001",
+      "type": "DATASET",
+      "dataSetIds": [1, 2, 3],
+      "exampleQuestions": ["上个月的销售额是多少？"]
+    },
+    {
+      "id": "tool_002",
+      "type": "PLUGIN",
+      "plugins": [101, 102]
+    }
+  ]
+}
+```
+
+**`chatAppConfig` 支持的应用类型：**
+
+| 应用 Key | 名称 | 说明 |
+|----------|------|------|
+| `SMALL_TALK` | 闲聊对话 | 将用户输入直接透传给 LLM 生成回复 |
+| `REWRITE_MULTI_TURN` | 多轮对话改写 | 结合历史对话改写当前问题 |
+| `S2SQL_CORRECTOR` | 语义 SQL 修正 | 对 LLM 生成的 SQL 做二次修正 |
+| `DATA_INTERPRETER` | 结果数据解读 | 对查询结果数据做提炼总结 |
+| `S2SQL_PARSER` | 语义 SQL 解析 | 通过大模型做语义解析生成 SQL |
+| `REWRITE_ERROR_MESSAGE` | 异常提示改写 | 将技术性错误信息转化为用户友好提示 |
+| `MEMORY_REVIEW` | 记忆启用评估 | 对 SQL 记忆做正确性评估 |
+
+#### 3.1.3 核心方法详解
+
+```java
+// 获取指定类型的工具列表（从 JSON 字符串中解析）
+public List<String> getTools(AgentToolType type) {
+    Map<String, Object> map = JSONObject.parseObject(toolConfig, Map.class);
+    List<Map<String, Object>> toolList = (List<Map<String, Object>>) map.get("tools");
+    return toolList.stream()
+        .filter(tool -> type == null || type.name().equals(tool.get("type")))
+        .map(JSONObject::toJSONString)
+        .collect(Collectors.toList());
+}
+
+// 判断是否包含数据集工具
+public boolean containsDatasetTool() {
+    return !CollectionUtils.isEmpty(getParserTools(AgentToolType.DATASET));
+}
+
+// 获取所有关联的数据集 ID（去重）
+public Set<Long> getDataSetIds() {
+    return getParserTools(null).stream()
+        .map(DatasetTool::getDataSetIds)
+        .filter(ids -> !CollectionUtils.isEmpty(ids))
+        .flatMap(Collection::stream)
+        .collect(Collectors.toSet());
+}
+```
+
+#### 3.1.4 工具类体系
+
+**AgentToolType（工具类型枚举）：**
+```java
+public enum AgentToolType {
+    DATASET("Text2SQL数据集"),  // 用于语义解析和 SQL 生成
+    PLUGIN("第三方插件");       // 用于外部服务调用
+}
+```
+
+**类继承体系：**
+```
+AgentTool (基类)
+├── id: String          # 工具唯一标识
+├── name: String        # 工具名称
+└── type: AgentToolType # 工具类型
+
+DatasetTool extends AgentTool
+├── dataSetIds: List<Long>        # 关联的数据集 ID 列表
+└── exampleQuestions: List<String> # 示例问题列表
+
+PluginTool extends AgentTool
+└── plugins: List<Long>  # 关联的插件 ID 列表
+```
+
+**VisualConfig（可视化配置）：**
+```java
+public class VisualConfig {
+    private boolean enableSimpleMode;  // 是否启用精简模式（简化展示）
+    private boolean showDebugInfo;     // 是否显示调试信息
+}
+```
+
+---
+
+### 3.2 Config 模块（`config/`）
+
+#### 3.2.1 设计目的
+
+Config 模块管理每个数据集的**聊天行为配置**，包括明细查询和聚合查询的默认行为、可见性控制以及推荐问题管理。
+
+#### 3.2.2 ChatConfig 类详解
+
+**核心属性：**
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| `id` | Long | 数据库自增主键 |
+| `modelId` | Long | 关联的数据模型 ID，**唯一标识一个数据集** |
+| `chatDetailConfig` | ChatDetailConfigReq | 明细查询配置（如维度可见性） |
+| `chatAggConfig` | ChatAggConfigReq | 聚合查询配置（如指标可见性） |
+| `recommendedQuestions` | List<RecommendedQuestionReq> | 推荐问题列表 |
+| `status` | StatusEnum | 可用状态（ONLINE/OFFLINE） |
+| `recordInfo` | RecordInfo | 审计信息（创建者、时间等） |
+
+**配置作用：** 当用户查询某个数据集时，系统会根据 `ChatConfig` 中的配置来决定：
+- 哪些维度/指标对用户可见（`ItemVisibility`）
+- 是否有推荐问题供用户快速选择
+- 当前配置是否处于启用状态
+
+---
+
+### 3.3 Parser 模块（`parser/`）
+
+#### 3.3.1 设计模式
+
+Parser 模块采用**策略模式（Strategy Pattern）**。`ChatQueryParser` 是策略接口，三种具体的解析器实现了不同的解析策略。`ChatQueryService` 在运行时通过 `ComponentFactory.getChatParsers()` 获取所有已注册的解析器，并逐一调用。
+
+#### 3.3.2 解析器对比
+
+| 解析器 | 触发条件 | 输出 | 复杂度 |
+|--------|----------|------|--------|
+| **PlainTextParser** | Agent 不包含任何工具 | 设置 queryMode = "PLAIN_TEXT" | 最低 |
+| **NL2SQLParser** | Agent 包含数据集工具 | 生成 SemanticParseInfo（含 SQL） | 最高 |
+| **NL2PluginParser** | Agent 包含插件工具 | 识别并匹配插件 | 中等 |
+
+#### 3.3.3 PlainTextParser 详解
+
+**逻辑：** 当 Agent 没有配置任何工具时，系统无法进行语义解析，因此直接将用户问题标记为"纯文本模式"，后续由 `PlainTextExecutor` 调用 LLM 进行闲聊式回复。
+
+```java
+public void parse(ParseContext parseContext) {
+    if (parseContext.getAgent().containsAnyTool()) {
+        return; // 如果有工具，交给其他解析器处理
+    }
+
+    SemanticParseInfo parseInfo = new SemanticParseInfo();
+    parseInfo.setQueryMode("PLAIN_TEXT");
+    parseInfo.setId(1);
+    parseContext.getResponse().getSelectedParses().add(parseInfo);
+    parseContext.getResponse().setState(ParseResp.ParseState.COMPLETED);
+}
+```
+
+#### 3.3.4 NL2PluginParser 详解
+
+**逻辑：** 当 Agent 配置了插件工具时，遍历所有已注册的 `PluginRecognizer`，对用户问题进行插件识别。
+
+```java
+public void parse(ParseContext parseContext) {
+    if (!parseContext.getAgent().containsPluginTool()) {
+        return;
+    }
+
+    pluginRecognizers.forEach(pluginRecognizer -> {
+        pluginRecognizer.recognize(parseContext);
+        log.info("{} recallResult:{}",
+            pluginRecognizer.getClass().getSimpleName(),
+            JsonUtil.toString(parseContext.getResponse()));
+    });
+}
+```
+
+#### 3.3.5 NL2SQLParser 深度解析
+
+这是整个模块中最复杂的解析器，采用**两阶段解析策略**。
+
+##### 第一阶段：规则解析（Rule-based Parsing）
+
+```
+输入：用户问题 + Agent 配置的数据集列表
+输出：候选解析列表（SemanticParseInfo）
+
+流程：
+1. 遍历每个数据集
+2. 对每个数据集，按三种模式依次尝试：
+   a. STRICT（严格模式）：要求所有语义元素精确匹配
+   b. MODERATE（中等模式）：允许部分模糊匹配
+   c. LOOSE（宽松模式）：允许更多模糊匹配
+3. 对于每个数据集，从所有匹配结果中排序取 Top 1
+4. 合并所有数据集的结果，按分数排序取 Top N（由 PARSER_SHOW_COUNT 配置）
+```
+
+**关键代码逻辑：**
+```java
+// 对于每个数据集，用不同的 mapMode 尝试解析
+for (MapModeEnum mode : Lists.newArrayList(MapModeEnum.STRICT, MapModeEnum.MODERATE)) {
+    queryNLReq.setMapModeEnum(mode);
+    doParse(queryNLReq, parseResp);
+}
+
+// 如果严格和中等模式都失败，尝试宽松模式
+if (parseResp.getSelectedParses().isEmpty() && candidateParses.isEmpty()) {
+    queryNLReq.setMapModeEnum(MapModeEnum.LOOSE);
+    doParse(queryNLReq, parseResp);
+}
+
+// 每个数据集取 Top 1，然后合并排序
+SemanticParseInfo.sort(parseResp.getSelectedParses());
+candidateParses.add(parseResp.getSelectedParses().get(0));
+```
+
+##### 第二阶段：LLM 解析（LLM-based Parsing）
+
+```
+触发条件：
+1. 启用了 LLM（disableLLM = false）
+2. 有候选解析结果（用户选择或系统自动选择）
+3. 不需要用户反馈（needFeedback = false）
+
+流程：
+1. 多轮对话改写（如果启用了 REWRITE_MULTI_TURN）
+2. 动态示例召回（从向量数据库中召回相似的历史示例）
+3. 调用 LLM 生成最终 SQL
+4. 如果 LLM 解析失败，使用 ALL 模式重试
+```
+
+**三种 MapModeEnum 的含义：**
+
+| 模式 | 说明 | 适用场景 |
+|------|------|----------|
+| `STRICT` | 语义元素必须完全匹配 | 精确查询，高精度要求 |
+| `MODERATE` | 允许部分语义模糊匹配 | 一般查询，平衡精度和召回率 |
+| `LOOSE` | 允许更多语义模糊匹配 | 复杂查询，低精度但高召回率 |
+| `ALL` | 将所有语义字段传递给 LLM | LLM 解析失败时回退策略 |
+
+##### 多轮对话改写（Rewrite Multi-Turn）
+
+**解决的问题：** 用户在多轮对话中可能使用代词或省略语，如"它呢？"、"环比增长呢？"。需要结合历史上下文理解当前问题。
+
+**实现流程：**
+```
+1. 获取当前问题的语义映射结果（MapResp）
+2. 获取最近 1 条成功的历史查询
+3. 提取历史查询的语义映射信息和 SQL
+4. 构造 LLM Prompt（包含历史问题、当前问题、映射信息和 SQL）
+5. 调用 LLM 生成改写后的完整问题
+6. 将改写后的问题替换当前请求中的问题文本
+```
+
+**LLM Prompt 模板：**
+```
+#Role: You are a data product manager experienced in data requirements.
+#Task: Your will be provided with current and history questions asked by a user,
+along with their mapped schema elements(metric, dimension and value),
+please try understanding the semantics and rewrite a question.
+#Rules:
+1.ALWAYS keep relevant entities, metrics, dimensions, values and date ranges.
+2.ONLY respond with the rewritten question.
+#Current Question: {{current_question}}
+#Current Mapped Schema: {{current_schema}}
+#History Question: {{history_question}}
+#History Mapped Schema: {{history_schema}}
+#History SQL: {{history_sql}}
+#Rewritten Question:
+```
+
+##### 动态示例召回（Dynamic Exemplars）
+
+**解决的问题：** 为 LLM 提供相似的查询示例，帮助其生成更准确的 SQL。
+
+**实现流程：**
+```
+1. 获取该 Agent 的 "记忆" 向量集合
+2. 对用户问题进行向量化
+3. 在向量数据库中召回最相似的 N 个示例
+4. 将召回结果添加到 QueryNLReq 的 dynamicExemplars 中
+5. 这些示例最终会传递给 LLM 作为参考
+```
+
+---
+
+### 3.4 Executor 模块（`executor/`）
+
+#### 3.4.1 设计模式
+
+与 Parser 类似，Executor 也采用**策略模式**。`ChatQueryExecutor` 是策略接口，三种执行器实现了不同的执行策略。`ChatQueryService` 在运行时遍历所有已注册的执行器，根据解析结果的 `queryMode` 选择合适的执行器。
+
+#### 3.4.2 执行器对比
+
+| 执行器 | 适用的 queryMode | 执行方式 | 依赖 |
+|--------|------------------|----------|------|
+| **PlainTextExecutor** | PLAIN_TEXT | 调用 LLM 生成闲聊回复 | LLM 模型 |
+| **PluginExecutor** | 插件定义的 queryMode | 委托给 PluginSemanticQuery | 插件注册表 |
+| **SqlExecutor** | 其他所有模式 | 调用语义层执行 SQL | 语义层服务 |
+
+#### 3.4.3 SqlExecutor 深度解析
+
+**核心执行流程：**
+```
+SqlExecutor.execute()
+  │
+  ├─ 1. 获取聊天上下文（ChatContext）
+  │     └─ 调用 ChatContextService.getOrCreateContext()
+  │
+  ├─ 2. 验证 SQL 有效性
+  │     └─ 检查 parseInfo.getSqlInfo().getCorrectedS2SQL() 是否非空
+  │
+  ├─ 3. 构建 QuerySqlReq
+  │     └─ 设置 sql、sqlInfo、dataSetId
+  │
+  ├─ 4. 调用语义层执行 SQL
+  │     └─ semanticLayer.queryByReq(sqlReq, user)
+  │
+  ├─ 5. 处理执行结果
+  │     ├─ 成功：设置 queryState = SUCCESS，保存上下文
+  │     └─ 失败：设置 queryState = INVALID
+  │
+  ├─ 6. 格式化结果
+  │     └─ ResultFormatter.transform2TextNew() → Markdown 表格
+  │
+  └─ 7. 创建记忆（仅 LLMSqlQuery 模式）
+        └─ 构建 ChatMemory 并保存到数据库
+```
+
+**与 Agent 的交互：** 在 `PlainTextExecutor` 中，通过 `AgentService` 重新获取 Agent 配置，并检查 `chatAppConfig` 中是否启用了 `SMALL_TALK` 应用。这体现了"**执行时动态配置**"的设计思想。
+
+**结果格式化（ResultFormatter）：**
+```java
+// 将查询结果格式化为 Markdown 表格
+public static String transform2TextNew(List<QueryColumn> queryColumns,
+        List<Map<String, Object>> queryResults) {
+    // 生成表头
+    // | column1 | column2 | ...
+    // 生成分隔线
+    // |:---:|:---:|...
+    // 生成数据行
+    // | value1 | value2 | ...
+}
+```
+
+---
+
+### 3.5 Plugin 模块（`plugin/`）
+
+#### 3.5.1 整体架构
+
+Plugin 模块是一个**完整的插件生命周期管理系统**，包含：
+
+| 组件 | 职责 |
+|------|------|
+| **ChatPlugin** | 插件数据模型，定义插件的基本信息 |
+| **PluginManager** | 插件核心管理器，负责识别、解析和生命周期管理 |
+| **PluginQueryManager** | 插件查询注册表，管理 queryMode 到查询实现的映射 |
+| **PluginRecognizer** | 插件识别器接口，通过 SPI 机制扩展 |
+| **PluginParseConfig** | 插件解析配置，包含示例问题等 |
+| **PluginParseResult** | 插件解析结果 |
+| **PluginRecallResult** | 插件召回结果 |
+
+#### 3.5.2 ChatPlugin 数据模型
+
+```java
+public class ChatPlugin extends RecordInfo {
+    private Long id;                    // 插件 ID
+    private String type;                // 插件类型：WEB_PAGE / WEB_SERVICE
+    private List<Long> dataSetList;     // 关联的数据集列表
+    private String pattern;             // 描述，用于解析
+    private ParseMode parseMode;        // 解析模式：EMBEDDING_RECALL / FUNCTION_CALL
+    private String parseModeConfig;     // 解析模式配置（JSON，含示例问题）
+    private String name;                // 插件名称
+    private String config;              // 插件配置（JSON，含参数定义）
+    private String comment;             // 备注
+}
+```
+
+**`parseModeConfig` JSON 结构示例：**
+```json
+{
+  "examples": ["查询昨天的流量数据", "查看上个月的带宽使用情况"],
+  "name": "流量查询插件",
+  "description": "用于查询网络流量和带宽数据"
+}
+```
+
+#### 3.5.3 PluginManager 核心机制
+
+**1. 插件识别机制：**
+
+```
+输入：用户问题文本
+输出：匹配的插件列表
+
+流程：
+1. 获取 Agent 可用的插件列表（通过 Agent 的 toolConfig 筛选）
+2. 对用户问题进行 Embedding 向量化
+3. 从预设向量集合中检索最相似的插件示例
+4. 对匹配的插件进行语义解析验证：
+   a. 检查插件关联的数据集是否与用户查询匹配
+   b. 检查插件的 SEMANTIC 类型参数是否在语义映射中存在
+   c. 所有参数匹配成功才算完全匹配
+5. 返回匹配结果
+```
+
+**2. 语义解析验证（resolve 方法）：**
+
+```java
+public static Pair<Boolean, Set<Long>> resolve(ChatPlugin plugin, ParseContext parseContext) {
+    // 1. 获取语义映射结果
+    SchemaMapInfo schemaMapInfo = chatLayerService.map(queryNLReq).getMapInfo();
+
+    // 2. 检查插件关联的数据集是否匹配
+    Set<Long> pluginMatchedDataSet = getPluginMatchedDataSet(plugin, schemaMapInfo);
+
+    // 3. 获取插件的 SEMANTIC 类型参数
+    List<ParamOption> paramOptions = getSemanticOption(plugin);
+
+    // 4. 验证每个参数是否在语义映射中存在
+    for (ParamOption paramOption : paramOptions) {
+        if (!elementIdSet.contains(paramOption.getElementId())) {
+            matched = false; // 参数不匹配
+            break;
+        }
+    }
+
+    return Pair.of(matched, matchedDataSet);
+}
+```
+
+**3. 生命周期管理：**
+
+通过 Spring 事件监听机制，在插件增删改时自动更新向量数据库：
+
+```java
+@EventListener
+public void addPlugin(PluginAddEvent event) {
+    // 将插件示例问题添加到向量数据库
+    requestEmbeddingPluginAdd(convert(Lists.newArrayList(plugin)));
+}
+
+@EventListener
+public void updatePlugin(PluginUpdateEvent event) {
+    // 删除旧向量，添加新向量
+    requestEmbeddingPluginDelete(getEmbeddingId(Lists.newArrayList(oldPlugin)));
+    requestEmbeddingPluginAdd(convert(Lists.newArrayList(newPlugin)));
+}
+
+@EventListener
+public void delPlugin(PluginDelEvent event) {
+    // 从向量数据库中删除
+    requestEmbeddingPluginDelete(getEmbeddingId(Lists.newArrayList(plugin)));
+}
+```
+
+**4. Embedding ID 生成策略：**
+
+```java
+// 生成规则：插件ID + 序号（序号 < 100）
+// 例如：插件ID=101，序号=0 → "10100"
+private String generateUniqueEmbeddingId(int num, Long pluginId) {
+    if (num < 10) {
+        return String.format("%s00%s", pluginId, num);
+    } else {
+        return String.format("%s0%s", pluginId, num);
+    }
+}
+
+// 从 Embedding ID 还原插件 ID
+// 例如："10100" → "101"
+private String getPluginIdFromEmbeddingId(String id) {
+    return String.valueOf(Integer.parseInt(id) / 1000);
+}
+```
+
+---
+
+### 3.6 Memory 模块（`memory/`）
+
+#### 3.6.1 设计目的
+
+Memory 模块实现了**基于 LLM 评估的自动记忆系统**。当用户的 SQL 查询成功执行后，系统会记录该查询的"问题-模式-上下文-SQL"作为一条记忆。然后通过 `MemoryReviewTask` 定时任务，使用 LLM 自动评估每条记忆的 SQL 正确性，对评估通过的记忆自动启用，供后续查询作为示例参考。
+
+#### 3.6.2 ChatMemory 数据模型
+
+```java
+public class ChatMemory {
+    private Long id;                    // 记忆 ID
+    private Integer agentId;            // 关联的 Agent ID
+    private Long queryId;               // 关联的查询 ID
+    private String question;            // 用户问题
+    private String sideInfo;            // 上下文信息
+    private String dbSchema;            // 数据库 Schema
+    private String s2sql;               // 生成的 SQL
+    private MemoryStatus status;        // 记忆状态（PENDING/ENABLED/DISABLED）
+    private MemoryReviewResult llmReviewRet;   // LLM 评估结果
+    private String llmReviewCmt;        // LLM 评估评语
+    private MemoryReviewResult humanReviewRet; // 人工评估结果
+    private String humanReviewCmt;      // 人工评估评语
+    private String createdBy;           // 创建者
+    private Date createdAt;             // 创建时间
+    private String updatedBy;           // 更新者
+    private Date updatedAt;             // 更新时间
+}
+```
+
+**记忆状态流转：**
+```
+PENDING (待评估)
+    │
+    ├── LLM 评估为 POSITIVE → ENABLED (已启用)
+    │
+    ├── LLM 评估为 NEGATIVE → 保持 PENDING（等待人工审核）
+    │
+    └── 人工审核 → ENABLED 或 DISABLED
+```
+
+#### 3.6.3 MemoryReviewTask 深度解析
+
+**执行频率：** 每 60 秒（`@Scheduled(fixedDelay = 60 * 1000)`）
+
+**执行流程：**
+```
+1. 获取所有 Agent 列表
+2. 遍历每个 Agent：
+   a. 检查是否启用了记忆评估（enableMemoryReview）
+   b. 获取该 Agent 的所有待审核记忆
+   c. 对每条记忆：
+      - 跳过已评估的记忆（LLM 或人工已评估）
+      - 跳过未启用记忆评估应用的 Agent
+      - 构造 LLM 评估 Prompt
+      - 调用 LLM 生成评估结果
+      - 解析 LLM 输出（正则表达式匹配）
+      - 如果评估为 POSITIVE，自动启用该记忆
+      - 保存评估结果到数据库
+```
+
+**LLM 评估 Prompt：**
+```
+#Role: You are a senior data engineer experienced in writing SQL.
+#Task: Your will be provided with a user question and the SQL written by a junior engineer,
+please take a review and give your opinion.
+#Rules:
+1.ALWAYS follow the output format: `opinion=(POSITIVE|NEGATIVE),comment=(your comment)`.
+2.NO NEED to check date filters as the junior engineer seldom makes mistakes in this regard.
+#Question: %s
+#Schema: %s
+#SideInfo: %s
+#SQL: %s
+#Response:
+```
+
+**LLM 输出解析：**
+```java
+private static final Pattern OUTPUT_PATTERN =
+    Pattern.compile("opinion=(.*),.*comment=(.*)");
+
+private void processResponse(String response, ChatMemory m) {
+    Matcher matcher = OUTPUT_PATTERN.matcher(response);
+    if (matcher.find()) {
+        m.setLlmReviewRet(MemoryReviewResult.getMemoryReviewResult(matcher.group(1)));
+        m.setLlmReviewCmt(matcher.group(2));
+        if (MemoryReviewResult.POSITIVE.equals(m.getLlmReviewRet())) {
+            m.setStatus(MemoryStatus.ENABLED);
+        }
+        // 保存评估结果
+        memoryService.updateMemory(memoryUpdateReq, User.getDefaultUser());
+    }
+}
+```
+
+---
+
+### 3.7 REST 控制器（`rest/`）
+
+#### 3.7.1 路由设计
+
+所有控制器都支持两种路由前缀，分别对应 **PC 端**和**移动端**：
+- `/api/chat/...` - PC 端 API
+- `/openapi/chat/...` - 移动端 API
+
+#### 3.7.2 控制器功能说明
+
+**AgentController（智能体管理）：**
+| 方法 | 端点 | 说明 | 参数 |
+|------|------|------|------|
+| POST | `/api/chat/agent` | 创建 Agent | 请求体: Agent 对象 |
+| PUT | `/api/chat/agent` | 更新 Agent | 请求体: Agent 对象 |
+| DELETE | `/api/chat/agent/{id}` | 删除 Agent | 路径参数: id |
+| GET | `/api/chat/agent/getAgentList` | 获取 Agent 列表 | 查询参数: authType（权限过滤） |
+| GET | `/api/chat/agent/getToolTypes` | 获取工具类型字典 | 无 |
+
+**ChatQueryController（核心查询）：**
+| 方法 | 端点 | 说明 | 参数 |
+|------|------|------|------|
+| POST | `/api/chat/query/search` | 搜索推荐 | ChatParseReq（含查询文本） |
+| POST | `/api/chat/query/parse` | 解析自然语言 | ChatParseReq |
+| POST | `/api/chat/query/execute` | 执行查询 | ChatExecuteReq |
+| POST | `/api/chat/query/` | 解析并执行一步完成 | ChatParseReq（内部自动执行） |
+| POST | `/api/chat/query/queryData` | 查询数据 | ChatQueryDataReq |
+| POST | `/api/chat/query/queryDimensionValue` | 查询维度值 | DimensionValueReq |
+
+**ChatController（会话管理）：**
+| 方法 | 端点 | 说明 |
+|------|------|------|
+| POST | `/api/chat/manage/save` | 创建新会话 |
+| GET | `/api/chat/manage/getAll` | 获取用户的所有会话 |
+| POST | `/api/chat/manage/delete` | 删除会话 |
+| POST | `/api/chat/manage/updateChatName` | 修改会话名称 |
+| POST | `/api/chat/manage/updateQAFeedback` | 更新问答反馈（点赞/点踩） |
+| POST | `/api/chat/manage/pageQueryInfo` | 分页查询历史消息 |
+| GET | `/api/chat/manage/getChatQuery/{queryId}` | 获取单条查询详情 |
+| DELETE | `/api/chat/manage/{queryId}` | 删除单条查询 |
+| POST | `/api/chat/manage/queryShowCase` | 查询展示案例 |
+
+**MemoryController（记忆管理）：**
+| 方法 | 端点 | 说明 |
+|------|------|------|
+| POST | `/api/chat/memory/createMemory` | 创建记忆 |
+| POST | `/api/chat/memory/updateMemory` | 更新记忆 |
+| GET | `/api/chat/memory/pageMemories` | 分页查询记忆 |
+| POST | `/api/chat/memory/batchDelete` | 批量删除记忆 |
+
+**PluginController（插件管理）：**
+| 方法 | 端点 | 说明 |
+|------|------|------|
+| POST | `/api/chat/plugin` | 创建插件 |
+| PUT | `/api/chat/plugin` | 更新插件 |
+| DELETE | `/api/chat/plugin/{id}` | 删除插件 |
+| GET | `/api/chat/plugin/getPluginList` | 获取插件列表 |
+| POST | `/api/chat/plugin/query` | 带权限校验的插件查询 |
+
+---
+
+### 3.8 Service 接口（`service/`）
+
+#### 3.8.1 服务职责说明
+
+| 服务接口 | 职责描述 | 关键方法 |
+|----------|----------|----------|
+| **ChatQueryService** | 核心查询编排：搜索→解析→执行 | `search()`, `parse()`, `execute()`, `parseAndExecute()` |
+| **ChatManageService** | 会话和查询记录管理 | `addChat()`, `getAll()`, `queryInfo()`, `saveQueryResult()` |
+| **AgentService** | Agent 的 CRUD 和权限管理 | `createAgent()`, `updateAgent()`, `getAgents()`, `getAgent()` |
+| **ConfigService** | 数据集聊天配置维护 | `addConfig()`, `editConfig()`, `search()`, `getConfigRichInfo()` |
+| **MemoryService** | 记忆的增删改查 | `createMemory()`, `updateMemory()`, `pageMemories()`, `getMemories()` |
+| **PluginService** | 插件的 CRUD 和查询 | `createPlugin()`, `updatePlugin()`, `getPluginList()`, `query()` |
+| **RecommendService** | 推荐问题服务 | `recommend()`, `recommendQuestion()` |
+| **StatisticsService** | 统计数据持久化 | `batchSaveStatistics()` |
+| **ChatContextService** | 聊天上下文管理 | `getOrCreateContext()`, `updateContext()` |
+
+#### 3.8.2 核心服务交互
+
+**ChatQueryService.parse() 内部流程：**
+```
+1. 创建查询记录（ChatManageService.createChatQuery）
+2. 获取 Agent 配置（AgentService.getAgent）
+3. 创建 ParseContext
+4. 遍历所有解析器：
+   a. PlainTextParser：无工具时设置文本模式
+   b. NL2PluginParser：有插件时执行插件识别
+   c. NL2SQLParser：有数据集时执行 NL2SQL
+5. 处理解析结果：
+   a. 批量保存解析信息（ChatManageService.batchAddParse）
+   b. 保存解析耗时（ChatManageService.updateParseCostTime）
+6. 返回 ChatParseResp
+```
+
+**ChatQueryService.execute() 内部流程：**
+```
+1. 获取 Agent 配置（AgentService.getAgent）
+2. 获取解析信息（ChatManageService.getParseInfo）
+3. 创建 ExecuteContext
+4. 遍历所有执行器：
+   a. PlainTextExecutor：文本模式时调用 LLM 回复
+   b. PluginExecutor：插件模式时执行插件查询
+   c. SqlExecutor：SQL 模式时执行 SQL 查询
+5. 保存查询结果（ChatManageService.saveQueryResult）
+6. 返回 QueryResult
+```
+
+---
+
+## 四、关键代码逻辑深度解析
+
+### 4.1 核心查询流程全景
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                      用户输入（自然语言）                              │
+└────────────────────────────────┬────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  ChatQueryController.parse()                                        │
+│  1. 设置用户身份                                                  │
+│  2. 调用 ChatQueryService.parse()                                  │
+└────────────────────────────────┬────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  ChatQueryService.parse()                                           │
+│  1. 创建查询记录 → 返回 queryId                                    │
+│  2. 获取 Agent 配置                                                │
+│  3. 创建 ParseContext                                               │
+│  4. 遍历 Parser 链：                                                 │
+│     ├─ PlainTextParser → 无工具时设置文本模式                        │
+│     ├─ NL2PluginParser → 有插件时匹配插件                            │
+│     └─ NL2SQLParser → 有数据集时执行 NL2SQL                         │
+│  5. 保存解析结果                                                    │
+│  6. 返回 ChatParseResp（含 queryId + 解析结果列表）                  │
+└────────────────────────────────┬────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  ChatQueryController.execute()                                      │
+│  1. 设置用户身份                                                  │
+│  2. 调用 ChatQueryService.execute()                                │
+└────────────────────────────────┬────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  ChatQueryService.execute()                                         │
+│  1. 获取 Agent 配置                                                │
+│  2. 获取解析信息（SemanticParseInfo）                                │
+│  3. 创建 ExecuteContext                                             │
+│  4. 遍历 Executor 链：                                               │
+│     ├─ PlainTextExecutor → 调用 LLM 生成闲聊回复                     │
+│     ├─ PluginExecutor → 执行插件查询                                │
+│     └─ SqlExecutor → 执行 SQL 查询 + 创建记忆                       │
+│  5. 保存查询结果                                                    │
+│  6. 返回 QueryResult                                                │
+└────────────────────────────────┬────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                      返回结果给用户                                   │
+│  QueryResult 包含：                                                   │
+│  ├─ queryId: 查询 ID                                               │
+│  ├─ queryMode: 查询模式                                             │
+│  ├─ queryResults: 查询结果数据                                      │
+│  ├─ queryColumns: 查询列信息                                       │
+│  ├─ querySql: 执行的 SQL                                           │
+│  ├─ textResult: 文本格式结果                                        │
+│  ├─ queryState: 查询状态                                           │
+│  └─ queryTimeCost: 查询耗时                                        │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 4.2 组件工厂模式（ComponentFactory）
+
+**设计模式：** 工厂模式 + SPI（Service Provider Interface）
+
+**原理：** 通过 Spring 的 `SpringFactoriesLoader`，从 `META-INF/spring.factories` 配置文件中加载指定接口的所有实现类。
+
+**实现方式：**
+```java
+public class ComponentFactory {
+    // 静态缓存，避免重复加载
+    private static List<ChatQueryParser> chatQueryParsers = new ArrayList<>();
+    private static List<ChatQueryExecutor> chatQueryExecutors = new ArrayList<>();
+    private static List<PluginRecognizer> pluginRecognizers = new ArrayList<>();
+    private static List<ParseResultProcessor> parseProcessors = new ArrayList<>();
+    private static List<ExecuteResultProcessor> executeProcessors = new ArrayList<>();
+
+    // 懒加载 + 缓存
+    public static List<ChatQueryParser> getChatParsers() {
+        return CollectionUtils.isEmpty(chatQueryParsers)
+            ? init(ChatQueryParser.class, chatQueryParsers)
+            : chatQueryParsers;
+    }
+
+    // 从 spring.factories 中加载
+    private static <T> List<T> init(Class<T> factoryType, List list) {
+        list.addAll(SpringFactoriesLoader.loadFactories(factoryType,
+            Thread.currentThread().getContextClassLoader()));
+        return list;
+    }
+}
+```
+
+**支持的扩展点：**
+| 接口 | 扩展点名称 | 示例实现 |
+|------|----------|----------|
+| `ChatQueryParser` | 查询解析器 | NL2SQLParser, NL2PluginParser, PlainTextParser |
+| `ChatQueryExecutor` | 查询执行器 | SqlExecutor, PluginExecutor, PlainTextExecutor |
+| `PluginRecognizer` | 插件识别器 | 各种插件识别算法 |
+| `ParseResultProcessor` | 解析结果处理器 | 解析后处理逻辑 |
+| `ExecuteResultProcessor` | 执行结果处理器 | 执行后处理逻辑 |
+
+**`spring.factories` 配置示例：**
+```properties
+com.tencent.supersonic.chat.server.parser.ChatQueryParser=\
+  com.tencent.supersonic.chat.server.parser.NL2SQLParser,\
+  com.tencent.supersonic.chat.server.parser.NL2PluginParser,\
+  com.tencent.supersonic.chat.server.parser.PlainTextParser
+
+com.tencent.supersonic.chat.server.executor.ChatQueryExecutor=\
+  com.tencent.supersonic.chat.server.executor.SqlExecutor,\
+  com.tencent.supersonic.chat.server.executor.PluginExecutor,\
+  com.tencent.supersonic.chat.server.executor.PlainTextExecutor
+```
+
+### 4.3 多阶段解析策略
+
+**设计目的：** 在解析精度和召回率之间取得平衡。
+
+**三个阶段：**
+```
+STRICT（严格模式）
+  ├─ 要求：所有语义元素精确匹配
+  ├─ 精度：高
+  └─ 召回率：低
+
+MODERATE（中等模式）
+  ├─ 要求：允许部分语义模糊匹配
+  ├─ 精度：中
+  └─ 召回率：中
+
+LOOSE（宽松模式）
+  ├─ 要求：允许更多语义模糊匹配
+  ├─ 精度：低
+  └─ 召回率：高
+```
+
+**策略选择逻辑：**
+```
+1. 先用 STRICT 和 MODERATE 尝试
+2. 如果都失败，使用 LOOSE
+3. 每种模式都尝试后，取最优结果
+4. 如果 LLM 解析失败，使用 ALL 模式（将所有语义字段传递给 LLM）
+```
+
+### 4.4 记忆增强机制
+
+**数据流：**
+```
+SQL 执行成功
+    │
+    ▼
+创建记忆（ChatMemory）
+├─ question: 用户问题
+├─ sideInfo: 上下文信息
+├─ dbSchema: 数据库 Schema
+└─ s2sql: 生成的 SQL
+    │
+    ▼
+状态：PENDING（待评估）
+    │
+    ▼
+MemoryReviewTask（每60秒执行）
+├─ 调用 LLM 评估 SQL 正确性
+├─ POSITIVE → ENABLED（启用）
+└─ NEGATIVE → 保持 PENDING
+    │
+    ▼
+ENABLED 的记忆在后续查询中
+被召回归为动态示例
+    │
+    ▼
+新查询 → 示例召回 → 传递给 LLM → 更准确的 SQL
+```
+
+---
+
+## 五、数据流分析
+
+### 5.1 请求数据流
+
+```
+HTTP Request
+    │
+    ▼
+┌─────────────────────────────────────────────────┐
+│                REST Controller                     │
+│  接收请求参数 → 设置用户身份 → 调用 Service       │
+└─────────────────────┬───────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────┐
+│              Service Layer                        │
+│  业务编排：链式调用多个组件                        │
+│  1. 创建/更新数据记录                            │
+│  2. 调用 Parser 链                                │
+│  3. 调用 Executor 链                              │
+│  4. 保存结果                                      │
+└─────────────────────┬───────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────┐
+│              Parser Layer                         │
+│  1. 语义映射（Map）                                │
+│     ├─ 将自然语言映射到语义元素（指标/维度/值）    │
+│     └─ 返回 MapResp（含匹配的数据集和元素）        │
+│                                                   │
+│  2. 规则解析                                       │
+│     ├─ STRICT → MODERATE → LOOSE 三级策略         │
+│     ├─ 每个数据集取 Top 1                          │
+│     └─ 合并排序取 Top N                            │
+│                                                   │
+│  3. 多轮改写（可选）                                │
+│     ├─ 获取历史查询                                │
+│     ├─ 构造 LLM Prompt                             │
+│     └─ 生成改写后的问题                            │
+│                                                   │
+│  4. 动态示例召回                                    │
+│     ├─ 向量化用户问题                              │
+│     ├─ 从向量数据库召回                            │
+│     └─ 添加到查询请求                              │
+│                                                   │
+│  5. LLM 解析                                       │
+│     ├─ 调用 LLM 生成 SQL                           │
+│     └─ 失败时回退到 ALL 模式                       │
+└─────────────────────┬───────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────┐
+│              Executor Layer                       │
+│  1. PlainTextExecutor                             │
+│     ├─ 检查是否启用 SMALL_TALK                    │
+│     ├─ 构造 LLM Prompt                            │
+│     └─ 调用 LLM 生成回复文本                      │
+│                                                   │
+│  2. PluginExecutor                                 │
+│     ├─ 获取插件查询实现                            │
+│     └─ 执行插件查询                                │
+│                                                   │
+│  3. SqlExecutor                                    │
+│     ├─ 验证 SQL 有效性                             │
+│     ├─ 调用语义层执行 SQL                          │
+│     ├─ 格式化结果为文本                            │
+│     └─ 创建记忆（LLMSqlQuery 模式）                │
+└─────────────────────┬───────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────┐
+│              ResultProcessor                      │
+│  对结果进行后处理（如格式化、过滤敏感信息等）      │
+└─────────────────────┬───────────────────────────┘
+                      │
+                      ▼
+HTTP Response (QueryResult)
+```
+
+### 5.2 数据实体关系
+
+```
+Agent (1) ──────────── (N) ChatDO (会话)
+  │                          │
+  │                          ├── ChatDO.chatId ── (1) ── ChatContextDO.chatId
+  │                          │
+  │                          └── ChatDO.chatId ── (1) ── (N) ChatQueryDO (查询记录)
+  │                                                                │
+  │                                                                ├── ChatQueryDO.questionId ── (1) ── (N) ChatParseDO (解析记录)
+  │                                                                │
+  │                                                                └── ChatQueryDO.questionId ── (1) ── (1) ChatMemory (记忆)
+  │
+  ├── Agent.id ── (1) ── (N) ChatMemory.agentId
+  │
+  └── Agent.id ── (1) ── (N) ChatDO.agentId
+```
+
+### 5.3 数据库表结构
+
+**s2_chat（会话表）：**
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `chat_id` | BIGINT (PK) | 会话 ID |
+| `agent_id` | INT | 关联的 Agent ID |
+| `chat_name` | VARCHAR | 会话名称 |
+| `create_time` | DATETIME | 创建时间 |
+| `last_time` | DATETIME | 最后活动时间 |
+| `creator` | VARCHAR | 创建者用户名 |
+| `last_question` | VARCHAR | 最后一条问题 |
+| `is_delete` | TINYINT | 逻辑删除标志 |
+| `is_top` | TINYINT | 是否置顶 |
+
+**s2_chat_query（查询记录表）：**
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `question_id` | BIGINT (PK) | 查询 ID |
+| `chat_id` | BIGINT | 所属会话 ID |
+| `query_result` | TEXT | 查询结果（JSON） |
+| `score` | INT | 用户评分 |
+| `feedback` | VARCHAR | 用户反馈 |
+| `query_state` | INT | 查询状态 |
+| `query_sql` | TEXT | 执行的 SQL |
+| `columns` | TEXT | 查询列信息（JSON） |
+| `main_entity` | TEXT | 主实体信息（JSON） |
+
+**s2_chat_parse（解析记录表）：**
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `question_id` | BIGINT | 关联的查询 ID |
+| `chat_id` | BIGINT | 所属会话 ID |
+| `parse_id` | INT | 解析 ID（同一查询可能有多个解析结果） |
+| `parse_info` | TEXT | 解析信息（JSON，含 SemanticParseInfo） |
+| `is_candidate` | TINYINT | 是否为候选解析 |
+
+**s2_chat_context（上下文表）：**
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `chat_id` | BIGINT (PK) | 会话 ID |
+| `query_text` | VARCHAR | 当前查询文本 |
+| `semantic_parse` | TEXT | 语义解析结果（JSON） |
+
+**s2_chat_config（配置表）：**
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | BIGINT (PK) | 配置 ID |
+| `model_id` | BIGINT | 数据模型 ID |
+| `chat_detail_config` | TEXT | 明细查询配置（JSON） |
+| `chat_agg_config` | TEXT | 聚合查询配置（JSON） |
+| `recommended_questions` | TEXT | 推荐问题（JSON） |
+| `status` | INT | 状态 |
+
+**s2_chat_memory（记忆表）：**
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | BIGINT (PK) | 记忆 ID |
+| `agent_id` | INT | 关联的 Agent ID |
+| `query_id` | BIGINT | 关联的查询 ID |
+| `question` | TEXT | 用户问题 |
+| `s2sql` | TEXT | 生成的 SQL |
+| `status` | VARCHAR | 记忆状态（PENDING/ENABLED/DISABLED） |
+| `llm_review_ret` | VARCHAR | LLM 评估结果 |
+| `llm_review_cmt` | TEXT | LLM 评估评语 |
+| `human_review_ret` | VARCHAR | 人工评估结果 |
+| `human_review_cmt` | TEXT | 人工评估评语 |
+
+---
+
+## 六、设计模式分析
+
+### 6.1 使用的设计模式
+
+| 设计模式 | 应用位置 | 说明 |
+|----------|----------|------|
+| **策略模式** | Parser、Executor | 多种解析/执行策略可动态切换 |
+| **工厂模式** | ComponentFactory | 统一创建和管理组件实例 |
+| **SPI 模式** | ComponentFactory | 通过 spring.factories 实现扩展加载 |
+| **模板方法模式** | SqlExecutor | 定义了"执行→格式化→创建记忆"的标准流程 |
+| **观察者模式** | PluginManager | 通过 Spring Event 监听插件增删改事件 |
+| **建造者模式** | ChatMemory | 使用 @Builder 注解构建复杂对象 |
+| **单例模式** | ComponentFactory | 静态缓存组件列表 |
+| **上下文模式** | ParseContext/ExecuteContext | 封装请求和响应，在组件间传递 |
+
+### 6.2 策略模式详细说明
+
+**Parser 策略接口：**
+```java
+public interface ChatQueryParser {
+    void parse(ParseContext parseContext);
+}
+```
+
+**策略选择逻辑：** `ChatQueryService.parse()` 中遍历所有注册的 Parser，每个 Parser 内部自行判断是否需要执行（通过 `ParseContext` 中的 Agent 配置决定）。
+
+**Executor 策略接口：**
+```java
+public interface ChatQueryExecutor {
+    QueryResult execute(ExecuteContext executeContext);
+}
+```
+
+**策略选择逻辑：** 每个 Executor 检查 `executeContext.getParseInfo().getQueryMode()` 是否匹配自己的执行模式，不匹配则返回 null。
+
+---
+
+## 七、架构设计评估
+
+### 7.1 架构评分
+
+| 维度 | 评分 | 说明 |
+|------|------|------|
+| **模块化程度** | ★★★★★ | 8 个独立子模块，职责清晰，依赖关系明确 |
+| **可扩展性** | ★★★★★ | SPI 机制支持动态添加解析器/执行器/处理器 |
+| **代码质量** | ★★★★☆ | 合理使用 Lombok、设计模式，存在少量重复代码 |
+| **可维护性** | ★★★★☆ | 逻辑清晰但部分方法较长，有优化空间 |
+| **测试覆盖** | ★★★☆☆ | 有测试依赖但未发现充分的单元测试 |
+| **文档完整性** | ★★★★☆ | 类命名和注释规范，但缺少架构级文档 |
+
+### 7.2 技术亮点
+
+1. **SPI 扩展机制**：通过 `SpringFactoriesLoader` 实现组件自动发现，新增解析器/执行器只需添加实现类并在 `spring.factories` 中注册即可，无需修改现有代码
+2. **多阶段解析策略**：NL2SQL 采用 STRICT → MODERATE → LOOSE 三级匹配策略，在精度和召回率之间取得平衡
+3. **记忆增强机制**：通过 LLM 自动评估 SQL 正确性，构建高质量的记忆库，为后续查询提供动态示例，形成"使用→学习→优化"的正向循环
+4. **多轮对话处理**：通过 LLM 改写用户问题，解决代词指代等上下文依赖问题，提升对话连贯性
+5. **插件系统**：支持 Embedding 检索和语义参数匹配的双重识别机制，确保插件调用的准确性
+6. **事件驱动架构**：插件增删改通过 Spring 事件机制同步更新向量数据库，保证数据一致性
+
+### 7.3 潜在优化点
+
+#### 架构层面
+- **ComponentFactory 缓存刷新**：静态缓存无法在热部署时刷新，建议引入缓存失效机制或动态配置刷新
+- **异常处理粒度**：控制器方法抛出 `Exception` 粒度较粗，建议定义更具体的异常类型并统一处理
+- **事务补偿**：SQL 执行成功后创建记忆失败可能导致数据不一致，建议引入事务补偿机制或异步处理
+
+#### 性能层面
+- **多轮改写频率**：每次 LLM 解析前都调用 `rewriteMultiTurn()` 增加响应延迟，建议设置改写频率限制或缓存历史改写结果
+- **Embedding 检索缓存**：`PluginManager.getPluginAgentCanSupport()` 每次调用都加载所有插件列表，建议引入缓存
+- **记忆评估并发**：`MemoryReviewTask` 遍历所有待审核记忆，建议增加分页处理和并发控制，避免资源竞争
+
+#### 代码层面
+- **硬编码提示模板**：Prompt 模板以字符串常量定义在代码中，维护不便，建议统一管理或支持外部配置
+- **重复代码**：`NL2SQLParser` 和 `PlainTextExecutor` 中都实现了 `getHistoryQueries()` 方法，逻辑重复，可提取为公共工具方法
+- **ID 生成策略**：`PluginManager.generateUniqueEmbeddingId()` 中假设 num < 100，存在隐含限制，建议改为更通用的 ID 生成策略
+
+---
+
+## 八、总体架构图
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         REST API 层 (Controllers)                             │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
+│  │AgentController │  │ChatConfig   │  │ChatController │  │ChatQuery     │     │
+│  │/api/chat/agent│  │Controller   │  │/api/chat/    │  │Controller    │     │
+│  │              │  │/api/chat/conf│  │manage        │  │/api/chat/query│     │
+│  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘     │
+│  ┌──────────────┐  ┌──────────────┐                                          │
+│  │MemoryController│  │PluginController│                                       │
+│  │/api/chat/    │  │/api/chat/   │                                           │
+│  │memory       │  │plugin       │                                           │
+│  └──────────────┘  └──────────────┘                                          │
+└───────────────────────────────┬─────────────────────────────────────────────┘
+                                │
+┌───────────────────────────────▼─────────────────────────────────────────────┐
+│                         Service 层 (接口层)                                    │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │  ChatQueryService  ChatManageService  AgentService  ConfigService    │   │
+│  │  MemoryService  PluginService  RecommendService  StatisticsService   │   │
+│  │  ChatContextService                                                   │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+└───────────────────────────────┬─────────────────────────────────────────────┘
+                                │
+┌───────────────────────────────▼─────────────────────────────────────────────┐
+│                         核心业务逻辑层 (Core Engine)                           │
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │                           Parser 链                                    │   │
+│  │  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐          │   │
+│  │  │  PlainTextParser│  │ NL2PluginParser│  │  NL2SQLParser  │          │   │
+│  │  │  (无工具时触发)  │  │  (有插件时触发)  │  │  (有数据集时触发) │          │   │
+│  │  └────────────────┘  └────────────────┘  └────────────────┘          │   │
+│  │                                              │                          │   │
+│  │                                              ▼                          │   │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │   │
+│  │  │                    NL2SQLParser 内部流程                          │ │   │
+│  │  │  ┌────────────────────────────────────────────────────────────┐  │ │   │
+│  │  │  │ 1. 规则解析 (STRICT→MODERATE→LOOSE)                       │  │ │   │
+│  │  │  │ 2. 多轮对话改写 (LLM) → 重写问题                          │  │ │   │
+│  │  │  │ 3. 动态示例召回 (向量数据库) → 添加示例                    │  │ │   │
+│  │  │  │ 4. LLM 解析 → 生成 SQL                                    │  │ │   │
+│  │  │  │ 5. 失败回退 → ALL 模式重试                                 │  │ │   │
+│  │  │  └────────────────────────────────────────────────────────────┘  │ │   │
+│  │  └──────────────────────────────────────────────────────────────────┘ │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │                           Executor 链                                  │   │
+│  │  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐          │   │
+│  │  │ PlainTextExec  │  │ PluginExecutor  │  │  SqlExecutor   │          │   │
+│  │  │ (LLM 闲聊回复)  │  │ (插件查询执行)  │  │ (SQL 执行+记忆) │          │   │
+│  │  └────────────────┘  └────────────────┘  └────────────────┘          │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │                    Memory Review Task (定时任务)                       │   │
+│  │  每60秒执行：遍历Agent → 获取待审核记忆 → LLM评估 → 自动启用/保留     │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │                    ComponentFactory (SPI 加载器)                       │   │
+│  │  从 spring.factories 加载：Parser / Executor / Processor / Recognizer │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+└───────────────────────────────┬─────────────────────────────────────────────┘
+                                │
+┌───────────────────────────────▼─────────────────────────────────────────────┐
+│                        数据持久化层 (MyBatis + MySQL)                          │
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │  s2_chat      s2_chat_query   s2_chat_parse    s2_chat_context       │   │
+│  │  (会话表)      (查询记录表)     (解析记录表)      (上下文表)            │   │
+│  │                                                                      │   │
+│  │  s2_chat_config  s2_chat_statistics  s2_chat_memory                  │   │
+│  │  (配置表)        (统计表)            (记忆表)                          │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │                    外部依赖                                             │   │
+│  │  - Embedding Service (向量数据库，用于插件识别和示例召回)               │   │
+│  │  - LLM Service (LangChain4j，提供大语言模型能力)                       │   │
+│  │  - Semantic Layer (语义层，提供语义映射和 SQL 执行能力)                │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 九、配置与部署
+
+### 9.1 Maven 依赖
+
+**父 POM（chat/pom.xml）：**
+```xml
+<project>
+    <parent>
+        <groupId>com.tencent.supersonic</groupId>
+        <artifactId>supersonic</artifactId>
+        <version>${revision}</version>
+    </parent>
+    <artifactId>chat</artifactId>
+    <packaging>pom</packaging>
+    <modules>
+        <module>api</module>
+        <module>server</module>
+    </modules>
+</project>
+```
+
+**chat-server 依赖：**
+```xml
+<dependencies>
+    <dependency>
+        <groupId>com.tencent.supersonic</groupId>
+        <artifactId>chat-api</artifactId>   <!-- 本模块的 API 层 -->
+    </dependency>
+    <dependency>
+        <groupId>com.tencent.supersonic</groupId>
+        <artifactId>auth-api</artifactId>   <!-- 认证授权 -->
+    </dependency>
+    <dependency>
+        <groupId>com.tencent.supersonic</groupId>
+        <artifactId>headless-server</artifactId>  <!-- 语义层服务 -->
+    </dependency>
+</dependencies>
+```
+
+### 9.2 关键配置项
+
+| 配置项 | 说明 | 默认值 |
+|--------|------|--------|
+| `PARSER_SHOW_COUNT` | 解析结果展示数量 | 由 ParserConfig 管理 |
+| `PARSER_EXEMPLAR_RECALL_NUMBER` | 示例召回数量 | 由 ParserConfig 管理 |
+| `MemoryReviewTask.fixedDelay` | 记忆评估间隔 | 60 秒 |
+| `Agent.status` | Agent 在线状态 | 1 (在线) |
+| `Agent.enableSearch` | 是否启用搜索 | 1 (启用) |
+| `Agent.enableFeedback` | 是否启用反馈 | 0 (禁用) |
+
+---
+
+## 十、总结
+
+`chat` 模块是 supersonic 项目中**连接自然语言和结构化数据的关键桥梁**。它采用**基于 Agent 的架构**，通过 Parser 和 Executor 的策略模式实现了灵活可扩展的 NL2SQL 能力，结合 LLM 实现了多轮对话、记忆增强等高级功能。
+
+**核心价值：**
+1. 将复杂的 NL2SQL 过程分解为多个可独立扩展的步骤
+2. 通过 SPI 机制支持动态扩展，适应不同业务场景
+3. 结合规则引擎和 LLM，在精度和智能性之间取得平衡
+4. 通过记忆增强机制实现持续学习和优化
