@@ -5,6 +5,7 @@
 - [二、常用语法](#二常用语法)
 - [三、使用场景与选型](#三使用场景与选型)
 - [四、性能优化](#四性能优化)
+  - [4.5 项目案例](#45-项目案例)
 - [五、高级特性与实战](#五高级特性与实战)
 
 ---
@@ -1712,6 +1713,496 @@ GLOBAL JOIN users u ON e.user_id = u.id;
 - 物化视图预计算（2分）
 - 分布式 JOIN（1分）
 - 避免大表 JOIN（1分）
+
+### 4.5 项目案例
+
+---
+
+#### 案例一：Web 日志分析系统性能优化
+
+**项目背景：** 某电商平台日均产生 50 亿条 Web 访问日志，原始架构使用 Elasticsearch 存储，查询 7 天数据的 PV/UV 耗时 30 秒以上，无法满足运营实时分析需求。
+
+**原始架构问题：**
+
+| 问题 | 表现 | 影响 |
+|-----|------|------|
+| 存储成本高 | 7 天日志占用 2TB 磁盘 | 运维成本大 |
+| 聚合查询慢 | 7 天 PV/UV 查询 > 30s | 运营无法实时分析 |
+| 数据保留短 | 只能保留 7 天数据 | 无法做长期趋势分析 |
+| 并发能力弱 | 5 个并发查询即超时 | 多人同时使用卡顿 |
+
+**优化方案：**
+
+```text
+┌──────────────────────────────────────────────────────┐
+│                  优化后架构                            │
+├──────────────────────────────────────────────────────┤
+│  Nginx 日志 → Filebeat → Kafka → ClickHouse → Grafana │
+│                                          ↓            │
+│                                    物化视图预聚合       │
+└──────────────────────────────────────────────────────┘
+```
+
+**实施步骤：**
+
+**Step 1：设计优化表结构**
+
+```sql
+-- 原始表（ES 同步过来的宽表，未优化）
+CREATE TABLE raw_logs (
+    timestamp DateTime,
+    user_id String,
+    url String,
+    status UInt16,
+    response_time UInt32,
+    user_agent String,
+    ip String,
+    referer String
+) ENGINE = MergeTree()
+ORDER BY timestamp;
+-- 问题：排序键单薄，查询常需全表扫描
+
+-- 优化后的表结构
+CREATE TABLE access_logs (
+    event_date Date,
+    event_time DateTime,
+    user_id UInt64,
+    url String,
+    url_path LowCardinality(String),      -- 路径提取为低基数列
+    status UInt16,
+    response_time UInt32,
+    country LowCardinality(String),       -- IP 解析为低基数列
+    device_type LowCardinality(String),   -- UA 解析为低基数列
+    browser LowCardinality(String)
+) ENGINE = MergeTree()
+PARTITION BY toYYYYMMDD(event_date)       -- 按天分区
+ORDER BY (event_date, url_path, status)   -- 高频查询字段做排序键
+TTL event_date + INTERVAL 90 DAY         -- 保留 90 天
+SETTINGS index_granularity = 8192;
+```
+
+**Step 2：添加跳数索引加速过滤**
+
+```sql
+-- 对响应时间范围查询添加 minmax 索引
+ALTER TABLE access_logs
+ADD INDEX idx_response_time response_time TYPE minmax GRANULARITY 4;
+
+-- 对状态码添加 set 索引
+ALTER TABLE access_logs
+ADD INDEX idx_status status TYPE set(10) GRANULARITY 4;
+```
+
+**Step 3：创建分层物化视图**
+
+```sql
+-- 一级聚合：分钟级 PV/UV
+CREATE MATERIALIZED VIEW access_stats_minute
+ENGINE = AggregatingMergeTree()
+PARTITION BY toYYYYMMDD(event_date)
+ORDER BY (event_date, minute, url_path)
+AS SELECT
+    event_date,
+    toStartOfMinute(event_time) AS minute,
+    url_path,
+    status,
+    countState() AS pv,
+    uniqState(user_id) AS uv,
+    avgState(response_time) AS avg_response,
+    quantileState(0.95)(response_time) AS p95_response
+FROM access_logs
+GROUP BY event_date, minute, url_path, status;
+
+-- 二级聚合：小时级汇总（从分钟级聚合）
+CREATE MATERIALIZED VIEW access_stats_hour
+ENGINE = AggregatingMergeTree()
+PARTITION BY toYYYYMMDD(event_date)
+ORDER BY (event_date, hour, url_path)
+AS SELECT
+    event_date,
+    toStartOfHour(minute) AS hour,
+    url_path,
+    countMerge(pv) AS pv,
+    uniqMerge(uv) AS uv,
+    avgMerge(avg_response) AS avg_response,
+    quantileMerge(0.95)(p95_response) AS p95_response
+FROM access_stats_minute
+GROUP BY event_date, hour, url_path;
+```
+
+**Step 4：查询对比**
+
+```sql
+-- 优化前：直接查询原始表（30s+）
+SELECT
+    toDate(event_time) AS day,
+    count() AS pv,
+    uniq(user_id) AS uv
+FROM raw_logs
+WHERE event_time BETWEEN '2024-01-01' AND '2024-01-07'
+GROUP BY day;
+
+-- 优化后：查询物化视图（< 100ms）
+SELECT
+    event_date AS day,
+    sum(pv) AS pv,
+    uniqMerge(uv) AS uv
+FROM access_stats_hour
+WHERE event_date BETWEEN '2024-01-01' AND '2024-01-07'
+  AND url_path = '/product/detail'
+GROUP BY day;
+```
+
+**效果评估：**
+
+| 指标 | 优化前（ES） | 优化后（CH） | 提升倍数 |
+|-----|------------|------------|---------|
+| 7 天 PV/UV 查询 | 30s+ | < 100ms | **300x** |
+| 存储空间（7天） | 2TB | 150GB（压缩后） | **13x 压缩** |
+| 数据保留时长 | 7 天 | 90 天 | **12x** |
+| 并发查询能力 | 5 QPS | 50 QPS | **10x** |
+| 写入吞吐 | 5 万条/秒 | 50 万条/秒 | **10x** |
+| 硬件成本 | 5 台高配服务器 | 3 台中配服务器 | **降低 40%** |
+
+---
+
+#### 案例二：实时数仓大屏报表优化
+
+**项目背景：** 某金融平台需要展示实时交易大屏，包含交易金额、笔数、成功率、区域分布等 20+ 指标。原方案使用 MySQL 存储聚合结果，每分钟跑一次定时任务计算，数据延迟 1 分钟以上，且高峰时段计算超时。
+
+**原始架构问题：**
+
+```text
+MySQL 交易表 → 定时任务（每分钟）→ 聚合计算 → 写入 MySQL 报表表 → 大屏展示
+问题：定时任务执行 30s+，数据延迟 1-2 分钟，高峰时计算失败
+```
+
+**优化方案：**
+
+```text
+交易系统 → Kafka → Flink(实时ETL) → ClickHouse → 物化视图(实时聚合) → 大屏直接查询
+延迟：秒级（从写入到可查询 < 1 秒）
+```
+
+**实施步骤：**
+
+**Step 1：交易明细表设计**
+
+```sql
+CREATE TABLE transactions (
+    txn_date Date,
+    txn_time DateTime64(3),          -- 毫秒级精度
+    txn_id String,
+    user_id UInt64,
+    merchant_id UInt64,
+    amount Decimal(18, 2),
+    txn_type LowCardinality(String),  -- 支付/退款/转账
+    status LowCardinality(String),    -- 成功/失败/处理中
+    channel LowCardinality(String),   -- 渠道
+    region LowCardinality(String),    -- 区域
+    currency LowCardinality(String)
+) ENGINE = MergeTree()
+PARTITION BY toYYYYMMDD(txn_date)
+ORDER BY (txn_date, txn_type, status, region)
+TTL txn_date + INTERVAL 180 DAY;
+```
+
+**Step 2：多粒度物化视图（实时聚合链路）**
+
+```sql
+-- 分钟级实时聚合（大屏核心数据源）
+CREATE MATERIALIZED VIEW txn_stats_minute
+ENGINE = AggregatingMergeTree()
+PARTITION BY toYYYYMMDD(txn_date)
+ORDER BY (txn_date, minute, txn_type, region)
+AS SELECT
+    txn_date,
+    toStartOfMinute(txn_time) AS minute,
+    txn_type,
+    region,
+    channel,
+    status,
+    countState() AS txn_count,
+    sumState(amount) AS txn_amount,
+    uniqState(user_id) AS txn_users,
+    uniqState(merchant_id) AS txn_merchants
+FROM transactions
+GROUP BY txn_date, minute, txn_type, region, channel, status;
+
+-- 大屏查询 SQL（从物化视图查询，毫秒级响应）
+SELECT
+    minute,
+    sum(txn_count) AS total_count,
+    sum(txn_amount) AS total_amount,
+    uniqMerge(txn_users) AS total_users,
+    -- 成功率计算
+    sumIf(txn_count, status = '成功') / sum(txn_count) AS success_rate
+FROM txn_stats_minute
+WHERE txn_date = today()
+  AND minute >= now() - INTERVAL 1 HOUR
+GROUP BY minute
+ORDER BY minute;
+```
+
+**Step 3：热点数据预加载（字典加速）**
+
+```sql
+-- 商户信息字典（减少 JOIN）
+CREATE DICTIONARY merchant_dict (
+    merchant_id UInt64,
+    merchant_name String,
+    category LowCardinality(String)
+) PRIMARY KEY merchant_id
+SOURCE(CLICKHOUSE(
+    HOST 'localhost' PORT 9000
+    DB 'analytics' TABLE 'merchants'
+))
+LAYOUT(FLAT())
+LIFETIME(1 HOUR);
+
+-- 查询时直接使用字典
+SELECT
+    minute,
+    dictGet('merchant_dict', 'merchant_name', merchant_id) AS merchant_name,
+    sum(txn_amount) AS amount
+FROM txn_stats_minute
+WHERE txn_date = today()
+GROUP BY minute, merchant_id
+ORDER BY amount DESC
+LIMIT 10;
+```
+
+**Step 4：冷热数据分离**
+
+```sql
+-- 热数据：近 7 天，SSD 存储，LZ4 快速压缩
+CREATE TABLE transactions_hot AS transactions
+ENGINE = MergeTree()
+PARTITION BY toYYYYMMDD(txn_date)
+ORDER BY (txn_date, txn_type, status, region)
+TTL txn_date + INTERVAL 7 DAY TO VOLUME 'cold'
+SETTINGS storage_policy = 'hot_and_cold';
+
+-- 冷数据：7 天以前，HDD 存储，ZSTD 高压缩比
+-- 通过 TTL 自动迁移到冷存储卷
+```
+
+**效果评估：**
+
+| 指标 | 优化前（MySQL） | 优化后（CH） | 提升 |
+|-----|---------------|------------|------|
+| 数据延迟 | 1-2 分钟 | < 1 秒 | **100x** |
+| 大屏刷新时间 | 3-5 秒 | < 50ms | **100x** |
+| 高峰计算成功率 | 85% | 100% | 稳定 |
+| 存储成本 | 500GB（SSD） | 200GB（SSD+HDD） | **降低 60%** |
+| 支持指标数 | 10 个 | 20+ 个 | **2x** |
+| 历史数据回溯 | 30 天 | 180 天 | **6x** |
+
+---
+
+#### 案例三：多维度用户行为分析优化
+
+**项目背景：** 某内容平台需要分析用户行为漏斗（浏览→点击→收藏→购买），涉及 10+ 维度交叉分析（时间、渠道、内容类型、用户画像等）。原方案使用 Hive/Spark 离线计算，T+1 产出，业务方要求实时分析能力。
+
+**原始架构问题：**
+
+| 问题 | 表现 |
+|-----|------|
+| 数据延迟 | T+1，当天行为第二天才能分析 |
+| 查询复杂度 | 10+ 维度交叉分析，Spark SQL 执行 10 分钟+ |
+| 多维组合爆炸 | 预处理所有维度组合需要 200+ 张表 |
+| 存储冗余 | 预计算表占用 5TB+ |
+
+**优化方案：**
+
+采用 ClickHouse 宽表 + 投影（Projection） + 物化视图的组合策略，避免维度组合爆炸。
+
+**实施步骤：**
+
+**Step 1：设计用户行为宽表**
+
+```sql
+CREATE TABLE user_behaviors (
+    event_date Date,
+    event_time DateTime64(3),
+    user_id UInt64,
+    session_id String,
+    -- 行为类型
+    event_type LowCardinality(String),   -- view / click / favorite / purchase
+    -- 内容维度
+    content_id UInt64,
+    content_type LowCardinality(String), -- 文章/视频/直播
+    category LowCardinality(String),     -- 分类
+    author_id UInt64,
+    -- 渠道维度
+    channel LowCardinality(String),      -- 渠道
+    device_type LowCardinality(String),  -- 设备
+    os LowCardinality(String),           -- 操作系统
+    -- 用户画像维度（冗余到行为表）
+    user_gender LowCardinality(String),
+    user_age_group LowCardinality(String),
+    user_city LowCardinality(String),
+    -- 行为指标
+    duration UInt32,                     -- 停留时长（秒）
+    scroll_depth Float32,                -- 滚动深度
+    interaction_count UInt8              -- 互动次数
+) ENGINE = MergeTree()
+PARTITION BY toYYYYMMDD(event_date)
+ORDER BY (event_date, event_type, content_type, category)
+SETTINGS index_granularity = 8192;
+```
+
+**Step 2：创建投影（Projection）优化多维度查询**
+
+```sql
+-- 投影 1：按渠道+设备维度聚合
+ALTER TABLE user_behaviors
+ADD PROJECTION proj_channel_device (
+    SELECT
+        event_date,
+        channel,
+        device_type,
+        event_type,
+        count(),
+        uniq(user_id),
+        avg(duration)
+    GROUP BY event_date, channel, device_type, event_type
+);
+
+-- 投影 2：按用户画像维度聚合
+ALTER TABLE user_behaviors
+ADD PROJECTION proj_user_profile (
+    SELECT
+        event_date,
+        user_gender,
+        user_age_group,
+        user_city,
+        event_type,
+        count(),
+        uniq(user_id),
+        avg(duration)
+    GROUP BY event_date, user_gender, user_age_group, user_city, event_type
+);
+
+-- 投影 3：按内容维度聚合
+ALTER TABLE user_behaviors
+ADD PROJECTION proj_content (
+    SELECT
+        event_date,
+        content_type,
+        category,
+        event_type,
+        count(),
+        uniq(user_id),
+        uniq(content_id),
+        avg(duration)
+    GROUP BY event_date, content_type, category, event_type
+);
+```
+
+**Step 3：漏斗分析物化视图**
+
+```sql
+-- 用户行为漏斗实时计算
+CREATE MATERIALIZED VIEW behavior_funnel
+ENGINE = AggregatingMergeTree()
+PARTITION BY toYYYYMMDD(event_date)
+ORDER BY (event_date, hour, content_type, channel)
+AS SELECT
+    event_date,
+    toStartOfHour(event_time) AS hour,
+    content_type,
+    channel,
+    -- 漏斗各阶段计数
+    countIfState(event_type = 'view') AS view_count,
+    countIfState(event_type = 'click') AS click_count,
+    countIfState(event_type = 'favorite') AS favorite_count,
+    countIfState(event_type = 'purchase') AS purchase_count,
+    -- 用户数
+    uniqIfState(user_id, event_type = 'view') AS view_users,
+    uniqIfState(user_id, event_type = 'click') AS click_users,
+    uniqIfState(user_id, event_type = 'favorite') AS favorite_users,
+    uniqIfState(user_id, event_type = 'purchase') AS purchase_users
+FROM user_behaviors
+GROUP BY event_date, hour, content_type, channel;
+
+-- 漏斗转化率查询（毫秒级响应）
+SELECT
+    content_type,
+    channel,
+    countMerge(view_count) AS views,
+    countMerge(click_count) AS clicks,
+    countMerge(favorite_count) AS favorites,
+    countMerge(purchase_count) AS purchases,
+    -- 各阶段转化率
+    round(clicks / views * 100, 2) AS view_to_click_rate,
+    round(favorites / clicks * 100, 2) AS click_to_favorite_rate,
+    round(purchases / favorites * 100, 2) AS favorite_to_purchase_rate,
+    round(purchases / views * 100, 2) AS overall_conversion_rate
+FROM behavior_funnel
+WHERE event_date = today()
+  AND hour >= now() - INTERVAL 24 HOUR
+GROUP BY content_type, channel
+ORDER BY views DESC;
+```
+
+**Step 4：查询性能对比**
+
+```sql
+-- 场景 1：按渠道+设备+用户画像三维交叉分析
+-- 优化前（Spark SQL）：10 分钟+
+-- 优化后（ClickHouse 投影）：< 500ms
+SELECT
+    channel,
+    device_type,
+    user_age_group,
+    count() AS pv,
+    uniq(user_id) AS uv,
+    avg(duration) AS avg_duration
+FROM user_behaviors
+WHERE event_date BETWEEN '2024-01-01' AND '2024-01-07'
+  AND event_type = 'view'
+GROUP BY channel, device_type, user_age_group
+ORDER BY pv DESC;
+
+-- 场景 2：实时漏斗分析（过去 1 小时）
+-- 优化前：无法实时计算
+-- 优化后：< 100ms
+SELECT
+    toStartOfInterval(event_time, INTERVAL 5 MINUTE) AS window_start,
+    countIf(event_type = 'view') AS views,
+    countIf(event_type = 'click') AS clicks,
+    countIf(event_type = 'purchase') AS purchases,
+    round(countIf(event_type = 'click') / countIf(event_type = 'view') * 100, 2) AS ctr
+FROM user_behaviors
+WHERE event_time >= now() - INTERVAL 1 HOUR
+GROUP BY window_start
+ORDER BY window_start;
+```
+
+**效果评估：**
+
+| 指标 | 优化前（Hive/Spark） | 优化后（CH） | 提升 |
+|-----|---------------------|------------|------|
+| 数据时效 | T+1（24 小时延迟） | 实时（秒级） | **实时化** |
+| 多维交叉查询 | 10 分钟+ | < 500ms | **1200x** |
+| 漏斗分析 | 不支持实时 | < 100ms | **新增能力** |
+| 存储空间 | 5TB（预计算表） | 800GB（宽表+投影） | **6x 压缩** |
+| 预计算表数量 | 200+ 张 | 0（投影自动维护） | **零维护** |
+| 查询并发 | 5 QPS | 30 QPS | **6x** |
+
+---
+
+#### 案例总结：性能优化核心方法论
+
+| 优化维度 | 具体方法 | 适用场景 | 预期效果 |
+|---------|---------|---------|---------|
+| **数据模型** | 宽表设计、LowCardinality、合理分区 | 所有场景 | 减少 JOIN，提升压缩率 |
+| **索引优化** | 排序键设计、跳数索引 | 条件过滤查询 | 跳过无关数据块 |
+| **预计算** | 物化视图、投影（Projection） | 聚合查询、报表 | 10x-1000x 加速 |
+| **字典加速** | 字典替代 JOIN | 维度表查询 | 避免 JOIN 开销 |
+| **冷热分离** | SSD+HDD 分层存储 | 海量历史数据 | 降低存储成本 |
+| **写入优化** | 批量写入、异步插入 | 高吞吐写入 | 百万行/秒写入 |
 
 ---
 
