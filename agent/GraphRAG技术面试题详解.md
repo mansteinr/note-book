@@ -1211,6 +1211,806 @@ class EntityLinker:
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+**路径 B+：全局搜索的 Map-Reduce 实现（Global Search via Map-Reduce）**
+
+当社区报告数量庞大（数百~数千个）时，简单的向量 Top-K 匹配已不足以保证全局检索的质量。此时需要引入 **Map-Reduce 架构**，将全局搜索分解为可并行执行的 Map 阶段和可聚合的 Reduce 阶段，在大规模社区集合上实现高效、高质量的检索与答案生成。
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│              全局搜索 Map-Reduce 架构全景图                                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  用户查询: "公司在大模型领域有哪些技术布局和竞争策略？"                         │
+│       │                                                                     │
+│       ▼                                                                     │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │  预处理：查询解析 + 社区分片                                          │   │
+│  │  ─────────────────────────────                                       │   │
+│  │  1. 解析查询 → 关键词: ["大模型", "技术布局", "竞争策略"]             │   │
+│  │  2. 查询向量化 → query_vector                                        │   │
+│  │  3. 社区分片：将 N 个社区报告按层级编号均匀分为 K 个分片               │   │
+│  │     Shard 0: [A-01, A-02, A-03, A-04]                              │   │
+│  │     Shard 1: [B-01, B-02, B-03, B-04]                              │   │
+│  │     Shard 2: [C-01, C-02, C-03, C-04]                              │   │
+│  │     ...                                                              │   │
+│  │     Shard K-1: [...]                                                 │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│       │                                                                     │
+│       ▼                                                                     │
+│  ╔═══════════════════════════════════════════════════════════════════════╗   │
+│  ║                    MAP 阶段（并行执行）                                 ║   │
+│  ╠═══════════════════════════════════════════════════════════════════════╣   │
+│  ║                                                                       ║   │
+│  ║  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ║   │
+│  ║  │  Worker 0   │  │  Worker 1   │  │  Worker 2   │  │  Worker K-1 │  ║   │
+│  ║  │  Shard 0    │  │  Shard 1    │  │  Shard 2    │  │  Shard K-1  │  ║   │
+│  ║  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  ║   │
+│  ║         │                │                │                │          ║   │
+│  ║         ▼                ▼                ▼                ▼          ║   │
+│  ║  ┌────────────────────────────────────────────────────────────────┐   ║   │
+│  ║  │  每个 Worker 独立执行：                                         │   ║   │
+│  ║  │                                                                │   ║   │
+│  ║  │  1. 关键词提取 → 从社区报告中提取与查询相关的关键词片段          │   ║   │
+│  ║  │  2. 向量匹配   → 计算社区报告与查询的语义相似度                  │   ║   │
+│  ║  │  3. 权重计算   → 综合相似度 + 重要性 + 关键词命中率              │   ║   │
+│  ║  │  4. 局部摘要   → LLM 生成该分片内的局部答案                     │   ║   │
+│  ║  │                                                                │   ║   │
+│  ║  │  输出 MapResult:                                                │   ║   │
+│  ║  │  {                                                             │   ║   │
+│  ║  │    "shard_id": 0,                                              │   ║   │
+│  ║  │    "matched_communities": [                                    │   ║   │
+│  ║  │      {id: "A-01", score: 0.94, keywords_hit: 3},              │   ║   │
+│  ║  │      {id: "A-03", score: 0.78, keywords_hit: 2}               │   ║   │
+│  ║  │    ],                                                          │   ║   │
+│  ║  │    "local_answer": "该分片涉及大模型布局的社区有...",             │   ║   │
+│  ║  │    "key_points": ["GPT-4o 多模态", "开源 LLaMA", ...],         │   ║   │
+│  ║  │    "token_count": 1200                                         │   ║   │
+│  ║  │  }                                                             │   ║   │
+│  ║  └────────────────────────────────────────────────────────────────┘   ║   │
+│  ║                                                                       ║   │
+│  ╚═══════════════════════════════════════════════════════════════════════╝   │
+│       │                                                                     │
+│       │  K 个 MapResult 汇总                                                │
+│       ▼                                                                     │
+│  ╔═══════════════════════════════════════════════════════════════════════╗   │
+│  ║                    REDUCE 阶段（聚合生成）                              ║   │
+│  ╠═══════════════════════════════════════════════════════════════════════╣   │
+│  ║                                                                       ║   │
+│  ║  Step R-1: 结果聚合与去重                                              ║   │
+│  ║  ─────────────────────────                                            ║   │
+│  ║  - 合并所有 MapResult 的 matched_communities                          ║   │
+│  ║  - 按综合权重降序排序，取 Top-M                                         ║   │
+│  ║  - 去重：同一实体/关系在不同分片重复出现时合并                           ║   │
+│  ║                                                                       ║   │
+│  ║  Step R-2: 权重合并与重排序                                            ║   │
+│  ║  ─────────────────────────                                            ║   │
+│  ║  最终权重 = 0.40 × 语义相似度                                          ║   │
+│  ║           + 0.25 × 关键词命中率                                        ║   │
+│  ║           + 0.20 × 社区重要性评分                                      ║   │
+│  ║           + 0.15 × 层级深度衰减因子                                    ║   │
+│  ║                                                                       ║   │
+│  ║  Step R-3: 全局答案生成                                                ║   │
+│  ║  ─────────────────────────                                            ║   │
+│  ║  将 Top-M 社区报告 + 各分片局部答案 + key_points                       ║   │
+│  ║  组装为 Prompt，由 LLM 生成最终全局答案                                 ║   │
+│  ║                                                                       ║   │
+│  ║  输出：                                                               ║   │
+│  ║  {                                                                    ║   │
+│  ║    "answer": "公司在大模型领域的技术布局包括...",                        ║   │
+│  ║    "source_communities": ["A-01", "A-03", "B-02", ...],              ║   │
+│  ║    "confidence": 0.91,                                                ║   │
+│  ║    "map_workers": 4,                                                  ║   │
+│  ║    "reduce_time_ms": 320                                              ║   │
+│  ║  }                                                                    ║   │
+│  ║                                                                       ║   │
+│  ╚═══════════════════════════════════════════════════════════════════════╝   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Map-Reduce 全局搜索的技术原理：**
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│              Map-Reduce 在全局搜索中的应用优势                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  1. 并行加速                                                                │
+│  ──────────                                                                 │
+│  传统全局搜索：串行遍历 N 个社区 → O(N) 时间                                │
+│  Map-Reduce：K 个 Worker 并行处理 → O(N/K) 时间                             │
+│  当 N=1000, K=10 时，加速 10 倍                                             │
+│                                                                             │
+│  2. LLM 调用分散                                                            │
+│  ──────────────                                                             │
+│  传统方式：将所有社区报告塞入单个 Prompt → 超出上下文窗口                     │
+│  Map-Reduce：每个 Worker 仅处理少量社区 → 单次 Prompt 可控在 4K-8K tokens    │
+│  Reduce 阶段仅聚合局部答案 → 避免长文本问题                                  │
+│                                                                             │
+│  3. 质量提升                                                                │
+│  ──────────                                                                 │
+│  每个 Worker 独立做局部摘要 → 信息提取更精细                                 │
+│  Reduce 阶段综合多视角 → 答案更全面                                          │
+│  关键词命中率作为额外信号 → 避免纯向量检索的语义漂移                          │
+│                                                                             │
+│  4. 容错与弹性                                                              │
+│  ──────────────                                                             │
+│  单个 Worker 失败不影响其他分片                                              │
+│  支持动态扩缩容：根据社区数量自动调整 Worker 数                               │
+│  支持超时降级：超时 Worker 的结果可被丢弃，不影响整体                          │
+│                                                                             │
+│  5. 与 GraphRAG 社区层级的天然契合                                           │
+│  ──────────────────────────────                                             │
+│  社区按层级编号（A-01, A-02, B-01...）天然可分片                            │
+│  同一知识域的社区分配到同一 Worker → 局部摘要语义更连贯                       │
+│  层级编号前缀索引加速分片查询                                                │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Map-Reduce 全局搜索完整实现：**
+
+```python
+# ============================================================
+# GraphRAG 全局搜索 Map-Reduce 实现
+# ============================================================
+
+import asyncio
+import math
+import re
+from dataclasses import dataclass, field
+from typing import Optional
+from concurrent.futures import ThreadPoolExecutor
+
+
+# ─── 数据结构定义 ───
+
+@dataclass
+class MapResult:
+    """Map 阶段单个 Worker 的输出"""
+    shard_id: int                           # 分片编号
+    matched_communities: list[dict]         # 匹配的社区列表（含分数）
+    local_answer: str                       # 该分片的局部答案
+    key_points: list[str]                   # 提取的关键要点
+    token_count: int                        # 该分片消耗的 token 数
+    elapsed_ms: int                         # 该分片耗时（毫秒）
+
+
+@dataclass
+class ReduceResult:
+    """Reduce 阶段的最终输出"""
+    answer: str                             # 最终全局答案
+    source_communities: list[str]           # 引用的社区编号列表
+    confidence: float                       # 答案置信度
+    map_workers: int                        # 参与计算的 Worker 数
+    total_map_time_ms: int                  # Map 阶段总耗时
+    reduce_time_ms: int                     # Reduce 阶段耗时
+    key_points_merged: list[str]            # 合并后的全局关键要点
+
+
+@dataclass
+class GlobalSearchConfig:
+    """全局搜索配置"""
+    num_shards: int = 4                     # 分片数量（= Worker 数）
+    top_k_per_shard: int = 5               # 每个分片取 Top-K 社区
+    top_m_global: int = 10                 # Reduce 阶段取 Top-M 社区
+    keyword_weight: float = 0.25           # 关键词命中率权重
+    semantic_weight: float = 0.40          # 语义相似度权重
+    importance_weight: float = 0.20        # 社区重要性权重
+    depth_decay_weight: float = 0.15       # 层级深度衰减权重
+    max_tokens_per_worker: int = 8000      # 每个 Worker 最大 token 数
+    worker_timeout_seconds: int = 30       # Worker 超时时间
+    enable_keyword_match: bool = True      # 是否启用关键词匹配
+
+
+# ─── Map 阶段 ───
+
+class GlobalSearchMapper:
+    """
+    Map 阶段：分片处理 + 关键词提取 + 初步权重计算
+    
+    职责：
+    1. 接收一个社区分片（shard）
+    2. 对分片内每个社区报告执行：
+       a. 关键词提取与匹配
+       b. 向量语义相似度计算
+       c. 综合权重计算
+    3. 对 Top-K 社区调用 LLM 生成局部答案
+    4. 输出 MapResult
+    """
+    
+    def __init__(self, config: GlobalSearchConfig, 
+                 embed_model, llm, vector_store):
+        self.config = config
+        self.embed = embed_model
+        self.llm = llm
+        self.vector_store = vector_store
+    
+    def map(self, shard_id: int, 
+            shard_communities: list[dict],
+            query: str,
+            query_keywords: list[str],
+            query_vector: list[float]) -> MapResult:
+        """
+        执行单个分片的 Map 任务
+        
+        参数：
+            shard_id:          分片编号
+            shard_communities: 该分片内的社区报告列表
+            query:             用户原始查询
+            query_keywords:    从查询中提取的关键词列表
+            query_vector:      查询的向量嵌入
+        
+        返回：
+            MapResult: 该分片的局部结果
+        """
+        import time
+        start_time = time.time()
+        
+        # ── Step M-1: 对每个社区计算综合权重 ──
+        scored_communities = []
+        for community in shard_communities:
+            # (a) 语义相似度：社区报告向量与查询向量的余弦相似度
+            semantic_score = self._compute_semantic_score(
+                community, query_vector
+            )
+            
+            # (b) 关键词命中率：查询关键词在社区报告中的命中比例
+            keyword_score = self._compute_keyword_score(
+                community, query_keywords
+            ) if self.config.enable_keyword_match else 0.0
+            
+            # (c) 社区重要性评分（索引阶段 LLM 生成的 1-100 分）
+            importance_score = community.get("importance_score", 0) / 100.0
+            
+            # (d) 层级深度衰减因子：越深层的社区权重越低
+            depth = community.get("level", 0)
+            depth_factor = 1.0 / (1.0 + 0.1 * depth)
+            
+            # 综合权重 = 各维度加权求和
+            final_score = (
+                self.config.semantic_weight * semantic_score +
+                self.config.keyword_weight * keyword_score +
+                self.config.importance_weight * importance_score +
+                self.config.depth_decay_weight * depth_factor
+            )
+            
+            scored_communities.append({
+                "id": community["id"],
+                "hierarchy_code": community.get("hierarchy_code", ""),
+                "title": community.get("title", ""),
+                "summary": community.get("summary", ""),
+                "semantic_score": round(semantic_score, 4),
+                "keyword_score": round(keyword_score, 4),
+                "importance_score": round(importance_score, 4),
+                "depth_factor": round(depth_factor, 4),
+                "final_score": round(final_score, 4),
+            })
+        
+        # ── Step M-2: 按综合权重排序，取 Top-K ──
+        scored_communities.sort(
+            key=lambda c: c["final_score"], reverse=True
+        )
+        top_k = scored_communities[:self.config.top_k_per_shard]
+        
+        # ── Step M-3: 调用 LLM 生成分片局部答案 ──
+        local_answer, key_points = self._generate_local_answer(
+            query, query_keywords, top_k
+        )
+        
+        elapsed_ms = int((time.time() - start_time) * 1000)
+        
+        return MapResult(
+            shard_id=shard_id,
+            matched_communities=top_k,
+            local_answer=local_answer,
+            key_points=key_points,
+            token_count=self._estimate_tokens(local_answer),
+            elapsed_ms=elapsed_ms,
+        )
+    
+    def _compute_semantic_score(self, community: dict, 
+                                 query_vector: list[float]) -> float:
+        """计算社区报告与查询的语义相似度"""
+        community_vector = community.get("report_embedding")
+        if not community_vector:
+            return 0.0
+        # 余弦相似度
+        dot_product = sum(a * b for a, b in zip(query_vector, community_vector))
+        norm_q = math.sqrt(sum(a * a for a in query_vector))
+        norm_c = math.sqrt(sum(a * a for a in community_vector))
+        if norm_q == 0 or norm_c == 0:
+            return 0.0
+        return dot_product / (norm_q * norm_c)
+    
+    def _compute_keyword_score(self, community: dict, 
+                                keywords: list[str]) -> float:
+        """
+        计算关键词命中率
+        
+        规则：统计查询关键词在社区标题+摘要中的命中数量，
+        命中数 / 总关键词数 = 命中率
+        """
+        text = (community.get("title", "") + " " + 
+                community.get("summary", "")).lower()
+        if not keywords:
+            return 0.0
+        hits = sum(1 for kw in keywords if kw.lower() in text)
+        return hits / len(keywords)
+    
+    def _generate_local_answer(self, query: str, 
+                                keywords: list[str],
+                                top_k_communities: list[dict]
+                                ) -> tuple[str, list[str]]:
+        """
+        调用 LLM 生成分片局部答案
+        
+        Prompt 设计：
+        - 将 Top-K 社区报告的标题和摘要作为上下文
+        - 要求 LLM 提取与查询相关的关键要点
+        - 生成局部答案（200 字以内）
+        """
+        community_context = "\n".join([
+            f"【社区 {c['hierarchy_code']}】{c['title']}\n"
+            f"摘要: {c['summary']}\n"
+            f"相关度: {c['final_score']}"
+            for c in top_k_communities
+        ])
+        
+        prompt = f"""基于以下社区报告信息，回答用户问题。
+
+用户问题：{query}
+相关关键词：{', '.join(keywords)}
+
+社区报告：
+{community_context}
+
+请：
+1. 提取 3-5 个与问题最相关的关键要点（每点一句话）
+2. 用 200 字以内生成局部答案
+
+返回 JSON 格式：{{"answer": "...", "key_points": ["...", "..."]}}"""
+        
+        try:
+            response = self.llm.invoke(prompt)
+            result = parse_json(response.content)
+            return result.get("answer", ""), result.get("key_points", [])
+        except Exception:
+            return "", []
+    
+    def _estimate_tokens(self, text: str) -> int:
+        """粗略估算 token 数（中文约 1.5 字/token，英文约 4 字符/token）"""
+        chinese_chars = len(re.findall(r'[\u4e00-\u9fff]', text))
+        other_chars = len(text) - chinese_chars
+        return int(chinese_chars / 1.5 + other_chars / 4)
+
+
+# ─── Reduce 阶段 ───
+
+class GlobalSearchReducer:
+    """
+    Reduce 阶段：聚合 + 权重合并 + 排序 + 全局答案生成
+    
+    职责：
+    1. 收集所有 MapResult
+    2. 合并匹配社区，去重
+    3. 按最终权重重新排序
+    4. 合并各分片 key_points
+    5. 调用 LLM 生成最终全局答案
+    """
+    
+    def __init__(self, config: GlobalSearchConfig, llm):
+        self.config = config
+        self.llm = llm
+    
+    def reduce(self, query: str, 
+               map_results: list[MapResult]) -> ReduceResult:
+        """
+        执行 Reduce 聚合
+        
+        参数：
+            query:       用户原始查询
+            map_results: 所有 Map Worker 的输出列表
+        
+        返回：
+            ReduceResult: 最终全局搜索结果
+        """
+        import time
+        start_time = time.time()
+        
+        # ── Step R-1: 合并所有分片的匹配社区，去重 ──
+        all_communities = {}  # key: community_id, value: community dict
+        all_key_points = []
+        
+        for mr in map_results:
+            for community in mr.matched_communities:
+                cid = community["id"]
+                if cid not in all_communities:
+                    all_communities[cid] = community
+                else:
+                    # 同一社区在多个分片出现，取更高分
+                    existing = all_communities[cid]
+                    if community["final_score"] > existing["final_score"]:
+                        all_communities[cid] = community
+            
+            # 合并关键要点（去重）
+            for kp in mr.key_points:
+                if kp not in all_key_points:
+                    all_key_points.append(kp)
+        
+        # ── Step R-2: 按最终权重重新排序，取 Top-M ──
+        sorted_communities = sorted(
+            all_communities.values(),
+            key=lambda c: c["final_score"],
+            reverse=True
+        )
+        top_m = sorted_communities[:self.config.top_m_global]
+        
+        # ── Step R-3: 调用 LLM 生成最终全局答案 ──
+        final_answer, confidence = self._generate_global_answer(
+            query, top_m, map_results, all_key_points
+        )
+        
+        elapsed_ms = int((time.time() - start_time) * 1000)
+        total_map_time = max(mr.elapsed_ms for mr in map_results) if map_results else 0
+        
+        return ReduceResult(
+            answer=final_answer,
+            source_communities=[c["hierarchy_code"] for c in top_m],
+            confidence=confidence,
+            map_workers=len(map_results),
+            total_map_time_ms=total_map_time,
+            reduce_time_ms=elapsed_ms,
+            key_points_merged=all_key_points,
+        )
+    
+    def _generate_global_answer(self, query: str,
+                                 top_m_communities: list[dict],
+                                 map_results: list[MapResult],
+                                 key_points: list[str]
+                                 ) -> tuple[str, float]:
+        """
+        调用 LLM 生成最终全局答案
+        
+        Prompt 设计策略：
+        - 将 Top-M 社区报告作为主要上下文
+        - 将各分片局部答案作为补充视角
+        - 将合并后的 key_points 作为要点提示
+        - 要求 LLM 综合所有信息生成全面答案
+        """
+        # 组装社区上下文
+        community_context = "\n".join([
+            f"【社区 {c['hierarchy_code']}】{c['title']}（相关度: {c['final_score']}）\n"
+            f"{c['summary']}"
+            for c in top_m_communities
+        ])
+        
+        # 组装各分片局部答案
+        local_answers_context = "\n".join([
+            f"分片 {mr.shard_id} 局部答案: {mr.local_answer}"
+            for mr in map_results if mr.local_answer
+        ])
+        
+        # 组装关键要点
+        key_points_context = "\n".join(
+            f"- {kp}" for kp in key_points[:15]
+        )
+        
+        prompt = f"""你是一个知识图谱分析专家。请基于以下多来源信息，综合回答用户问题。
+
+用户问题：{query}
+
+═══ 高相关度社区报告（Top {len(top_m_communities)}）═══
+{community_context}
+
+═══ 各分片局部答案 ═══
+{local_answers_context}
+
+═══ 关键要点汇总 ═══
+{key_points_context}
+
+请综合以上所有信息，生成一个全面、准确、结构化的答案。要求：
+1. 覆盖所有相关社区的信息，不要遗漏重要内容
+2. 对重复信息进行合并，对矛盾信息进行判断
+3. 按重要性排序，最重要的内容放在前面
+4. 标注每条关键信息的来源社区编号
+
+返回 JSON 格式：
+{{"answer": "...", "confidence": 0.0-1.0}}"""
+        
+        try:
+            response = self.llm.invoke(prompt)
+            result = parse_json(response.content)
+            return result.get("answer", ""), result.get("confidence", 0.5)
+        except Exception:
+            return "答案生成失败", 0.0
+
+
+# ─── 全局搜索调度器（Map-Reduce 编排） ───
+
+class GlobalSearchMapReduce:
+    """
+    全局搜索 Map-Reduce 调度器
+    
+    编排流程：
+    1. 查询预处理（关键词提取 + 向量化）
+    2. 社区分片（按层级编号均匀分配）
+    3. 并行执行 Map 阶段
+    4. 收集 MapResult，执行 Reduce 阶段
+    5. 返回最终结果
+    
+    调用示例：
+        searcher = GlobalSearchMapReduce(config, embed_model, llm, vector_store)
+        result = searcher.search("公司在大模型领域有哪些技术布局？")
+        print(result.answer)
+    """
+    
+    def __init__(self, config: GlobalSearchConfig,
+                 embed_model, llm, vector_store, db):
+        self.config = config
+        self.embed = embed_model
+        self.llm = llm
+        self.vector_store = vector_store
+        self.db = db
+        self.mapper = GlobalSearchMapper(config, embed_model, llm, vector_store)
+        self.reducer = GlobalSearchReducer(config, llm)
+        self.executor = ThreadPoolExecutor(max_workers=config.num_shards)
+    
+    def search(self, query: str) -> ReduceResult:
+        """
+        执行全局搜索（Map-Reduce）
+        
+        参数：
+            query: 用户自然语言查询
+        
+        返回：
+            ReduceResult: 包含最终答案、引用社区、置信度等
+        
+        调用示例：
+            config = GlobalSearchConfig(num_shards=4, top_k_per_shard=5)
+            searcher = GlobalSearchMapReduce(config, embed, llm, vec_store, db)
+            result = searcher.search("公司在大模型领域有哪些技术布局？")
+            
+            print(f"答案: {result.answer}")
+            print(f"置信度: {result.confidence}")
+            print(f"来源社区: {result.source_communities}")
+            print(f"关键要点: {result.key_points_merged}")
+            print(f"Map耗时: {result.total_map_time_ms}ms")
+            print(f"Reduce耗时: {result.reduce_time_ms}ms")
+        """
+        # ── Step 0: 查询预处理 ──
+        query_keywords = self._extract_keywords(query)
+        query_vector = self.embed([query])[0]
+        
+        # ── Step 1: 获取所有社区报告并分片 ──
+        all_communities = self.db.query("""
+            SELECT id, hierarchy_code, title, summary, 
+                   importance_score, level, report_embedding
+            FROM community
+            ORDER BY hierarchy_code ASC
+        """)
+        
+        shards = self._partition_communities(
+            all_communities, self.config.num_shards
+        )
+        
+        # ── Step 2: 并行执行 Map 阶段 ──
+        map_futures = []
+        for shard_id, shard_communities in enumerate(shards):
+            future = self.executor.submit(
+                self.mapper.map,
+                shard_id,
+                shard_communities,
+                query,
+                query_keywords,
+                query_vector,
+            )
+            map_futures.append(future)
+        
+        # 收集 Map 结果（带超时控制）
+        map_results = []
+        for future in map_futures:
+            try:
+                result = future.result(
+                    timeout=self.config.worker_timeout_seconds
+                )
+                map_results.append(result)
+            except Exception as e:
+                # 超时或异常的 Worker 跳过，不影响其他分片
+                print(f"Map Worker 异常（已跳过）: {e}")
+        
+        if not map_results:
+            return ReduceResult(
+                answer="未找到相关信息",
+                source_communities=[],
+                confidence=0.0,
+                map_workers=0,
+                total_map_time_ms=0,
+                reduce_time_ms=0,
+                key_points_merged=[],
+            )
+        
+        # ── Step 3: 执行 Reduce 阶段 ──
+        final_result = self.reducer.reduce(query, map_results)
+        
+        return final_result
+    
+    def _extract_keywords(self, query: str) -> list[str]:
+        """
+        从查询中提取关键词
+        
+        策略：
+        1. 使用 LLM 提取（准确但慢）
+        2. 使用 jieba 分词 + 停用词过滤（快但精度低）
+        此处采用 LLM 方式，生产环境可切换为 jieba
+        """
+        prompt = f"""从以下查询中提取 3-8 个关键词（名词、动词、专有名词），
+用逗号分隔，不要包含停用词和虚词。
+
+查询：{query}
+
+只返回关键词列表，用逗号分隔。"""
+        
+        try:
+            response = self.llm.invoke(prompt)
+            keywords = [kw.strip() for kw in response.content.split(",")]
+            return [kw for kw in keywords if kw]
+        except Exception:
+            # 降级：简单分词
+            import jieba.analyse
+            return jieba.analyse.extract_tags(query, topK=5)
+    
+    def _partition_communities(self, communities: list[dict], 
+                                num_shards: int) -> list[list[dict]]:
+        """
+        社区分片策略
+        
+        规则：
+        - 按层级编号排序后均匀分为 num_shards 个分片
+        - 同一根前缀的社区尽量分配到同一分片
+          （保证局部摘要的语义连贯性）
+        - 分片大小尽量均匀（最大差异不超过 1）
+        
+        返回：
+            list[list[dict]]: num_shards 个分片，每个分片是社区列表
+        """
+        if not communities:
+            return [[] for _ in range(num_shards)]
+        
+        # 按层级编号排序（自然排序 = 层级树序）
+        sorted_communities = sorted(
+            communities, key=lambda c: c.get("hierarchy_code", "")
+        )
+        
+        # 均匀分片
+        shard_size = math.ceil(len(sorted_communities) / num_shards)
+        shards = []
+        for i in range(num_shards):
+            start = i * shard_size
+            end = min(start + shard_size, len(sorted_communities))
+            shards.append(sorted_communities[start:end])
+        
+        return shards
+
+
+# ─── 使用示例 ───
+
+def global_search_example():
+    """
+    全局搜索 Map-Reduce 完整调用示例
+    
+    参数说明：
+    ┌──────────────────────────────────────────────────────────────────┐
+    │  参数                      │ 类型    │ 默认值 │ 说明             │
+    ├────────────────────────────┼─────────┼────────┼──────────────────┤
+    │  num_shards                │ int     │ 4      │ Map Worker 数量  │
+    │  top_k_per_shard           │ int     │ 5      │ 每分片取 Top-K   │
+    │  top_m_global              │ int     │ 10     │ Reduce 取 Top-M  │
+    │  keyword_weight            │ float   │ 0.25   │ 关键词权重       │
+    │  semantic_weight           │ float   │ 0.40   │ 语义相似度权重   │
+    │  importance_weight         │ float   │ 0.20   │ 社区重要性权重   │
+    │  depth_decay_weight        │ float   │ 0.15   │ 层级衰减权重     │
+    │  max_tokens_per_worker     │ int     │ 8000   │ Worker 最大token │
+    │  worker_timeout_seconds    │ int     │ 30     │ Worker 超时(秒)  │
+    │  enable_keyword_match      │ bool    │ True   │ 启用关键词匹配   │
+    └──────────────────────────────────────────────────────────────────┘
+    """
+    # 1. 配置
+    config = GlobalSearchConfig(
+        num_shards=4,
+        top_k_per_shard=5,
+        top_m_global=10,
+        semantic_weight=0.40,
+        keyword_weight=0.25,
+        importance_weight=0.20,
+        depth_decay_weight=0.15,
+        worker_timeout_seconds=30,
+    )
+    
+    # 2. 初始化依赖
+    # embed_model = ...  # 向量嵌入模型
+    # llm = ...          # 大语言模型
+    # vector_store = ... # 向量数据库
+    # db = ...           # 关系数据库
+    
+    # 3. 创建搜索器
+    searcher = GlobalSearchMapReduce(
+        config=config,
+        embed_model=embed_model,
+        llm=llm,
+        vector_store=vector_store,
+        db=db,
+    )
+    
+    # 4. 执行全局搜索
+    result = searcher.search("公司在大模型领域有哪些技术布局和竞争策略？")
+    
+    # 5. 使用结果
+    print(f"最终答案: {result.answer}")
+    print(f"置信度: {result.confidence}")
+    print(f"引用社区: {result.source_communities}")
+    print(f"关键要点: {result.key_points_merged}")
+    print(f"Map 阶段耗时: {result.total_map_time_ms}ms")
+    print(f"Reduce 阶段耗时: {result.reduce_time_ms}ms")
+    print(f"参与 Worker 数: {result.map_workers}")
+    
+    return result
+```
+
+**Map-Reduce 数据传输格式规范：**
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│              Map → Reduce 数据传输格式（MapResult Schema）                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  设计原则：                                                                  │
+│  1. 自包含：每个 MapResult 包含 Reduce 所需的全部信息                         │
+│  2. 轻量级：仅传输必要字段，不传输完整社区报告原文                            │
+│  3. 可序列化：标准 JSON/dict 格式，支持跨进程、跨网络传输                     │
+│  4. 可排序：包含 final_score 字段，Reduce 可直接排序                          │
+│                                                                             │
+│  MapResult JSON Schema:                                                     │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │  {                                                                    │   │
+│  │    "shard_id": 0,                    // 分片编号（int）               │   │
+│  │    "matched_communities": [          // 匹配社区列表                  │   │
+│  │      {                                                                │   │
+│  │        "id": 42,                     // 社区ID                       │   │
+│  │        "hierarchy_code": "A-01-03", // 层级编号                      │   │
+│  │        "title": "大模型技术布局",    // 社区标题                      │   │
+│  │        "summary": "该社区描述了...", // 社区摘要（截断至500字）       │   │
+│  │        "semantic_score": 0.92,       // 语义相似度 [0,1]             │   │
+│  │        "keyword_score": 0.75,        // 关键词命中率 [0,1]           │   │
+│  │        "importance_score": 0.88,     // 社区重要性 [0,1]             │   │
+│  │        "depth_factor": 0.91,         // 层级衰减因子 [0,1]           │   │
+│  │        "final_score": 0.85           // 综合权重 [0,1]               │   │
+│  │      },                                                               │   │
+│  │      ...                                                              │   │
+│  │    ],                                                                 │   │
+│  │    "local_answer": "该分片涉及...",  // 局部答案（≤200字）            │   │
+│  │    "key_points": [                   // 关键要点列表                  │   │
+│  │      "GPT-4o 多模态布局",                                              │   │
+│  │      "开源 LLaMA 生态建设",                                            │   │
+│  │      "Claude 安全对齐策略"                                              │   │
+│  │    ],                                                                 │   │
+│  │    "token_count": 1200,              // 该分片消耗 token 数           │   │
+│  │    "elapsed_ms": 850                 // 该分片耗时（毫秒）            │   │
+│  │  }                                                                    │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│  数据量估算：                                                                │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │  单个社区 ≈ 500 bytes（含摘要截断）                                   │   │
+│  │  每个 MapResult ≈ 5 社区 × 500B + 局部答案 600B + key_points 300B    │   │
+│  │             ≈ 3.4 KB                                                 │   │
+│  │  K=4 个 Worker → 总传输量 ≈ 13.6 KB                                  │   │
+│  │  → 远小于直接传输所有社区报告（可能数十 MB）                           │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
 **路径 C：向量检索兜底（Vector Search Fallback）**
 
 ```python
