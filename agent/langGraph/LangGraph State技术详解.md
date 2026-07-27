@@ -96,6 +96,36 @@
       - [10.6.2 函数式编程思想（Functional Programming）](#1062-函数式编程思想functional-programming)
       - [10.6.3 Pregel 模型与超级步](#1063-pregel-模型与超级步)
     - [10.7 本节小结](#107-本节小结)
+  - [11. Send 机制：动态并行任务调度](#11-send-机制动态并行任务调度)
+    - [11.1 概念介绍与实际使用场景](#111-概念介绍与实际使用场景)
+      - [11.1.1 什么是 Send 机制](#1111-什么是-send-机制)
+      - [11.1.2 Send 与条件边的本质区别](#1112-send-与条件边的本质区别)
+      - [11.1.3 实际使用场景](#1113-实际使用场景)
+    - [11.2 Send 机制的设计原理与架构图](#112-send-机制的设计原理与架构图)
+      - [11.2.1 设计原理](#1121-设计原理)
+      - [11.2.2 架构图](#1122-架构图)
+      - [11.2.3 执行流程](#1123-执行流程)
+    - [11.3 核心实现代码示例](#113-核心实现代码示例)
+      - [11.3.1 最小示例：Map-Reduce 笑话生成](#1131-最小示例map-reduce-笑话生成)
+      - [11.3.2 完整示例：多文档并行分析](#1132-完整示例多文档并行分析)
+      - [11.3.3 Fan-out 示例：多平台并行探索](#1133-fan-out-示例多平台并行探索)
+    - [11.4 使用方法与参数说明](#114-使用方法与参数说明)
+      - [11.4.1 Send API 签名](#1141-send-api-签名)
+      - [11.4.2 使用步骤](#1142-使用步骤)
+      - [11.4.3 参数详解](#1143-参数详解)
+    - [11.5 与现有状态管理系统的集成方式](#115-与现有状态管理系统的集成方式)
+      - [11.5.1 与 Reducer 的协同](#1151-与-reducer-的协同)
+      - [11.5.2 与 Schema 的集成](#1152-与-schema-的集成)
+      - [11.5.3 与 Checkpointer 的集成](#1153-与-checkpointer-的集成)
+    - [11.6 错误处理机制](#116-错误处理机制)
+      - [11.6.1 事务性执行](#1161-事务性执行)
+      - [11.6.2 三层容错机制](#1162-三层容错机制)
+      - [11.6.3 常见陷阱与避坑指南](#1163-常见陷阱与避坑指南)
+    - [11.7 测试用例与验证方法](#117-测试用例与验证方法)
+      - [11.7.1 单元测试](#1171-单元测试)
+      - [11.7.2 集成测试](#1172-集成测试)
+      - [11.7.3 验证方法](#1173-验证方法)
+    - [11.8 本节小结](#118-本节小结)
 
 ---
 
@@ -2955,3 +2985,1397 @@ flowchart TB
 ---
 
 > **小结**：State 是 LangGraph 的数据中枢，理解 Schema 定义、Reducer 合并机制、条件边路由是构建复杂 Agent 工作流的基础。掌握 TypedDict / Pydantic 两种定义方式、自定义 Reducer、多种条件路由模式后，即可应对绝大多数有状态 Agent 场景。
+
+---
+
+## 11. Send 机制：动态并行任务调度
+
+### 11.1 概念介绍与实际使用场景
+
+#### 11.1.1 什么是 Send 机制
+
+**Send 机制** 是 LangGraph 提供的用于实现**动态并行任务调度**的核心原语（primitive），其 API `Send` 定义在 `langgraph.types` 模块中（底层实现为 `langgraph.pregel.types.Send`，是一个 Pydantic 模型）。
+
+**核心作用**：允许从条件边（conditional edges）中返回 `Send` 对象列表，从而在运行时**动态生成多个并行节点调用指令**，实现状态的按需分发和节点的动态触发。每个 `Send` 对象都携带一份独立的状态参数，发送给指定的目标节点。
+
+> **术语定义**
+> - **Send（发送原语）**：一个封装了目标节点名与独立状态参数的数据对象（What）。
+> - **Fan-out（扇出）**：一次调度产生 N 条并行执行路径的控制流模式（How）。
+> - **Dynamic Routing（动态路由）**：路由目标在运行时根据数据动态决定，而非编译时固定（When）。
+
+**设计动机**（来自官方文档）：
+
+> 默认情况下，Nodes 和 Edges 是预先定义的，并对相同的共享状态进行操作。但在某些情况下，确切的边可能无法预先知道，或者你可能希望同时存在不同版本的 State。一个常见的例子是 **map-reduce 设计模式** —— 第一个节点生成一个对象列表，你可能希望将其他某个节点应用于所有这些对象。对象的数量可能无法预先知道，并且下游 Node 的输入 State 应该不同（每个生成的对象一个）。
+
+#### 11.1.2 Send 与条件边的本质区别
+
+普通条件边与 Send 机制虽都源自 `add_conditional_edges`，但语义和能力存在本质差异：
+
+| 特性 | 普通条件边（返回字符串） | Send 机制（返回 Send 列表） |
+|------|--------------------------|----------------------------|
+| **分支数量** | 预先定义，编译时确定 | 运行时动态生成，由数据决定 |
+| **状态传递** | 所有目标节点共享同一份 State | 各分支拥有**独立状态**，互不干扰 |
+| **返回值类型** | `str` 或 `list[str]`（节点名/标签） | `list[Send]`（Send 对象列表） |
+| **执行模式** | 顺序或固定路径并行 | 真正的动态并行，N 车道高速公路 |
+| **典型场景** | 固定拓扑、可预测分支 | 数据驱动的动态拓扑、Map-Reduce |
+| **Path Map** | 需要路径映射表 | 直接指定节点名，无需映射 |
+
+**核心差异示意**：
+
+```python
+# 方式一：普通条件边 —— 返回字符串（单行道）
+def route(state) -> str:
+    return "node_b" if state["flag"] else "node_c"
+
+# 方式二：Send 机制 —— 返回 Send 列表（N 车道并行）
+def fan_out(state) -> list[Send]:
+    return [Send("worker", {"task": t}) for t in state["tasks"]]
+```
+
+#### 11.1.3 实际使用场景
+
+Send 机制在以下场景中发挥关键价值：
+
+**1. Map-Reduce 模式（最典型）**
+将大任务拆分为子任务并行处理，最后聚合结果。
+- 批量文档分析与摘要生成
+- 多主题笑话/文章生成
+- 多源信息并行检索
+
+**2. 并行 Fan-out / Fan-in**
+- 多平台趋势探索（微信、小红书、微博、B站、知乎同时探索）
+- 旅行规划（同时查机票、酒店、当地活动、餐厅）
+- 多 API 调用并行化
+
+**3. 动态并行任务调度**
+- 运行时根据数据决定分支数量（如处理用户上传的多个文档）
+- 状态隔离（不同分支需要独立状态）
+- 未知拓扑结构（无法预先定义图结构的场景）
+
+**4. 多维度分析**
+对同一批反馈同时做情感分析、关键词抽取、分类、紧急度识别等多维度分析。
+
+---
+
+### 11.2 Send 机制的设计原理与架构图
+
+#### 11.2.1 设计原理
+
+Send 机制的设计基于三大核心原理：
+
+**原理一：数据驱动拓扑**
+传统的图结构在编译时已确定节点与边的连接关系，而 Send 机制将"边的目标"推迟到运行时，由当前 State 的数据决定要生成多少条边、每条边指向哪里、携带什么数据。
+
+**原理二：状态隔离**
+每个 `Send` 对象携带独立的状态参数，使得并行执行的多个节点互不干扰。这对于 Map-Reduce 模式至关重要——每个 worker 节点只关心自己负责的那份数据，无需感知其他并行任务。
+
+**原理三：屏障同步（Barrier Synchronization）**
+所有由 Send 触发的并行分支在当前 superstep 内执行，必须**全部完成**后才能进入下一个 superstep。这与 Pregel 模型一致，保证了状态合并的一致性。
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+flowchart LR
+    subgraph 原理["Send 机制三大设计原理"]
+        direction TB
+        P1["原理1: 数据驱动拓扑<br/>运行时决定分支数量与目标"]
+        P2["原理2: 状态隔离<br/>每个 Send 携带独立状态"]
+        P3["原理3: 屏障同步<br/>superstep 内全部完成后才进入下一阶段"]
+        P1 -.支撑.-> P2
+        P2 -.支撑.-> P3
+    end
+
+    classDef pr fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,color:#0d47a1
+    class P1,P2,P3 pr
+```
+
+**图 11-1：Send 机制三大设计原理**。数据驱动拓扑解决"动态分支"问题，状态隔离解决"并行安全"问题，屏障同步解决"结果一致性"问题。
+
+#### 11.2.2 架构图
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                    Send 机制整体架构                                   │
+│                                                                       │
+│   ┌───────────────┐                                                   │
+│   │  Dispatcher   │  执行后写入 state["tasks"] = [t1, t2, t3]         │
+│   │   节点        │                                                   │
+│   └───────┬───────┘                                                   │
+│           │                                                           │
+│           ▼                                                           │
+│   ┌────────────────────────────────┐                                  │
+│   │  Conditional Edge (条件边)     │                                  │
+│   │  path(state) -> list[Send]     │                                  │
+│   │                                │                                  │
+│   │  return [                      │                                  │
+│   │    Send("worker", {task: t1}), │                                  │
+│   │    Send("worker", {task: t2}), │  ← 动态生成 N 个 Send 对象       │
+│   │    Send("worker", {task: t3}), │                                  │
+│   │  ]                             │                                  │
+│   └───────┬──────────┬─────────┬───┘                                  │
+│           │          │         │                                      │
+│           ▼          ▼         ▼      Fan-out (扇出)                  │
+│   ┌──────────┐ ┌──────────┐ ┌──────────┐                              │
+│   │ Worker 1 │ │ Worker 2 │ │ Worker 3 │  并行执行,状态独立            │
+│   │ {task:t1}│ │ {task:t2}│ │ {task:t3}│                              │
+│   └─────┬────┘ └─────┬────┘ └─────┬────┘                              │
+│         │            │            │                                   │
+│         │   results  │   results  │   results                        │
+│         └────────────┼────────────┘                                   │
+│                      ▼                                                │
+│   ┌──────────────────────────────────┐                                │
+│   │   Reducer 合并                    │  屏障同步后合并                 │
+│   │   Annotated[list, operator.add]  │  ← 通过 Reducer 安全合并        │
+│   └──────────────┬───────────────────┘                                │
+│                  │                                                    │
+│                  ▼                                                    │
+│   ┌──────────────────────────────────┐                                │
+│   │   下一节点 / END                  │                                │
+│   └──────────────────────────────────┘                                │
+│                                                                       │
+│   核心机制：Fan-out → 并行执行 → 屏障同步 → Reducer 合并               │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+**图 11-2：Send 机制整体架构图**。Dispatcher 节点生成任务列表，条件边函数将其转换为 `Send` 对象列表，LangGraph 调度器并行执行多个 Worker，屏障同步后通过 Reducer 合并结果。
+
+#### 11.2.3 执行流程
+
+Send 机制的完整执行流程分为四步：
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+flowchart TD
+    S["步骤1: Fan-out 扇出<br/>条件边函数返回 list[Send]<br/>每个 Send 携带独立状态"]
+    S --> P["步骤2: 并行执行<br/>LangGraph 同时启动 N 个目标节点<br/>每个节点拿到独立状态"]
+    P --> W["步骤3: 各写各的结果<br/>每个节点返回状态更新<br/>如 {'results': [...]}"]
+    W --> R["步骤4: 屏障同步 + Reducer 合并<br/>等待所有并行节点完成<br/>通过 Reducer 合并状态<br/>进入下一 superstep"]
+
+    classDef step fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,color:#0d47a1
+    class S,P,W,R step
+```
+
+**图 11-3：Send 机制四步执行流程**。从扇出到合并，形成一个完整的 Map-Reduce 周期。
+
+---
+
+### 11.3 核心实现代码示例
+
+#### 11.3.1 最小示例：Map-Reduce 笑话生成
+
+**场景**：给定一组主题，为每个主题并行生成一个笑话，最后聚合所有笑话。
+
+```python
+# -*- coding: utf-8 -*-
+"""
+Send 机制最小示例：Map-Reduce 笑话生成
+流程：START → (条件边 fan-out) → generate_joke (N 个并行) → END
+"""
+from typing import Annotated, TypedDict
+import operator
+from langgraph.types import Send
+from langgraph.graph import StateGraph, END, START
+
+
+# 1. 定义整体状态结构
+class OverallState(TypedDict):
+    subjects: list[str]                                    # 输入：主题列表
+    # 使用 operator.add 指定合并方式（列表元素累加）
+    # 关键：多个并行节点同时写入 jokes 字段时，必须通过 Reducer 合并
+    jokes: Annotated[list[str], operator.add]
+
+
+# 2. 定义条件边处理函数：动态生成 Send 对象
+def continue_to_jokes(state: OverallState):
+    """路由函数：为每个主题创建一个 Send 对象。
+    每个 Send 将独立的状态 {"subject": s} 发送给 generate_joke 节点。
+    """
+    return [Send("generate_joke", {"subject": s}) for s in state['subjects']]
+
+
+# 3. 构建状态图工作流
+builder = StateGraph(OverallState)
+
+
+# 4. 添加节点（worker 节点接收的是 Send 中的 state，而非整体 State）
+builder.add_node(
+    "generate_joke",
+    lambda state: {"jokes": [f"Joke about {state['subject']}"]}
+)
+
+
+# 5. 配置起始节点的条件边（fan-out）
+builder.add_conditional_edges(START, continue_to_jokes)
+
+
+# 6. 配置 worker 节点的后续边（fan-in 到 END）
+builder.add_edge("generate_joke", END)
+
+
+# 7. 编译
+graph = builder.compile()
+
+
+# 8. 执行
+result = graph.invoke({"subjects": ["cats", "dogs"]})
+print(result)
+# 输出：{'subjects': ['cats', 'dogs'], 'jokes': ['Joke about cats', 'Joke about dogs']}
+```
+
+**流程图**：
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+flowchart TD
+    S([START<br/>subjects: cats, dogs) --> R{"continue_to_jokes<br/>条件边"}
+    R -->|"Send(generate_joke, {subject: cats})"| W1["generate_joke #1<br/>并行执行"]
+    R -->|"Send(generate_joke, {subject: dogs})"| W2["generate_joke #2<br/>并行执行"]
+    W1 --> M["Reducer 合并<br/>operator.add"]
+    W2 --> M
+    M --> E([END<br/>jokes: [Joke about cats, Joke about dogs])
+
+    classDef se fill:#fce4ec,stroke:#c2185b,stroke-width:2px,color:#880e4f
+    classDef node fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,color:#0d47a1
+    classDef dec fill:#fff9c4,stroke:#f9a825,stroke-width:2px,color:#e65100
+    classDef red fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c
+    class S,E se
+    class W1,W2 node
+    class R dec
+    class M red
+```
+
+**图 11-4：Map-Reduce 笑话生成流程图**。两个 `Send` 对象并行触发 `generate_joke` 节点，各自生成笑话后通过 `operator.add` Reducer 合并到 `jokes` 字段。
+
+---
+
+#### 11.3.2 完整示例：多文档并行分析
+
+**场景**：批量分析多个文档，每个文档独立处理（情感分析、关键词抽取），最后汇总结果。
+
+```python
+# -*- coding: utf-8 -*-
+"""
+Send 机制完整示例：多文档并行分析
+流程：START → (fan-out) → worker (N 个并行) → reducer → END
+"""
+from typing import TypedDict, Annotated, List
+from langgraph.graph import StateGraph, START, END
+from langgraph.types import Send
+import operator
+
+
+# ============ State 定义 ============
+
+class State(TypedDict):
+    """整体状态：贯穿整个工作流。"""
+    documents: List[str]                                    # 输入文档列表
+    analyzed_results: Annotated[List[dict], operator.add]   # 并行结果聚合（关键：Reducer）
+    final_summary: str                                      # 最终摘要
+
+
+class WorkerInput(TypedDict):
+    """Worker 节点的独立输入状态。
+    注意：这是 Send 传递给 worker 的状态，不会自动继承父图状态。
+    """
+    document: str
+    index: int
+
+
+# ============ Map 阶段：动态生成并行任务 ============
+
+def map_node(state: State):
+    """Map 节点：将每个文档拆分为独立的 Send 任务。
+    注意：这里不是普通 return，而是返回 Send 列表。
+    """
+    return [
+        Send("worker", {"document": doc, "index": i})
+        for i, doc in enumerate(state["documents"])
+    ]
+
+
+# ============ Worker 节点：处理单个文档（并行执行） ============
+
+def analyze_document(state: WorkerInput) -> dict:
+    """并行执行：每个文档独立分析。
+    接收的是 Send 中的独立状态，而非整体 State。
+    """
+    # 模拟 LLM 分析
+    analysis = {
+        "index": state["index"],
+        "sentiment": "positive",            # 情感分析结果
+        "keywords": ["AI", "Agent"],        # 关键词抽取
+        "length": len(state["document"])    # 文档长度
+    }
+    # 返回的状态更新会被 Reducer 合并到 analyzed_results
+    return {"analyzed_results": [analysis]}
+
+
+# ============ Reduce 阶段：聚合所有并行结果 ============
+
+def reduce_results(state: State):
+    """Reduce 节点：汇总所有并行 worker 的结果。"""
+    results = state["analyzed_results"]
+    # 按索引排序，保证结果顺序确定（并行执行完成顺序不确定）
+    results_sorted = sorted(results, key=lambda x: x["index"])
+    summary = f"共分析了 {len(results_sorted)} 个文档，" \
+              f"平均长度 {sum(r['length'] for r in results_sorted) // len(results_sorted)} 字符"
+    return {
+        "final_summary": summary,
+        # 注意：这里不直接修改 analyzed_results，因为已由 Reducer 累加
+    }
+
+
+# ============ 构建图 ============
+
+builder = StateGraph(State)
+builder.add_node("worker", analyze_document)
+builder.add_node("reducer", reduce_results)
+
+# 关键：使用 Send 机制的条件边
+builder.add_conditional_edges(START, map_node)
+# worker 完成后进入 reducer
+builder.add_edge("worker", "reducer")
+builder.add_edge("reducer", END)
+
+graph = builder.compile()
+
+# ============ 执行 ============
+
+result = graph.invoke({
+    "documents": ["doc1 content", "doc2 content", "doc3 content"]
+})
+print(result["final_summary"])
+# 输出：共分析了 3 个文档，平均长度 11 字符
+```
+
+**流程图**：
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+flowchart TD
+    S([START<br/>documents: 3 个文档) --> M["map_node<br/>条件边: 生成 3 个 Send"]
+    M -->|"Send(worker, {doc:doc1, idx:0})"| W1["worker #1<br/>并行分析文档1"]
+    M -->|"Send(worker, {doc:doc2, idx:1})"| W2["worker #2<br/>并行分析文档2"]
+    M -->|"Send(worker, {doc:doc3, idx:2})"| W3["worker #3<br/>并行分析文档3"]
+    W1 --> R["Reducer: operator.add<br/>合并 analyzed_results"]
+    W2 --> R
+    W3 --> R
+    R --> RD["reduce_results 节点<br/>排序+汇总"]
+    RD --> E([END<br/>final_summary])
+
+    classDef se fill:#fce4ec,stroke:#c2185b,stroke-width:2px,color:#880e4f
+    classDef node fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,color:#0d47a1
+    classDef map fill:#fff9c4,stroke:#f9a825,stroke-width:2px,color:#e65100
+    classDef red fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c
+    class S,E se
+    class W1,W2,W3,RD node
+    class M map
+    class R red
+```
+
+**图 11-5：多文档并行分析流程图**。Map 节点根据文档数量动态生成 3 个 `Send`，3 个 worker 并行执行后通过 Reducer 合并结果。
+
+---
+
+#### 11.3.3 Fan-out 示例：多平台并行探索
+
+**场景**：同时探索多个社交平台的趋势内容，聚合结果生成综合报告。
+
+```python
+# -*- coding: utf-8 -*-
+"""
+Send 机制 Fan-out 示例：多平台并行探索
+流程：START → (fan-out) → explore_platform (N 个并行) → aggregate → END
+"""
+import operator
+from typing import TypedDict, Annotated
+from langgraph.graph import StateGraph, START, END
+from langgraph.types import Send
+
+
+class ParallelState(TypedDict):
+    platforms: list[str]                                    # 输入：平台列表
+    results: Annotated[list[str], operator.add]             # 并行结果聚合
+    report: str                                             # 最终报告
+
+
+# Fan-out 路由函数：为每个平台生成一个 Send
+def fan_out_to_platforms(state: ParallelState) -> list[Send]:
+    """根据 platforms 列表动态生成并行任务。
+    平台数量在运行时决定，编译时无需知道。
+    """
+    platforms = state["platforms"]
+    return [Send("explore_platform", {"platform": p}) for p in platforms]
+
+
+# Worker 节点：探索单个平台
+def explore_platform(state):
+    """每个平台独立探索，返回结果。
+    接收的 state 是 Send 中的 {"platform": p}，不是整体 ParallelState。
+    """
+    platform = state["platform"]
+    # 模拟平台 API 调用
+    return {"results": [f"{platform} 的爆款趋势分析"]}
+
+
+# 聚合节点：生成综合报告
+def aggregate_results(state: ParallelState):
+    """汇总所有平台结果，生成报告。"""
+    report = "多平台趋势综合报告：\n" + "\n".join(
+        f"  - {r}" for r in state["results"]
+    )
+    return {"report": report}
+
+
+# 构建图
+builder = StateGraph(ParallelState)
+builder.add_node("explore_platform", explore_platform)
+builder.add_node("aggregate", aggregate_results)
+
+# Fan-out：START → 多个 explore_platform
+builder.add_conditional_edges(START, fan_out_to_platforms)
+# Fan-in：所有 explore_platform → aggregate → END
+builder.add_edge("explore_platform", "aggregate")
+builder.add_edge("aggregate", END)
+
+graph = builder.compile()
+
+# 执行
+result = graph.invoke({
+    "platforms": ["微信", "小红书", "微博", "B站", "知乎"]
+})
+print(result["report"])
+# 多平台趋势综合报告：
+#   - 微信 的爆款趋势分析
+#   - 小红书 的爆款趋势分析
+#   - 微博 的爆款趋势分析
+#   - B站 的爆款趋势分析
+#   - 知乎 的爆款趋势分析
+```
+
+---
+
+### 11.4 使用方法与参数说明
+
+#### 11.4.1 Send API 签名
+
+```python
+from langgraph.types import Send
+
+Send(node, state)
+```
+
+**核心属性**：
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| `node` | `str` | 目标节点的名称（即需要被调用的节点标识） |
+| `arg` / `state` | `Any` | 传递给目标节点的状态数据，可以是任意类型，通常是与该节点任务相关的特定信息 |
+| `timeout` | `int` / `float` / `timedelta` | 可选，动态超时，覆盖目标节点的静态超时（langgraph >= 1.2） |
+
+#### 11.4.2 使用步骤
+
+使用 Send 机制的标准四步流程：
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+flowchart LR
+    A["步骤1<br/>定义 State<br/>声明 Reducer"] --> B["步骤2<br/>定义 worker 节点<br/>接收独立状态"]
+    B --> C["步骤3<br/>定义路由函数<br/>返回 list[Send]"]
+    C --> D["步骤4<br/>注册条件边<br/>add_conditional_edges"]
+
+    classDef step fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,color:#0d47a1
+    class A,B,C,D step
+```
+
+**图 11-6：Send 机制使用四步流程**。
+
+**步骤1：定义 State 并声明 Reducer**
+
+```python
+from typing import Annotated, TypedDict
+import operator
+
+class OverallState(TypedDict):
+    tasks: list[str]                                        # 输入任务列表
+    # 关键：并行写入的字段必须声明 Reducer
+    results: Annotated[list[str], operator.add]             # 列表追加合并
+```
+
+**步骤2：定义 worker 节点（接收独立状态）**
+
+```python
+def worker(state):
+    # state 是 Send 中传递的独立状态，不是 OverallState
+    task = state["task"]
+    return {"results": [f"处理结果: {task}"]}
+```
+
+**步骤3：定义路由函数（返回 Send 列表）**
+
+```python
+from langgraph.types import Send
+
+def fan_out(state: OverallState) -> list[Send]:
+    # 为每个任务创建一个 Send 对象
+    return [Send("worker", {"task": t}) for t in state["tasks"]]
+```
+
+**步骤4：注册条件边**
+
+```python
+from langgraph.graph import StateGraph, START, END
+
+builder = StateGraph(OverallState)
+builder.add_node("worker", worker)
+
+# 关键：用 add_conditional_edges 注册 fan-out
+builder.add_conditional_edges(START, fan_out)
+builder.add_edge("worker", END)
+
+graph = builder.compile()
+```
+
+#### 11.4.3 参数详解
+
+**1. `node` 参数**
+目标节点名必须是图中已通过 `add_node` 注册的节点。
+
+```python
+# ✅ 正确：node 是已注册的节点名
+Send("generate_joke", {"subject": "cats"})
+
+# ❌ 错误：node 未注册
+Send("non_existent_node", {"data": "..."})  # 运行时报错
+```
+
+**2. `state` 参数**
+传递给目标节点的独立状态。可以是任意类型，通常是字典。
+
+```python
+# 字典类型（最常见）
+Send("worker", {"task": "analyze", "data": [...]})
+
+# 自定义类型
+Send("worker", MyCustomState(field1="value"))
+
+# 简单类型
+Send("worker", "just a string")
+```
+
+> **重要**：`state` 是传递给目标节点的**完整输入**，不会自动合并父图的当前状态。需要在路由函数中显式构造需要传递的字段。
+
+**3. `timeout` 参数（langgraph >= 1.2）**
+为特定 Send 覆盖目标节点的静态超时。
+
+```python
+from datetime import timedelta
+
+# 为不同任务设置不同超时
+Send("worker", {"task": "quick_task"}, timeout=10)          # 10 秒
+Send("worker", {"task": "slow_task"}, timeout=timedelta(minutes=5))  # 5 分钟
+
+# 如果省略 timeout，则应用目标节点在 add_node 时设置的 timeout
+Send("worker", {"task": "normal_task"})  # 使用节点默认超时
+```
+
+> **注意**：节点超时只适用于 **async** 节点，sync 节点设置 timeout 会在编译时被拒绝。
+
+---
+
+### 11.5 与现有状态管理系统的集成方式
+
+#### 11.5.1 与 Reducer 的协同
+
+**为什么需要 Reducer**：当多个并行节点同时向同一状态键写入时，必须通过 Reducer 定义合并策略，否则会发生"多写冲突"。
+
+**Reducer 声明方式**：
+
+```python
+from typing import Annotated, TypedDict
+import operator
+from langgraph.graph.message import add_messages
+
+class OverallState(TypedDict):
+    subjects: list[str]                                    # 默认 reducer（覆盖）
+    jokes: Annotated[list[str], operator.add]              # 列表追加 reducer
+    messages: Annotated[list, add_messages]                # 消息专用 reducer
+    scores: Annotated[list, operator.add]                  # 列表追加
+    metadata: Annotated[dict, merge_dicts]                 # 自定义字典合并
+    status: str                                            # 无 reducer = 直接覆盖
+```
+
+**自定义 Reducer 示例**：
+
+```python
+def keep_latest(existing, new):
+    """保留最新值的 Reducer。"""
+    return new
+
+def merge_dicts(existing: dict, new: dict) -> dict:
+    """字典合并 Reducer。"""
+    return {**existing, **new}
+
+def append_with_dedup(existing: list, new: list) -> list:
+    """追加并去重的 Reducer。"""
+    result = list(existing)
+    for item in new:
+        if item not in result:
+            result.append(item)
+    return result
+
+class MyState(TypedDict):
+    status: Annotated[str, keep_latest]
+    metadata: Annotated[dict, merge_dicts]
+    unique_items: Annotated[list, append_with_dedup]
+```
+
+**协同工作流程**：
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+flowchart TB
+    subgraph 并行执行["并行 Worker 执行"]
+        W1["Worker 1<br/>return {results: [r1]}"]
+        W2["Worker 2<br/>return {results: [r2]}"]
+        W3["Worker 3<br/>return {results: [r3]}"]
+    end
+
+    W1 --> R["Reducer: operator.add<br/>results = [] + [r1] + [r2] + [r3]"]
+    W2 --> R
+    W3 --> R
+    R --> F["最终 state.results = [r1, r2, r3]"]
+
+    classDef worker fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,color:#0d47a1
+    classDef red fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c
+    classDef final fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
+    class W1,W2,W3 worker
+    class R red
+    class F final
+```
+
+**图 11-7：Send 与 Reducer 协同工作流程**。多个 Worker 并行返回结果，Reducer 按 `Annotated` 声明的策略合并到最终 State。
+
+#### 11.5.2 与 Schema 的集成
+
+Send 机制与 Schema 系统紧密集成，但需要注意状态的**两种 Schema**：
+
+```python
+from typing import TypedDict, Annotated
+import operator
+from langgraph.types import Send
+
+
+# 整体 State Schema：贯穿整个图
+class OverallState(TypedDict):
+    tasks: list[str]
+    results: Annotated[list[str], operator.add]
+
+
+# Worker 输入 Schema：Send 传递给 worker 的独立状态
+# 可以与 OverallState 不同，只需包含 worker 需要的字段
+class WorkerInput(TypedDict):
+    task: str
+    task_id: int
+
+
+# 路由函数中构造 WorkerInput
+def fan_out(state: OverallState) -> list[Send]:
+    return [
+        Send("worker", WorkerInput(task=t, task_id=i))
+        for i, t in enumerate(state["tasks"])
+    ]
+
+
+# Worker 节点接收 WorkerInput，返回 OverallState 的子集
+def worker(state: WorkerInput) -> dict:
+    return {"results": [f"processed: {state['task']}"]}
+```
+
+**关键点**：
+- `Send(node, state)` 中的 `state` 必须符合目标节点期望的输入 Schema。
+- Worker 节点返回的状态更新必须符合 OverallState 的字段定义（包括 Reducer）。
+- WorkerInput 与 OverallState 可以完全不同，实现状态隔离。
+
+#### 11.5.3 与 Checkpointer 的集成
+
+Send 机制与 Checkpointer（状态持久化）配合时，具有**事务性保证**：
+
+```python
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import StateGraph, START, END
+from langgraph.types import Send
+import operator
+from typing import Annotated, TypedDict
+
+
+class State(TypedDict):
+    tasks: list[str]
+    results: Annotated[list[str], operator.add]
+
+
+def fan_out(state: State) -> list[Send]:
+    return [Send("worker", {"task": t}) for t in state["tasks"]]
+
+
+def worker(state) -> dict:
+    # 模拟可能失败的处理
+    if "fail" in state["task"]:
+        raise ValueError(f"Failed to process: {state['task']}")
+    return {"results": [f"ok: {state['task']}"]}
+
+
+builder = StateGraph(State)
+builder.add_node("worker", worker)
+builder.add_conditional_edges(START, fan_out)
+builder.add_edge("worker", END)
+
+# 使用 Checkpointer
+checkpointer = MemorySaver()
+graph = builder.compile(checkpointer=checkpointer)
+
+# 执行（配置 thread_id 用于恢复）
+config = {"configurable": {"thread_id": "thread-1"}}
+
+try:
+    result = graph.invoke({"tasks": ["task1", "task_fail", "task3"]}, config)
+except ValueError as e:
+    print(f"执行失败: {e}")
+    # 事务性保证：整个 superstep 失败，state 不会部分更新
+    # 可以从最后一个 checkpoint 恢复
+```
+
+**事务性规则**：
+1. **整个 superstep 是事务性的**：如果任何 Send 触发的并行节点抛出异常，所有更新都不会应用到状态。
+2. **Checkpoint 保存成功节点结果**：使用 checkpointer 时，superstep 内成功节点的结果会被保存，恢复时不会重复执行。
+3. **恢复机制**：失败后可从最后一个 checkpoint 恢复，重新执行失败的 superstep。
+
+---
+
+### 11.6 错误处理机制
+
+#### 11.6.1 事务性执行
+
+LangGraph 在 superstep 内执行并行节点时，整个 superstep 是**事务性的**：
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+flowchart TB
+    S["Superstep 开始<br/>N 个并行 Worker"]
+    S --> P1["Worker 1 ✅ 成功"]
+    S --> P2["Worker 2 ❌ 抛出异常"]
+    S --> P3["Worker 3 ✅ 成功"]
+
+    P1 --> R{"事务性检查"}
+    P2 --> R
+    P3 --> R
+
+    R -->|"任意失败"| FAIL["整个 Superstep 回滚<br/>所有更新不应用<br/>抛出异常给调用者"]
+    R -->|"全部成功"| OK["所有更新合并应用<br/>进入下一 Superstep"]
+
+    classDef start fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,color:#0d47a1
+    classDef ok fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
+    classDef fail fill:#ffebee,stroke:#c62828,stroke-width:2px,color:#b71c1c
+    classDef check fill:#fff9c4,stroke:#f9a825,stroke-width:2px,color:#e65100
+    class S start
+    class P1,P3 ok
+    class P2 fail
+    class R check
+    class FAIL fail
+    class OK ok
+```
+
+**图 11-8：事务性执行机制**。任意并行节点失败都会导致整个 superstep 回滚，保证状态一致性。
+
+#### 11.6.2 三层容错机制
+
+LangGraph 提供三种可组合的容错机制，按固定顺序执行：
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+flowchart LR
+    E["节点执行失败"] --> R1["层1: Retries 重试<br/>基于异常类型与退避策略<br/>自动重试 max_attempts 次"]
+    R1 -->|"重试耗尽仍失败"| R2["层2: Timeouts 超时<br/>限制单次尝试时长<br/>timeout 触发 NodeTimeoutError"]
+    R2 -->|"超时或失败"| R3["层3: Error Handling 错误处理<br/>运行恢复函数 error_handler<br/>可更新状态或路由到其他节点"]
+
+    classDef fail fill:#ffebee,stroke:#c62828,stroke-width:2px,color:#b71c1c
+    classDef layer fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,color:#0d47a1
+    class E fail
+    class R1,R2,R3 layer
+```
+
+**图 11-9：三层容错机制**。重试 → 超时 → 错误处理，按顺序执行。
+
+**1. 重试策略（RetryPolicy）**
+
+```python
+from langgraph.types import RetryPolicy
+
+builder.add_node(
+    "call_api",
+    call_api,
+    retry_policy=RetryPolicy(
+        max_attempts=3,               # 最大重试次数
+        initial_interval=1.0,         # 初始退避间隔（秒）
+        backoff_factor=2.0,           # 退避因子
+        max_interval=32.0,            # 最大退避间隔
+    ),
+)
+```
+
+**默认重试行为**（`default_retry_on`）：
+- 重试**所有**异常，除了：`ValueError`, `TypeError`, `ArithmeticError`, `ImportError`, `LookupError`, `NameError`, `SyntaxError`, `RuntimeError`, `ReferenceError`, `StopIteration`, `StopAsyncIteration`, `OSError`
+- 对于 HTTP 库（requests/httpx），只重试 5xx 状态码
+- `NodeTimeoutError` 默认可重试
+
+**2. 节点超时（TimeoutPolicy）**
+
+```python
+from datetime import timedelta
+from langgraph.types import TimeoutPolicy
+
+# 简单超时（秒）
+builder.add_node("call_model", call_model, timeout=60)
+
+# 分离的 run 和 idle 超时
+builder.add_node(
+    "call_model",
+    call_model,
+    timeout=TimeoutPolicy(
+        run_timeout=120,      # 单次执行最长 120 秒
+        idle_timeout=30       # 空闲 30 秒超时
+    ),
+)
+```
+
+> **注意**：节点超时只适用于 **async** 节点，sync 节点设置 timeout 会在编译时被拒绝。
+
+**3. 错误处理器（error_handler）**
+
+```python
+from langgraph.types import Command
+from langgraph.errors import NodeError
+
+
+def my_error_handler(state: State, error: NodeError):
+    """错误处理器：在所有重试耗尽后运行。
+    
+    Args:
+        state: 当前状态
+        error: NodeError 对象
+            - error.node: 失败节点名 (str)
+            - error.error: 异常对象 (BaseException)
+    
+    Returns:
+        可以返回状态更新，或 Command 来路由到其他节点
+    """
+    print(f"节点 {error.node} 失败: {error.error}")
+    
+    # 方式一：更新状态并继续
+    return {"error_info": str(error.error)}
+    
+    # 方式二：路由到恢复节点（Saga 模式）
+    # return Command(update={"error_info": str(error.error)}, goto="finalize")
+
+
+builder.add_node("charge_payment", charge_payment, error_handler=my_error_handler)
+```
+
+**图级默认配置**：
+
+```python
+# 一次性为所有节点配置容错机制
+builder.set_node_defaults(
+    retry_policy=RetryPolicy(max_attempts=3),
+    timeout=60,
+    error_handler=default_handler,
+)
+
+# 直接传给 add_node() 的参数会覆盖默认值
+builder.add_node("special_node", special_fn, timeout=120)  # 覆盖默认 60 秒
+```
+
+#### 11.6.3 常见陷阱与避坑指南
+
+**坑 1：并行节点共享 Key 时忘记 Reducer**
+
+```python
+# ❌ 错误：未声明 Reducer，多写冲突
+class BadState(TypedDict):
+    results: list                # 无 Reducer，最后一个写入会覆盖前面的
+
+# ✅ 正确：声明 Reducer
+class GoodState(TypedDict):
+    results: Annotated[list, operator.add]   # 通过 Reducer 安全合并
+```
+
+**坑 2：并行结果顺序不确定**
+
+```python
+# 问题：并行节点完成顺序不确定
+def worker(state):
+    return {"results": [process(state["task"])]}
+# 最终 results 顺序无法预测
+
+# 解决：在结果中携带索引，reduce 阶段排序
+def worker(state):
+    return {"results": [{"idx": state["idx"], "data": process(state["task"])}]}
+
+def reducer_node(state):
+    # 按索引排序，保证顺序确定
+    sorted_results = sorted(state["results"], key=lambda x: x["idx"])
+    return {"final_results": [r["data"] for r in sorted_results]}
+```
+
+**坑 3：Send 的状态不会自动继承父图状态**
+
+```python
+# ❌ 错误：期望 worker 能访问父图的 user_id
+def fan_out(state: OverallState) -> list[Send]:
+    return [Send("worker", {"task": t}) for t in state["tasks"]]
+    # worker 中无法访问 state["user_id"]
+
+def worker(state):
+    print(state["user_id"])  # KeyError!
+
+# ✅ 正确：显式传递需要的字段
+def fan_out(state: OverallState) -> list[Send]:
+    user_id = state["user_id"]
+    return [
+        Send("worker", {"task": t, "user_id": user_id})
+        for t in state["tasks"]
+    ]
+```
+
+**坑 4：循环无终止条件**
+
+```python
+# 问题：使用 Send 配合循环时，若无终止条件会触发 GraphRecursionError
+def fan_out(state) -> list[Send]:
+    if state["iteration"] > 10:  # 必须有终止条件
+        return [Send("end_node", {})]
+    return [Send("worker", {"task": t}) for t in state["tasks"]]
+
+# 或设置 recursion_limit
+result = graph.invoke(input, {"recursion_limit": 50})
+```
+
+**坑 5：滥用 Command(goto=...)**
+
+```python
+# ❌ 不推荐：每个节点都手动指定下一站
+def node_a(state):
+    return Command(goto="node_b")
+def node_b(state):
+    return Command(goto="node_c")
+
+# ✅ 推荐：用边声明控制流，Command goto 作为"例外"
+builder.add_edge("node_a", "node_b")
+builder.add_edge("node_b", "node_c")
+```
+
+**坑 6：重试可能导致成本翻倍**
+
+对于按次计费的高成本模型（如 GPT-4 长上下文），默认重试 3 次可能让单次请求成本翻三倍。建议：
+- 评估成本与可用性的平衡
+- 考虑用更轻量模型重试
+- 降低 `max_attempts`
+
+---
+
+### 11.7 测试用例与验证方法
+
+#### 11.7.1 单元测试
+
+**1. 测试路由函数生成正确的 Send 列表**
+
+```python
+# -*- coding: utf-8 -*-
+"""
+Send 机制单元测试：路由函数与 worker 节点
+"""
+import pytest
+from langgraph.types import Send
+from langgraph.graph import StateGraph, START, END
+import operator
+from typing import Annotated, TypedDict
+
+
+class State(TypedDict):
+    tasks: list[str]
+    results: Annotated[list[str], operator.add]
+
+
+def fan_out(state: State) -> list[Send]:
+    return [Send("worker", {"task": t, "idx": i})
+            for i, t in enumerate(state["tasks"])]
+
+
+def worker(state) -> dict:
+    return {"results": [f"processed: {state['task']}"]}
+
+
+# ============ 单元测试 ============
+
+class TestSendRouting:
+    """测试路由函数。"""
+
+    def test_fan_out_returns_send_list(self):
+        """测试：fan_out 返回 Send 列表。"""
+        state = {"tasks": ["task1", "task2", "task3"]}
+        sends = fan_out(state)
+
+        assert isinstance(sends, list)
+        assert len(sends) == 3
+        assert all(isinstance(s, Send) for s in sends)
+
+    def test_fan_out_empty_tasks(self):
+        """测试：空任务列表返回空 Send 列表。"""
+        state = {"tasks": []}
+        sends = fan_out(state)
+        assert len(sends) == 0
+
+    def test_fan_out_send_node_name(self):
+        """测试：所有 Send 指向正确的节点。"""
+        state = {"tasks": ["a", "b"]}
+        sends = fan_out(state)
+
+        for s in sends:
+            assert s.node == "worker"
+
+    def test_fan_out_send_state_content(self):
+        """测试：Send 携带正确的状态。"""
+        state = {"tasks": ["task1", "task2"]}
+        sends = fan_out(state)
+
+        assert sends[0].arg == {"task": "task1", "idx": 0}
+        assert sends[1].arg == {"task": "task2", "idx": 1}
+
+
+class TestWorkerNode:
+    """测试 worker 节点。"""
+
+    def test_worker_returns_correct_format(self):
+        """测试：worker 返回正确的状态更新格式。"""
+        state = {"task": "test_task", "idx": 0}
+        result = worker(state)
+
+        assert "results" in result
+        assert isinstance(result["results"], list)
+        assert len(result["results"]) == 1
+        assert "test_task" in result["results"][0]
+```
+
+**2. 测试 Reducer 合并行为**
+
+```python
+class TestReducerIntegration:
+    """测试 Reducer 与 Send 的集成。"""
+
+    def test_reducer_merges_parallel_results(self):
+        """测试：多个 worker 结果通过 Reducer 合并。"""
+        builder = StateGraph(State)
+        builder.add_node("worker", worker)
+        builder.add_conditional_edges(START, fan_out)
+        builder.add_edge("worker", END)
+        graph = builder.compile()
+
+        result = graph.invoke({"tasks": ["a", "b", "c"]})
+
+        assert len(result["results"]) == 3
+        assert "processed: a" in result["results"]
+        assert "processed: b" in result["results"]
+        assert "processed: c" in result["results"]
+
+    def test_reducer_empty_input(self):
+        """测试：空输入时不报错。"""
+        builder = StateGraph(State)
+        builder.add_node("worker", worker)
+        builder.add_conditional_edges(START, fan_out)
+        builder.add_edge("worker", END)
+        graph = builder.compile()
+
+        result = graph.invoke({"tasks": []})
+
+        assert result["results"] == []
+```
+
+#### 11.7.2 集成测试
+
+**1. 测试完整 Map-Reduce 流程**
+
+```python
+class TestMapReduceIntegration:
+    """集成测试：完整 Map-Reduce 流程。"""
+
+    def test_map_reduce_full_flow(self):
+        """测试：完整的 Map-Reduce 执行。"""
+        from typing import TypedDict, Annotated, List
+        import operator
+
+        class MRState(TypedDict):
+            documents: List[str]
+            analyzed: Annotated[List[dict], operator.add]
+            summary: str
+
+        def map_fn(state: MRState) -> list[Send]:
+            return [Send("analyze", {"doc": d, "idx": i})
+                    for i, d in enumerate(state["documents"])]
+
+        def analyze(state) -> dict:
+            return {"analyzed": [{"idx": state["idx"], "len": len(state["doc"])}]}
+
+        def reduce_fn(state: MRState) -> dict:
+            total = sum(r["len"] for r in state["analyzed"])
+            return {"summary": f"Total chars: {total}"}
+
+        builder = StateGraph(MRState)
+        builder.add_node("analyze", analyze)
+        builder.add_node("reduce", reduce_fn)
+        builder.add_conditional_edges(START, map_fn)
+        builder.add_edge("analyze", "reduce")
+        builder.add_edge("reduce", END)
+        graph = builder.compile()
+
+        result = graph.invoke({"documents": ["abc", "de", "fghij"]})
+
+        assert len(result["analyzed"]) == 3
+        assert result["summary"] == "Total chars: 10"
+
+    def test_parallel_execution_independence(self):
+        """测试：并行 worker 状态独立，互不干扰。"""
+        execution_log = []
+
+        class TestState(TypedDict):
+            tasks: list[str]
+            logs: Annotated[list[str], operator.add]
+
+        def fan_out(state: TestState) -> list[Send]:
+            return [Send("worker", {"task": t, "worker_id": i})
+                    for i, t in enumerate(state["tasks"])]
+
+        def worker(state) -> dict:
+            # 每个 worker 只能访问自己的状态
+            execution_log.append(state["worker_id"])
+            return {"logs": [f"worker_{state['worker_id']}: {state['task']}"]}
+
+        builder = StateGraph(TestState)
+        builder.add_node("worker", worker)
+        builder.add_conditional_edges(START, fan_out)
+        builder.add_edge("worker", END)
+        graph = builder.compile()
+
+        result = graph.invoke({"tasks": ["a", "b", "c"]})
+
+        # 所有 worker 都执行了
+        assert len(execution_log) == 3
+        # 结果合并正确
+        assert len(result["logs"]) == 3
+```
+
+**2. 测试错误处理**
+
+```python
+class TestErrorHandling:
+    """测试错误处理机制。"""
+
+    def test_superstep_failure_rollback(self):
+        """测试：superstep 内失败时整体回滚。"""
+        class ErrState(TypedDict):
+            tasks: list[str]
+            results: Annotated[list[str], operator.add]
+
+        def fan_out(state: ErrState) -> list[Send]:
+            return [Send("worker", {"task": t}) for t in state["tasks"]]
+
+        def worker(state) -> dict:
+            if "fail" in state["task"]:
+                raise ValueError("Simulated failure")
+            return {"results": [f"ok: {state['task']}"]}
+
+        builder = StateGraph(ErrState)
+        builder.add_node("worker", worker)
+        builder.add_conditional_edges(START, fan_out)
+        builder.add_edge("worker", END)
+        graph = builder.compile()
+
+        # 执行应抛出异常
+        with pytest.raises(ValueError):
+            graph.invoke({"tasks": ["ok1", "fail_task", "ok2"]})
+
+    def test_retry_policy(self):
+        """测试：重试策略生效。"""
+        from langgraph.types import RetryPolicy
+
+        call_count = {"n": 0}
+
+        class RetryState(TypedDict):
+            task: str
+            result: str
+
+        def flaky_worker(state: RetryState) -> dict:
+            call_count["n"] += 1
+            if call_count["n"] < 3:
+                raise ConnectionError("Temporary failure")
+            return {"result": "success"}
+
+        builder = StateGraph(RetryState)
+        builder.add_node("worker", flaky_node,
+                        retry_policy=RetryPolicy(max_attempts=3))
+        builder.add_edge(START, "worker")
+        builder.add_edge("worker", END)
+        graph = builder.compile()
+
+        result = graph.invoke({"task": "test"})
+        assert result["result"] == "success"
+        assert call_count["n"] == 3
+```
+
+#### 11.7.3 验证方法
+
+**1. 使用 LangGraph DevTools 可视化验证**
+
+```python
+# 生成图的可视化
+from IPython.display import Image
+
+graph = builder.compile()
+Image(graph.get_graph().draw_mermaid_png())
+```
+
+**2. 打印执行轨迹**
+
+```python
+# 启用详细日志
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
+# 或使用 stream 模式查看每步执行
+for event in graph.stream({"tasks": ["a", "b"]}, stream_mode="updates"):
+    print(f"Event: {event}")
+# 输出示例：
+# Event: {'worker': {'results': ['processed: a']}}
+# Event: {'worker': {'results': ['processed: b']}}
+```
+
+**3. 验证状态一致性**
+
+```python
+def verify_state_consistency(graph, input_state):
+    """验证：执行后状态满足一致性约束。"""
+    result = graph.invoke(input_state)
+
+    # 1. 验证所有任务都被处理
+    assert len(result["results"]) == len(input_state["tasks"])
+
+    # 2. 验证结果包含所有输入
+    for task in input_state["tasks"]:
+        assert any(task in r for r in result["results"])
+
+    # 3. 验证无重复结果（如果使用去重 Reducer）
+    assert len(result["results"]) == len(set(result["results"]))
+
+    return True
+
+# 使用
+verify_state_consistency(graph, {"tasks": ["a", "b", "c"]})
+```
+
+**4. 性能验证**
+
+```python
+import time
+import concurrent.futures
+
+def test_parallel_speedup(graph, n_tasks=10):
+    """验证：并行执行确实比串行快。"""
+    tasks = [f"task_{i}" for i in range(n_tasks)]
+
+    # 并行执行
+    start = time.time()
+    result = graph.invoke({"tasks": tasks})
+    parallel_time = time.time() - start
+
+    # 串行执行（对比基准）
+    start = time.time()
+    for task in tasks:
+        worker({"task": task})
+    serial_time = time.time() - start
+
+    print(f"并行: {parallel_time:.2f}s, 串行: {serial_time:.2f}s")
+    print(f"加速比: {serial_time / parallel_time:.2f}x")
+
+    # 验证并行确实更快（至少在某些场景下）
+    assert parallel_time < serial_time
+```
+
+---
+
+### 11.8 本节小结
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+flowchart TB
+    subgraph Send机制核心["Send 机制核心"]
+        direction LR
+        S1["动态并行调度<br/>运行时决定分支数量"]
+        S2["状态隔离<br/>每个 Send 携带独立状态"]
+        S3["屏障同步<br/>superstep 内全部完成"]
+    end
+
+    subgraph 使用流程["使用流程四步"]
+        direction LR
+        U1["1. 定义 State+Reducer"]
+        U2["2. 定义 worker 节点"]
+        U3["3. 定义路由函数<br/>返回 list[Send]"]
+        U4["4. 注册条件边"]
+        U1 --> U2 --> U3 --> U4
+    end
+
+    subgraph 容错机制["三层容错"]
+        direction LR
+        F1["重试 RetryPolicy"]
+        F2["超时 TimeoutPolicy"]
+        F3["错误处理 error_handler"]
+        F1 --> F2 --> F3
+    end
+
+    subgraph 关键陷阱["关键陷阱"]
+        direction LR
+        P1["忘记 Reducer"]
+        P2["状态不继承父图"]
+        P3["循环无终止"]
+    end
+
+    Send机制核心 -.支撑.-> 使用流程
+    使用流程 -.需要.-> 容错机制
+    容错机制 -.注意.-> 关键陷阱
+
+    classDef core fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,color:#0d47a1
+    classDef flow fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
+    classDef fault fill:#fff9c4,stroke:#f9a825,stroke-width:2px,color:#e65100
+    classDef pit fill:#ffebee,stroke:#c62828,stroke-width:2px,color:#b71c1c
+    class S1,S2,S3 core
+    class U1,U2,U3,U4 flow
+    class F1,F2,F3 fault
+    class P1,P2,P3 pit
+```
+
+**图 11-10：Send 机制知识体系总览**。
+
+**核心要点回顾**：
+
+1. **Send 是动态并行任务调度的核心原语**：突破静态边的限制，实现运行时动态路由和并行任务分发。
+
+2. **API 签名简洁**：`Send(node, state)`，从条件边返回 `list[Send]` 即可触发 fan-out。
+
+3. **状态隔离 + Reducer 合并**：每个并行分支拥有独立状态，通过 Reducer 安全合并结果。
+
+4. **事务性保证**：superstep 内并行执行是事务性的，失败则整体回滚，保证状态一致性。
+
+5. **三层容错**：配合 `RetryPolicy`、`TimeoutPolicy`、`error_handler` 构建健壮系统。
+
+6. **动态超时**：可在 Send 上为特定推送覆盖节点超时（langgraph >= 1.2）。
+
+7. **六大陷阱需规避**：忘记 Reducer、并行结果顺序不确定、状态不继承父图、循环无终止、滥用 Command goto、重试成本翻倍。
+
+> **小结**：Send 机制是 LangGraph 突破静态图限制、实现 Map-Reduce 与动态并行调度的关键能力。掌握 Send 与 Reducer 的协同、事务性执行机制和三层容错策略后，即可构建生产级多智能体系统、批量处理工作流和高性能 Agent 应用。它是构建复杂 Agent 工作流时从"顺序执行"迈向"并行智能"的核心工具。
