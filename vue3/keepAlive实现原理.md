@@ -1,143 +1,315 @@
-- [实现原理](#实现原理)
-- [核心代码解析](#核心代码解析)
-- [关键点说明](#关键点说明)
-- [辅助函数](#辅助函数)
-- [关键点说明](#关键点说明-1)
+# Vue 3 `<KeepAlive>` 实现原理与实践指南
 
+> `<KeepAlive>` 是 Vue 的内置抽象组件：它会缓存动态组件实例，而不是每次切换都重新创建。它适合“组件切走后还要保留本地状态”的场景，例如多标签页、表单编辑页和列表详情往返。
 
+## 目录
 
+- [一、先理解它解决什么问题](#一先理解它解决什么问题)
+- [二、核心机制](#二核心机制)
+- [三、生命周期与渲染流程](#三生命周期与渲染流程)
+- [四、include、exclude 与 max](#四includeexclude-与-max)
+- [五、源码级伪代码](#五源码级伪代码)
+- [六、常见用法](#六常见用法)
+- [七、常见误区与排查](#七常见误区与排查)
+- [八、面试速答](#八面试速答)
 
-Vue3 的 KeepAlive 组件是一个内置组件，用于缓存不活动的组件实例，以避免重复渲染和保持状态。它的实现原理主要依赖于 Vue 的渲染器（renderer）和虚拟节点（vnode）的概念。
+---
 
-### 实现原理
+## 一、先理解它解决什么问题
 
-1. **缓存机制**：KeepAlive 内部维护一个缓存对象（cache），用于存储被缓存的组件实例。这个缓存对象是一个 Map，键为组件的 key（默认基于组件的类型和 props 生成），值为组件的 vnode。
-2. **渲染过程**：
-   - 当包裹在 KeepAlive 内的组件切换时（例如通过 v-if 或动态组件），KeepAlive 会检查该组件是否在缓存中存在。
-   - 如果存在，则直接使用缓存的 vnode，并将其激活（调用 activated 生命周期钩子，即再次激活：从缓存中取出实例，标记为 **COMPONENT_SHOULD_KEEP_ALIVE**）；如果不存在，则将其添加到缓存中(即首次渲染：缓存组件实例，标记为 **COMPONENT_KEPT_ALIVEZ**)。
-   - 当组件被移除时（切换走），KeepAlive 并不会销毁它，而是将其移出当前 DOM 树（但保留在内存中），并调用 deactivated 钩子，也就是将组件移入隐藏容器（storageContainer）而非销毁。
-3. **LRU（最近最少使用）算法**：为了防止缓存无限制增长，KeepAlive 默认会使用 LRU 策略来淘汰最久没有被访问的缓存实例。当缓存实例数量超过设置的最大值（通过 `max` 属性设置）时，最久未被访问的实例会被销毁。
-4.  **生命周期钩子**：被 KeepAlive 包裹的组件会拥有两个额外的生命周期钩子：`activated` 和 `deactivated`，分别在组件被激活（插入到 DOM 树）和停用（从 DOM 树移除，但保留在内存）时触发。
+默认情况下，动态组件切换会卸载旧组件并创建新组件：
 
-### 核心代码解析
+```text
+A 挂载 → 切到 B → A 卸载 → 再切回 A → A 重新挂载
+```
+
+使用 `<KeepAlive>` 后，A 切走时不会卸载，而是进入缓存；再次切回时直接激活原实例：
+
+```text
+A 挂载 → 切到 B → A 停用（缓存）→ 再切回 A → A 激活（复用原实例）
+```
+
+因此它能保留：
+
+- `ref` / `reactive` 中的本地状态；
+- 表单输入、滚动位置、局部 UI 状态；
+- 已创建的组件实例与子组件树。
+
+它不会自动解决：请求数据过期、全局状态同步、内存占用和组件副作用清理。这些仍需由业务代码处理。
+
+## 二、核心机制
+
+### 2.1 缓存的对象与键
+
+Vue 内部使用 `Map` 缓存组件的 VNode 子树，并用 `Set` 维护访问顺序。
+
+```text
+cache: Map<cacheKey, vnode>
+keys:  Set<cacheKey>
+```
+
+缓存键的规则是：
 
 ```javascript
-const KeepAliveImpl = {
-  __isKeepAlive: true,
-  props: {
-    include: [String, RegExp, Array], // 匹配到的组件会被缓存
-    exclude: [String, RegExp, Array], // 匹配到的组件不会被缓存
-    max: [String, Number] // 最大缓存数
-  },
-  setup(props, { slots }) {
-    const cache = new Map() // 缓存 vnode 的 Map
-    const keys = new Set() // 用于记录 key 的顺序，实现 LRU
-    let pendingCacheKey = null
-    // 创建隐藏容器（用于存放缓存的DOM）
-    const storageContainer = document.createElement('div')
-    const cacheSubtree = () => {
-      // 在组件更新前缓存当前子树（即被 KeepAlive 包裹的组件）
-      if (pendingCacheKey !== null) {
-        cache.set(pendingCacheKey, instance.subTree)
+const cacheKey = vnode.key == null ? vnode.type : vnode.key;
+```
+
+也就是说，未显式提供 `key` 时，通常以组件类型作为键；提供 `key` 后，以 `key` 区分实例。**props 不会自动参与缓存键生成。**
+
+```vue
+<KeepAlive>
+  <!-- 两次切换会复用同一个 UserPanel 实例；userId 变化不会自动创建新缓存 -->
+  <UserPanel :user-id="userId" />
+</KeepAlive>
+
+<KeepAlive>
+  <!-- 每个 userId 拥有独立缓存实例 -->
+  <UserPanel :key="userId" :user-id="userId" />
+</KeepAlive>
+```
+
+### 2.2 停用不是卸载
+
+组件切走时，渲染器不会执行普通卸载，而是将对应 DOM 移到 KeepAlive 创建的隐藏容器 `storageContainer`。实例、响应式状态和 DOM 引用仍然存在。
+
+切回时，渲染器把 DOM 移回页面，并复用之前的组件实例。因此切回不会触发 `onMounted`，而会触发 `onActivated`。
+
+```mermaid
+flowchart LR
+  A[当前组件 A] -->|切换离开| B[移动 DOM 到 storageContainer]
+  B --> C[缓存 VNode 与组件实例]
+  C -->|再次命中 A| D[移动 DOM 回真实容器]
+  D --> E[触发 activated]
+```
+
+### 2.3 形状标记与渲染器协作
+
+KeepAlive 会在 VNode 上设置内部 `shapeFlag`，告知渲染器：
+
+- `COMPONENT_SHOULD_KEEP_ALIVE`：切走时应停用，而不是普通卸载；
+- `COMPONENT_KEPT_ALIVE`：本次 VNode 命中了缓存，应走激活流程并复用实例。
+
+这些是 Vue 内部实现细节，业务代码不应手动设置。
+
+## 三、生命周期与渲染流程
+
+### 3.1 生命周期顺序
+
+首次显示：
+
+```text
+setup → onBeforeMount → 渲染 → onMounted → onActivated
+```
+
+切换离开：
+
+```text
+onDeactivated
+```
+
+再次显示：
+
+```text
+onActivated
+```
+
+真正销毁（父级卸载、被 `exclude` 排除或 LRU 淘汰）时：
+
+```text
+onBeforeUnmount → onUnmounted
+```
+
+`onActivated` / `onDeactivated` 同样会作用于 KeepAlive 缓存组件的后代组件。
+
+### 3.2 适合放在哪里
+
+| 需求 | 更合适的钩子 |
+| --- | --- |
+| 首次初始化、创建一次性资源 | `onMounted` |
+| 每次回到页面刷新或恢复订阅 | `onActivated` |
+| 切走时暂停轮询、视频或监听 | `onDeactivated` |
+| 永久释放资源 | `onUnmounted` |
+
+```vue
+<script setup>
+import { onActivated, onDeactivated, onUnmounted } from 'vue';
+
+let timer;
+
+onActivated(() => {
+  timer = window.setInterval(refreshData, 30_000);
+});
+
+onDeactivated(() => {
+  window.clearInterval(timer);
+  timer = undefined;
+});
+
+onUnmounted(() => {
+  window.clearInterval(timer);
+});
+</script>
+```
+
+## 四、include、exclude 与 max
+
+```vue
+<KeepAlive include="UserList,UserDetail" :max="10">
+  <component :is="currentView" />
+</KeepAlive>
+```
+
+| 属性 | 作用 | 注意事项 |
+| --- | --- | --- |
+| `include` | 只缓存名称匹配的组件 | 支持字符串、正则或数组 |
+| `exclude` | 不缓存名称匹配的组件 | 与 `include` 同时命中时，排除优先 |
+| `max` | 缓存上限 | 未设置时**不会**自动 LRU 淘汰 |
+
+匹配依赖组件的 `name`。`<script setup>` 在现代 Vue 版本中通常会根据文件名推导名称；为避免路由缓存匹配失效，建议显式指定：
+
+```vue
+<script>
+export default { name: 'UserDetail' };
+</script>
+
+<script setup>
+// 组件实现
+</script>
+```
+
+### LRU 淘汰
+
+当设置了 `max`，并且新条目导致缓存数量超过上限时，Vue 会淘汰最久未使用的条目：
+
+```text
+keys = [A, B, C]
+访问 B 后：keys = [A, C, B]
+加入 D（max = 3）后：淘汰 A，keys = [C, B, D]
+```
+
+**淘汰与停用不同**：被淘汰的组件会真正执行卸载流程，DOM 和组件实例都可被回收。
+
+## 五、源码级伪代码
+
+以下是理解流程的简化伪代码，不是 Vue 源码的逐行复制：
+
+```javascript
+function setupKeepAlive(props, slots, renderer) {
+  const cache = new Map();
+  const keys = new Set();
+  const storageContainer = renderer.createElement('div');
+
+  function pruneCacheEntry(key) {
+    const cachedVNode = cache.get(key);
+    if (!cachedVNode) return;
+
+    // 淘汰时是正常卸载，不是移入 storageContainer
+    renderer.unmount(cachedVNode);
+    cache.delete(key);
+    keys.delete(key);
+  }
+
+  return () => {
+    const vnode = getSingleComponentChild(slots.default?.());
+    if (!vnode || !isComponent(vnode)) return vnode;
+
+    const name = getComponentName(vnode.type);
+    if (!shouldCache(name, props.include, props.exclude)) return vnode;
+
+    const key = vnode.key ?? vnode.type;
+    const cachedVNode = cache.get(key);
+
+    if (cachedVNode) {
+      vnode.el = cachedVNode.el;
+      vnode.component = cachedVNode.component;
+      vnode.shapeFlag |= COMPONENT_KEPT_ALIVE;
+      keys.delete(key);
+    } else {
+      cache.set(key, vnode);
+      if (props.max && keys.size >= Number(props.max)) {
+        pruneCacheEntry(keys.values().next().value);
       }
     }
-    onMounted(cacheSubtree)
-    onUpdated(cacheSubtree)
-    return () => {
-      // 获取默认插槽的内容
-      const children = slots.default()
-      if (children.length !== 1) {
-        return children[0]
-      }
-      const vnode = children[0]
-      const comp = vnode.type
-      const key = vnode.key == null ? comp : vnode.key
-      // 检查 include 和 exclude
-      const name = comp.name
-      if (name && (
-        (props.include && !matches(props.include, name)) ||
-        (props.exclude && matches(props.exclude, name))
-      ) {
-        return vnode // 直接渲染（不缓存）
-      }
-      // 5. 命中缓存
-      const cacheKey = key
-      pendingCacheKey = cacheKey
-      // 如果缓存中存在，则从缓存中取出
-      const cachedVNode = cache.get(cacheKey)
-      if (cachedVNode) {
-        // 更新 keys 的顺序，表示最近访问
-        keys.delete(cacheKey)
-        keys.add(cacheKey)
-        // 标记 vnode 是从缓存中取出的
-        vnode.el = cachedVNode.el
-        vnode.component = cachedVNode.component
-        // 避免挂载
-        vnode.shapeFlag |= 512 /* ShapeFlags.COMPONENT_KEPT_ALIVE */
-      } else {
-        // 首次缓存
-        keys.add(cacheKey)
-        // 如果超过最大数量，则移除最久未使用的
-        if (props.max && keys.size > parseInt(props.max, 10)) {
-          pruneCacheEntry(keys.values().next().value)
-        }
-      }
-      // 标记 vnode 是 KeepAlive 的，避免被卸载
-      vnode.shapeFlag |= 256 /* ShapeFlags.COMPONENT_SHOULD_KEEP_ALIVE */
-      return vnode
-    }
-  }
-}
 
-
-// 7. 缓存淘汰函数
-function pruneCacheEntry(key: string | number) {
-  const cached = cache.get(key)!
-  // 触发组件卸载生命周期（实际DOM被移动到隐藏容器）
-  unmount(cached)
-  cache.delete(key)
-  keys.delete(key)
-}
-
-// 8. 渲染器特殊处理（@vue/runtime-core）
-function unmount(vnode) {
-  if (vnode.shapeFlag & ShapeFlags.COMPONENT_SHOULD_KEEP_ALIVE) {
-    // 将组件DOM移动到隐藏容器（而非删除）
-    move(vnode, storageContainer)
-    return
-  }
-  // ...正常卸载
+    keys.add(key);
+    vnode.shapeFlag |= COMPONENT_SHOULD_KEEP_ALIVE;
+    return vnode;
+  };
 }
 ```
 
-### 关键点说明
+真实实现还处理了异步组件、Suspense、过滤规则变化、缓存时机和渲染器注入等边界情况。
 
-1. **缓存对象**：使用 `Map` 存储 vnode，并通过 `keys`（一个 Set）记录访问顺序。
-2. **LRU 策略**：在添加新缓存时，如果超过 `max`，则删除 `keys` 中的第一个元素（即最久未访问的）。
-3. **标记 vnode**：通过修改 vnode 的 `shapeFlag` 属性，告诉渲染器这个组件应该被缓存或从缓存中恢复。
-4. **挂载/更新时缓存子树**：在 `onMounted` 和 `onUpdated` 钩子中缓存当前组件的子树（即被 KeepAlive 包裹的组件的 vnode）。
-5. **include/exclude**：根据组件名称（name）匹配是否需要缓存。
+## 六、常见用法
 
+### 6.1 动态组件
 
+```vue
+<template>
+  <nav>
+    <button @click="current = 'ListView'">列表</button>
+    <button @click="current = 'ChartView'">图表</button>
+  </nav>
 
-### 辅助函数
-- `matches`：用于检查组件名是否匹配 include 或 exclude 的模式。
-- `pruneCacheEntry`：用于删除缓存中的条目，并调用组件的卸载生命周期。
+  <KeepAlive :max="2">
+    <component :is="current" />
+  </KeepAlive>
+</template>
 
-### 关键点说明
+<script setup>
+import { ref } from 'vue';
+import ListView from './ListView.vue';
+import ChartView from './ChartView.vue';
 
-1、失活的组件被移动到隐藏的 storageContainer 容器，而非销毁 DOM 节点：
-
+const current = ref(ListView);
+</script>
 ```
-// 伪代码：移动 DOM 到隐藏容器
-storageContainer.appendChild(vnode.component.subTree.el)
+
+### 6.2 路由组件缓存
+
+```vue
+<RouterView v-slot="{ Component, route }">
+  <KeepAlive :include="['UserList', 'UserDetail']" :max="10">
+    <component :is="Component" :key="route.name" />
+  </KeepAlive>
+</RouterView>
 ```
 
-2、LRU 淘汰逻辑
+是否使用 `:key="route.name"`、`route.fullPath` 或不传 `key`，取决于是否希望不同参数的路由共享状态。不要机械地使用 `fullPath`，否则可能为每个查询参数创建大量缓存实例。
 
+### 6.3 强制刷新指定缓存
+
+KeepAlive 没有公开的“按 key 删除缓存” API。常用做法是：让组件通过 `v-if` 暂时脱离 KeepAlive，或调整 `include` 使其被排除后再恢复。
+
+```vue
+<KeepAlive :include="includeNames">
+  <component :is="currentView" />
+</KeepAlive>
 ```
-keys: Set(['A', 'B', 'C']) // 访问顺序
-// 当访问已缓存的 B 时：
-keys.delete('B'); keys.add('B') // 变为 ['A','C','B']
-// 淘汰时删除 keys 的第一个值（最久未访问）
-```
+
+当需要清除 `UserDetail` 时，可先从 `includeNames` 中移除它，等待一次渲染完成后再加回。这样会导致该组件真正卸载，下一次进入时重新创建。
+
+## 七、常见误区与排查
+
+| 现象 | 常见原因 | 处理方式 |
+| --- | --- | --- |
+| 切回页面数据没有刷新 | 只在 `onMounted` 中请求数据 | 需要时在 `onActivated` 刷新或校验数据版本 |
+| 页面切走后轮询仍在运行 | 缓存组件没有被卸载 | 在 `onDeactivated` 暂停轮询、Observer、媒体播放 |
+| `include` 不生效 | 组件名称不匹配 | 显式设置组件 `name`，检查异步组件包装层 |
+| 不同用户详情串状态 | 未给动态实例提供正确 `key` | 用业务唯一 ID 作为 `key`，并配合 `max` |
+| 内存持续升高 | 缓存过多重组件 | 设置合理 `max`，不要缓存大图表、编辑器等重组件 |
+| 以为 `v-if` 一定会销毁缓存 | 组件仍处于 KeepAlive 的缓存路径 | 通过 `include/exclude` 或改变缓存键，验证 `onUnmounted` 是否触发 |
+
+## 八、面试速答
+
+**Q：KeepAlive 的原理是什么？**
+
+> KeepAlive 在内部以 `Map` 缓存组件 VNode，以 `Set` 维护访问顺序。组件切走时，渲染器根据内部标记将 DOM 移到隐藏容器并触发 `deactivated`，不执行卸载；再次切回时复用缓存的组件实例和 DOM，并触发 `activated`。设置 `max` 后使用 LRU 淘汰，淘汰时才真正卸载。
+
+**Q：`activated` 和 `mounted` 有什么区别？**
+
+> `mounted` 只在首次创建并挂载时触发；被 KeepAlive 缓存的组件每次重新显示都会触发 `activated`。切离页面时不会触发 `unmounted`，而会触发 `deactivated`。
+
+**Q：什么时候不该使用 KeepAlive？**
+
+> 组件体积大、存在昂贵的图表/编辑器资源、数据必须每次实时重置，或页面数量不可控时不应盲目缓存。KeepAlive 是用内存换切换速度，应配合 `include` 和 `max` 控制范围。
