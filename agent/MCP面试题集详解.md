@@ -23,7 +23,37 @@
     - [3.3 动态发现机制](#33-动态发现机制)
     - [3.4 Sampling 机制](#34-sampling-机制)
     - [3.5 Root 机制](#35-root-机制)
-  - [四、面试题及详解](#四面试题及详解)
+  - [四、MCP Server 详解](#四mcp-server-详解)
+    - [4.1 MCP Server 设计原则](#41-mcp-server-设计原则)
+    - [4.2 MCP Server 工作原理](#42-mcp-server-工作原理)
+      - [4.2.1 主要功能实现机制](#421-主要功能实现机制)
+      - [4.2.2 Server 运行流程](#422-server-运行流程)
+      - [4.2.3 原语注册与执行机制](#423-原语注册与执行机制)
+    - [4.3 MCP Server 三层架构](#43-mcp-server-三层架构)
+      - [4.3.1 表示层（Presentation Layer）](#431-表示层presentation-layer)
+      - [4.3.2 业务逻辑层（Business Logic Layer）](#432-业务逻辑层business-logic-layer)
+      - [4.3.3 数据访问层（Data Access Layer）](#433-数据访问层data-access-layer)
+      - [4.3.4 三层交互方式](#434-三层交互方式)
+  - [五、MCP 核心基础能力实现：工具管理与资源管理](#五mcp-核心基础能力实现工具管理与资源管理)
+    - [5.1 工具管理（Tool Management）](#51-工具管理tool-management)
+      - [5.1.1 工具能力类型划分](#511-工具能力类型划分)
+      - [5.1.2 工具注册与元数据管理](#512-工具注册与元数据管理)
+      - [5.1.3 工具调用执行机制](#513-工具调用执行机制)
+      - [5.1.4 工具版本管理与兼容性](#514-工具版本管理与兼容性)
+    - [5.2 资源管理（Resource Management）](#52-资源管理resource-management)
+      - [5.2.1 资源管理范围与分类](#521-资源管理范围与分类)
+      - [5.2.2 资源 URI 寻址机制](#522-资源-uri-寻址机制)
+      - [5.2.3 资源缓存与调度策略](#523-资源缓存与调度策略)
+      - [5.2.4 资源订阅与变更通知](#524-资源订阅与变更通知)
+      - [5.2.5 资源访问控制](#525-资源访问控制)
+  - [六、MCP Server 完整生命周期管理](#六mcp-server-完整生命周期管理)
+    - [6.1 生命周期总览](#61-生命周期总览)
+    - [6.2 初始化阶段](#62-初始化阶段)
+    - [6.3 注册阶段](#63-注册阶段)
+    - [6.4 运行阶段](#64-运行阶段)
+    - [6.5 监控阶段](#65-监控阶段)
+    - [6.6 终止阶段](#66-终止阶段)
+  - [七、面试题及详解](#七面试题及详解)
     - [题目 1：MCP 定义与核心价值（选择题·基础）](#题目-1mcp-定义与核心价值选择题基础)
     - [题目 2：MCP 三大角色架构（简答题·基础）](#题目-2mcp-三大角色架构简答题基础)
     - [题目 3：三大原语识别（选择题·基础）](#题目-3三大原语识别选择题基础)
@@ -34,7 +64,7 @@
     - [题目 8：企业级 MCP Server 设计（设计题·高级）](#题目-8企业级-mcp-server-设计设计题高级)
     - [题目 9：安全与权限控制（简答题·高级）](#题目-9安全与权限控制简答题高级)
     - [题目 10：MCP 与 Function Calling 对比（分析题·高级）](#题目-10mcp-与-function-calling-对比分析题高级)
-  - [五、考点速查表](#五考点速查表)
+  - [八、考点速查表](#八考点速查表)
 
 ---
 
@@ -284,7 +314,1748 @@ Server 仅能访问 Root 声明的目录，形成安全沙箱。
 
 ---
 
-## 四、面试题及详解
+## 四、MCP Server 详解
+
+> 本章节聚焦 MCP 协议中的 **Server 角色**，系统阐述其设计原则、工作原理与内部三层架构。
+> 注意：第二章的"三层架构"描述的是 **Host-Client-Server 协议角色架构**（协议层解耦），本节描述的是 **MCP Server 内部的分层架构**（实现层解耦），二者处于不同抽象层次，不可混淆。
+
+### 4.1 MCP Server 设计原则
+
+MCP Server 作为能力的提供方，其设计遵循一组明确的核心原则，这些原则源于 MCP 协议"职责分离、简单可用、安全可控"的整体哲学。
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+mindmap
+  root((MCP Server 设计原则))
+    简单性原则
+      极易构建
+      只暴露原语不做编排
+      复杂逻辑交给 Host
+    职责单一原则
+      专注单一能力域
+      不跨域耦合
+      可独立部署演进
+    安全优先原则
+      最小权限暴露
+      高风险操作需授权
+      Root 沙箱约束
+    模型无关原则
+      不绑定特定 LLM
+      协议层标准化
+      跨厂商互操作
+    标准化原则
+      遵循 JSON-RPC 2.0
+      原语接口统一
+      传输方式可替换
+    可组合原则
+      多 Server 各司其职
+      Client 按需组合
+      故障隔离互不影响
+```
+
+**六大设计原则详解**：
+
+| 设计原则 | 核心理念 | 指导思想 | 实践体现 |
+|----------|----------|----------|----------|
+| **简单性原则** | Server 应极易构建 | 把复杂性留给 Host，让 Server 专注能力暴露 | Server 只需声明原语，无需实现安全编排、上下文聚合 |
+| **职责单一原则** | 一个 Server 聚焦一个能力域 | 高内聚低耦合，避免"上帝服务" | 文件系统 Server 只管文件，数据库 Server 只管查询 |
+| **安全优先原则** | 默认安全，最小权限 | 宁可牺牲便利性也不放宽权限 | 写操作需授权、Root 沙箱限定目录、能力协商限定边界 |
+| **模型无关原则** | 不绑定任何 LLM 厂商 | 协议中立，避免厂商锁定 | Server 通过标准原语暴露能力，任何 Host 均可接入 |
+| **标准化原则** | 遵循开放协议规范 | 一次实现，处处可用 | 基于 JSON-RPC 2.0，原语接口统一，传输可替换 |
+| **可组合原则** | 多 Server 协同工作 | 通过 Client 组合多个 Server 能力 | 每个 Server 独立部署，故障隔离，按需组合 |
+
+**设计原则的权衡**：
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+flowchart LR
+    A[简单性] -->|牺牲| B[编排能力<br/>交给 Host]
+    A -->|获得| C[易构建易复用]
+
+    D[职责单一] -->|牺牲| E[跨域协作需多 Server]
+    D -->|获得| F[独立演进故障隔离]
+
+    G[安全优先] -->|牺牲| H[用户体验有摩擦<br/>需确认授权]
+    G -->|获得| I[默认安全可审计]
+
+    style A fill:#e3f2fd,stroke:#1565c0
+    style D fill:#e8f5e9,stroke:#2e7d32
+    style G fill:#fff3e0,stroke:#e65100
+```
+
+> **核心指导思想总结**：MCP Server 的设计哲学是"**做减法**"——把编排、安全、上下文管理的复杂性上移给 Host，让 Server 回归"能力暴露"的本职，从而实现极低构建成本与高度可复用性。
+
+### 4.2 MCP Server 工作原理
+
+MCP Server 的核心职责是**接收 Client 的 JSON-RPC 请求、执行原语逻辑、返回结果**。其工作原理涵盖启动注册、会话协商、请求处理、原语执行、结果返回等完整机制。
+
+#### 4.2.1 主要功能实现机制
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+flowchart TB
+    subgraph Server["MCP Server 核心功能"]
+        direction TB
+        F1[协议通信<br/>JSON-RPC 2.0 收发]
+        F2[会话管理<br/>初始化/能力协商/生命周期]
+        F3[原语注册表<br/>Tools/Resources/Prompts 元数据]
+        F4[请求分发<br/>路由到对应处理器]
+        F5[原语执行<br/>调用业务逻辑]
+        F6[后端对接<br/>访问文件/DB/API]
+        F7[结果封装<br/>标准化返回]
+        F8[通知推送<br/>能力变更通知]
+    end
+
+    F1 --> F2 --> F3 --> F4 --> F5 --> F6 --> F7
+    F3 -.->|变更时| F8
+
+    style F1 fill:#e3f2fd,stroke:#1565c0
+    style F3 fill:#fff3e0,stroke:#e65100
+    style F5 fill:#e8f5e9,stroke:#2e7d32
+    style F6 fill:#f3e5f5,stroke:#6a1b9a
+```
+
+**核心功能模块说明**：
+
+| 功能模块 | 职责 | 关键机制 |
+|----------|------|----------|
+| **协议通信** | 收发 JSON-RPC 2.0 消息 | Stdio 流式或 Streamable HTTP，消息分帧与解析 |
+| **会话管理** | 维护与 Client 的有状态会话 | initialize 协商 → initialized 确认 → 操作 → 关闭 |
+| **原语注册表** | 维护 Tools/Resources/Prompts 的元数据 | 启动时注册，运行时支持动态增删与变更通知 |
+| **请求分发** | 根据 method 路由到对应处理器 | 方法名映射到 handler 函数 |
+| **原语执行** | 执行具体业务逻辑 | 工具调用、资源读取、模板渲染 |
+| **后端对接** | 访问文件系统/数据库/外部 API | 数据访问层封装，隔离后端差异 |
+| **结果封装** | 将执行结果标准化为 JSON-RPC response | content 数组封装，支持多类型内容 |
+| **通知推送** | 主动通知 Client 能力变更 | `notifications/tools/list_changed` 等 |
+
+#### 4.2.2 Server 运行流程
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+sequenceDiagram
+    participant C as Client
+    participant S as MCP Server
+    participant BE as 后端系统
+
+    Note over S: 阶段0：启动与注册
+    S->>S: 加载配置
+    S->>S: 注册原语(Tools/Resources/Prompts)
+    S->>S: 初始化后端连接
+
+    Note over C,S: 阶段1：会话建立
+    C->>S: initialize(protocolVersion, capabilities)
+    S->>S: 能力协商(匹配版本与能力)
+    S-->>C: result(serverInfo, capabilities)
+    C->>S: notifications/initialized
+
+    Note over C,S: 阶段2：能力发现
+    C->>S: tools/list
+    S-->>C: [tool1, tool2, ...]
+    C->>S: resources/list
+    S-->>C: [resource1, ...]
+
+    Note over C,S: 阶段3：请求处理
+    C->>S: tools/call(name, args)
+    S->>S: 请求分发到 handler
+    S->>BE: 执行后端操作
+    BE-->>S: 返回结果
+    S->>S: 结果封装
+    S-->>C: result(content)
+
+    Note over C,S: 阶段4：能力变更(可选)
+    S->>C: notifications/tools/list_changed
+    C->>S: tools/list(刷新)
+    S-->>C: [更新后的工具列表]
+
+    Note over C,S: 阶段5：会话关闭
+    C->>S: 断开连接
+    S->>S: 清理会话资源
+```
+
+**运行流程关键节点**：
+
+| 阶段 | 触发方 | 核心动作 | Server 职责 |
+|------|--------|----------|-------------|
+| **启动注册** | Server 自身 | 加载配置、注册原语、初始化后端 | 构建原语注册表，建立后端连接池 |
+| **会话建立** | Client 发起 | initialize 握手 + 能力协商 | 返回 serverInfo 与支持的 capabilities |
+| **能力发现** | Client 主动 | tools/list、resources/list、prompts/list | 从注册表返回元数据（名称、参数 schema、描述） |
+| **请求处理** | Client 调用 | tools/call、resources/read、prompts/get | 分发到 handler，执行业务逻辑，封装结果 |
+| **能力变更** | Server 主动 | notifications/xxx/list_changed | 通知 Client 刷新，支持热更新 |
+| **会话关闭** | Client 或超时 | 断开传输连接 | 清理会话状态与资源 |
+
+#### 4.2.3 原语注册与执行机制
+
+MCP Server 通过**注册表模式**管理三类原语，运行时根据 Client 请求动态分发：
+
+```python
+from fastmcp import FastMCP
+
+mcp = FastMCP("example-server")
+
+# 1. 注册 Tool：可执行函数
+@mcp.tool()
+def search_docs(query: str, limit: int = 10) -> str:
+    """搜索知识库文档"""
+    results = doc_store.search(query, limit)  # 调用后端
+    return format_results(results)
+
+# 2. 注册 Resource：只读数据源
+@mcp.resource("docs://{doc_id}")
+def read_doc(doc_id: str) -> str:
+    """读取指定文档内容"""
+    return doc_store.get(doc_id)
+
+# 3. 注册 Prompt：对话模板
+@mcp.prompt()
+def code_review(code: str, language: str) -> str:
+    """生成代码审查提示"""
+    return f"请审查以下 {language} 代码:\n{code}"
+
+# 启动 Server，自动处理协议通信与请求分发
+if __name__ == "__main__":
+    mcp.run(transport="stdio")  # 或 transport="http"
+```
+
+**原语执行流水线**：
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+flowchart LR
+    A[Client 请求<br/>tools/call] --> B[协议层解析<br/>JSON-RPC]
+    B --> C[查找注册表<br/>匹配 method+name]
+    C --> D{找到?}
+    D -->|否| E[返回错误<br/>Method not found]
+    D -->|是| F[参数校验<br/>inputSchema]
+    F --> G{校验通过?}
+    G -->|否| H[返回错误<br/>Invalid params]
+    G -->|是| I[调用 handler<br/>执行业务逻辑]
+    I --> J[访问后端<br/>DB/API/File]
+    J --> K[封装结果<br/>content array]
+    K --> L[返回响应<br/>JSON-RPC result]
+
+    style A fill:#e3f2fd,stroke:#1565c0
+    style I fill:#e8f5e9,stroke:#2e7d32
+    style J fill:#fff3e0,stroke:#e65100
+    style L fill:#c8e6c9,stroke:#2e7d32
+    style E fill:#ffcdd2,stroke:#c62828
+    style H fill:#ffcdd2,stroke:#c62828
+```
+
+### 4.3 MCP Server 三层架构
+
+MCP Server 内部采用经典的**三层架构**（表示层、业务逻辑层、数据访问层），实现协议处理、业务执行与后端访问的职责分离。该架构是 Server 实现层的内部分层，与协议层的 Host-Client-Server 架构处于不同抽象层次。
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+flowchart TB
+    subgraph Client["MCP Client"]
+        CL[JSON-RPC 请求]
+    end
+
+    subgraph Server["MCP Server 三层架构"]
+        direction TB
+
+        subgraph L1["表示层 Presentation Layer"]
+            P1[传输适配器<br/>Stdio / HTTP]
+            P2[JSON-RPC 解析器<br/>消息分帧与反序列化]
+            P3[会话管理器<br/>初始化/能力协商]
+            P4[响应封装器<br/>结果标准化]
+        end
+
+        subgraph L2["业务逻辑层 Business Logic Layer"]
+            B1[请求路由器<br/>method 分发]
+            B2[原语注册表<br/>Tools/Resources/Prompts]
+            B3[工具处理器<br/>Tool Handlers]
+            B4[资源处理器<br/>Resource Handlers]
+            B5[模板处理器<br/>Prompt Handlers]
+            B6[安全控制<br/>权限校验/审计]
+        end
+
+        subgraph L3["数据访问层 Data Access Layer"]
+            D1[文件系统适配器]
+            D2[数据库适配器]
+            D3[外部 API 适配器]
+            D4[缓存层]
+            D5[连接池管理]
+        end
+    end
+
+    subgraph Backends["后端系统"]
+        FS[(文件系统)]
+        DB[(数据库)]
+        API[(外部 API)]
+    end
+
+    CL <-->|JSON-RPC 2.0| P1
+    P1 <--> P2 <--> P3
+    P2 --> B1
+    B1 --> B2
+    B1 --> B3
+    B1 --> B4
+    B1 --> B5
+    B6 --> B3
+    B3 --> D1
+    B3 --> D2
+    B3 --> D3
+    B4 --> D1
+    D3 --> D4
+    D1 --> FS
+    D2 --> DB
+    D3 --> API
+    B3 --> P4
+    P4 -->|JSON-RPC response| CL
+
+    style L1 fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style L2 fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style L3 fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+```
+
+#### 4.3.1 表示层（Presentation Layer）
+
+**职责定位**：负责协议通信与会话管理，是 Server 与 Client 交互的"门面"。
+
+| 组件 | 职责 | 关键实现 |
+|------|------|----------|
+| **传输适配器** | 适配 Stdio/HTTP 两种传输方式 | Stdio 读取 stdin 写 stdout；HTTP 监听端口处理 POST |
+| **JSON-RPC 解析器** | 消息分帧、反序列化、序列化 | `\n` 分隔帧解析（Stdio）；HTTP body 解析；JSON 编解码 |
+| **会话管理器** | 维护会话状态与生命周期 | initialize 握手、能力协商、initialized 确认、超时清理 |
+| **响应封装器** | 将业务结果标准化为 JSON-RPC response | content 数组封装、错误码映射、isError 标志 |
+
+**表示层核心代码示例**：
+
+```python
+import json
+from typing import AsyncIterator
+
+class PresentationLayer:
+    """表示层：协议通信与会话管理"""
+
+    def __init__(self, transport: str = "stdio"):
+        self.transport = transport
+        self.session_manager = SessionManager()
+        self.rpc_parser = JSONRPCParser()
+
+    async def handle_request(self, raw_message: bytes) -> bytes:
+        """处理原始请求消息"""
+        # 1. 消息分帧与解析
+        try:
+            request = self.rpc_parser.parse(raw_message)
+        except ParseError as e:
+            return self._error_response(None, -32700, str(e))
+
+        # 2. 会话状态校验
+        if not self.session_manager.is_valid(request):
+            return self._error_response(
+                request.get("id"), -32000, "Invalid session"
+            )
+
+        # 3. 分发给业务逻辑层
+        result = await self._dispatch_to_business(request)
+
+        # 4. 封装响应
+        return self._encode_response(request, result)
+
+    def _encode_response(self, request: dict, result) -> bytes:
+        """封装 JSON-RPC 响应"""
+        response = {
+            "jsonrpc": "2.0",
+            "id": request.get("id"),
+            "result": result
+        }
+        return json.dumps(response).encode() + b"\n"
+```
+
+#### 4.3.2 业务逻辑层（Business Logic Layer）
+
+**职责定位**：负责请求路由、原语执行与安全控制，是 Server 的"大脑"。
+
+| 组件 | 职责 | 关键实现 |
+|------|------|----------|
+| **请求路由器** | 根据 method 字段分发到对应处理器 | `tools/call` → ToolHandler，`resources/read` → ResourceHandler |
+| **原语注册表** | 维护三类原语的元数据与 handler 映射 | 启动时注册，支持运行时增删，触发变更通知 |
+| **工具处理器** | 执行 Tool 原语逻辑 | 参数校验、调用业务函数、异常捕获 |
+| **资源处理器** | 读取 Resource 原语数据 | URI 解析、数据读取、格式化 |
+| **模板处理器** | 渲染 Prompt 原语模板 | 参数注入、模板渲染 |
+| **安全控制** | 权限校验、操作审计、限流 | RBAC 校验、操作日志、频率限制 |
+
+**业务逻辑层核心代码示例**：
+
+```python
+from dataclasses import dataclass
+from typing import Callable, Any
+
+@dataclass
+class PrimitiveEntry:
+    """原语注册表条目"""
+    name: str
+    description: str
+    input_schema: dict
+    handler: Callable
+    primitive_type: str  # tool / resource / prompt
+
+class BusinessLogicLayer:
+    """业务逻辑层：请求路由与原语执行"""
+
+    def __init__(self):
+        self._registry: dict[str, PrimitiveEntry] = {}
+        self._security = SecurityController()
+
+    def register_tool(self, name: str, handler: Callable,
+                      description: str, input_schema: dict):
+        """注册工具原语"""
+        self._registry[f"tool:{name}"] = PrimitiveEntry(
+            name=name, description=description,
+            input_schema=input_schema, handler=handler,
+            primitive_type="tool"
+        )
+
+    async def route_and_execute(self, method: str, params: dict) -> Any:
+        """请求路由与执行"""
+        # 1. 路由到对应处理器
+        if method == "tools/list":
+            return self._list_primitives("tool")
+        elif method == "tools/call":
+            return await self._call_tool(params)
+        elif method == "resources/read":
+            return await self._read_resource(params)
+        else:
+            raise MethodNotFoundError(f"Unknown method: {method}")
+
+    async def _call_tool(self, params: dict) -> dict:
+        """执行工具调用"""
+        name = params["name"]
+        args = params.get("arguments", {})
+
+        # 1. 查找注册表
+        entry = self._registry.get(f"tool:{name}")
+        if not entry:
+            raise NotFoundError(f"Tool not found: {name}")
+
+        # 2. 安全校验
+        await self._security.check_permission(name, args)
+
+        # 3. 参数校验
+        self._validate_args(args, entry.input_schema)
+
+        # 4. 执行 handler（调用数据访问层）
+        result = await entry.handler(args)
+
+        # 5. 审计日志
+        self._security.audit_log(name, args, result)
+
+        # 6. 封装结果
+        return {"content": [{"type": "text", "text": str(result)}]}
+```
+
+#### 4.3.3 数据访问层（Data Access Layer）
+
+**职责定位**：封装后端系统访问细节，为业务逻辑层提供统一的数据接口。
+
+| 组件 | 职责 | 关键实现 |
+|------|------|----------|
+| **文件系统适配器** | 读写本地文件 | pathlib 封装，遵循 Root 沙箱约束 |
+| **数据库适配器** | 执行 SQL/NoSQL 查询 | 连接池、参数化查询、结果序列化 |
+| **外部 API 适配器** | 调用第三方 REST/gRPC API | HTTP 客户端、认证、重试、超时 |
+| **缓存层** | 缓存只读资源降低后端压力 | TTL 策略、LRU 淘汰、缓存失效 |
+| **连接池管理** | 复用后端连接 | 池化技术、健康检查、自动重连 |
+
+**数据访问层核心代码示例**：
+
+```python
+import aiohttp
+import aiosqlite
+from pathlib import Path
+
+class DataAccessLayer:
+    """数据访问层：后端系统访问封装"""
+
+    def __init__(self, roots: list[str]):
+        self._roots = [Path(r) for r in roots]  # Root 沙箱目录
+        self._db_pool = None
+        self._http_session = None
+        self._cache = {}  # 简单缓存
+
+    async def init(self):
+        """初始化连接池"""
+        self._db_pool = await aiosqlite.connect("app.db")
+        self._http_session = aiohttp.ClientSession()
+
+    async def read_file(self, uri: str) -> str:
+        """读取文件（遵循 Root 沙箱）"""
+        file_path = Path(uri.replace("file://", ""))
+        # 安全校验：必须在 Root 沙箱内
+        if not self._is_within_roots(file_path):
+            raise PermissionError(f"路径超出 Root 沙箱: {file_path}")
+        return file_path.read_text(encoding="utf-8")
+
+    async def query_db(self, sql: str, params: tuple = ()) -> list:
+        """执行数据库查询（参数化防注入）"""
+        async with self._db_pool.execute(sql, params) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    async def call_api(self, url: str, method: str = "GET",
+                       headers: dict = None) -> dict:
+        """调用外部 API（带重试与超时）"""
+        # 缓存检查
+        cache_key = f"{method}:{url}"
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
+        async with self._http_session.request(
+            method, url, headers=headers, timeout=aiohttp.ClientTimeout(total=30)
+        ) as resp:
+            result = await resp.json()
+
+        # 写入缓存（TTL=300s）
+        self._cache[cache_key] = result
+        return result
+
+    def _is_within_roots(self, path: Path) -> bool:
+        """校验路径是否在 Root 沙箱内"""
+        try:
+            path.resolve().relative_to(self._roots[0].resolve())
+            return True
+        except ValueError:
+            return False
+
+    async def close(self):
+        """关闭连接"""
+        await self._db_pool.close()
+        await self._http_session.close()
+```
+
+#### 4.3.4 三层交互方式
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+sequenceDiagram
+    participant C as Client
+    participant P as 表示层
+    participant B as 业务逻辑层
+    participant D as 数据访问层
+    participant BE as 后端系统
+
+    C->>P: JSON-RPC 请求 (tools/call)
+    P->>P: 解析消息 + 会话校验
+    P->>B: 转发请求 (method, params)
+    B->>B: 路由 + 权限校验 + 参数校验
+    B->>D: 调用数据访问接口
+    D->>BE: 执行后端操作 (SQL/API/File)
+    BE-->>D: 返回原始数据
+    D->>D: 缓存 + 格式化
+    D-->>B: 返回结构化数据
+    B->>B: 封装为 content array
+    B-->>P: 返回业务结果
+    P->>P: 编码为 JSON-RPC response
+    P-->>C: 返回响应
+```
+
+**三层交互规则**：
+
+| 规则 | 说明 | 目的 |
+|------|------|------|
+| **单向依赖** | 上层依赖下层，下层不感知上层 | 避免循环依赖，便于独立测试 |
+| **接口隔离** | 层间通过明确接口通信，不泄漏内部实现 | 支持各层独立替换（如换传输方式不影响业务） |
+| **表示层不碰后端** | 表示层只管协议，不直接访问数据 | 职责单一，避免业务逻辑散落 |
+| **业务层不碰传输** | 业务层不关心 Stdio 还是 HTTP | 传输方式可替换，业务逻辑复用 |
+| **数据层不碰协议** | 数据访问层不返回 JSON-RPC 格式 | 数据层可被非 MCP 场景复用 |
+
+**三层架构价值总结**：
+
+| 价值维度 | 体现 | 收益 |
+|----------|------|------|
+| **可维护性** | 修改传输方式只动表示层 | 变更影响面小 |
+| **可测试性** | 各层可独立 Mock 测试 | 测试效率高 |
+| **可复用性** | 数据访问层可被非 MCP 服务复用 | 代码复用率高 |
+| **可扩展性** | 新增原语只动业务层注册表 | 扩展成本低 |
+| **安全性** | 安全控制集中在业务层 | 审计点统一 |
+
+---
+
+## 五、MCP 核心基础能力实现：工具管理与资源管理
+
+> MCP（Model Context Protocol）的两大核心基础能力是**工具管理（Tool Management）**与**资源管理（Resource Management）**，分别对应协议中的 Tools 与 Resources 两大原语。工具管理赋予 Server"执行操作"的能力，资源管理赋予 Server"提供数据"的能力，二者共同构成 MCP Server 的能力基石。本章节深入阐述二者的具体实现方案。
+
+### 5.1 工具管理（Tool Management）
+
+工具管理负责工具的注册、发现、调用、版本控制与权限审计全流程，是 MCP Server 对外暴露"可执行能力"的核心机制。
+
+#### 5.1.1 工具能力类型划分
+
+MCP 工具按不同维度可进行多维分类，以便精细化管理：
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+mindmap
+  root((工具类型划分))
+    按副作用划分
+      只读工具
+        查询数据
+        搜索文档
+      写操作工具
+        写入数据库
+        发送邮件
+        修改文件
+    按功能划分
+      数据查询类
+        SQL查询
+        API检索
+      系统操作类
+        文件读写
+        进程管理
+      通信类
+        发送消息
+        触发Webhook
+      计算类
+        数学运算
+        代码执行
+    按权限等级划分
+      免授权(L0)
+        公开数据查询
+      需确认(L1)
+        用户弹窗确认
+      需审批(L2)
+        管理员审批
+    按执行特性划分
+      同步工具
+        即时返回结果
+      异步工具
+        提交任务轮询结果
+      流式工具
+        SSE流式返回进度
+```
+
+**四维分类详解**：
+
+| 分类维度 | 类型 | 特征 | 典型示例 | 授权要求 |
+|----------|------|------|----------|----------|
+| **副作用** | 只读工具 | 无状态变更，可重复执行 | `query_order`、`search_docs` | 免授权 |
+| **副作用** | 写操作工具 | 有状态变更，需幂等保护 | `create_order`、`send_email` | 需确认/审批 |
+| **功能** | 数据查询类 | 从数据源检索信息 | `sql_query`、`api_search` | 免授权 |
+| **功能** | 系统操作类 | 操作文件/进程/配置 | `write_file`、`restart_service` | 需确认 |
+| **功能** | 通信类 | 对外发送消息或通知 | `send_email`、`trigger_webhook` | 需确认 |
+| **功能** | 计算类 | 执行运算或代码 | `calculate`、`run_code` | 需确认 |
+| **权限** | L0 免授权 | 低风险，公开数据 | `get_time`、`search_public` | 无 |
+| **权限** | L1 需确认 | 中风险，需用户知晓 | `update_profile`、`create_ticket` | 用户弹窗 |
+| **权限** | L2 需审批 | 高风险，需管理员批准 | `delete_record`、`transfer_funds` | 管理员审批 |
+| **执行** | 同步工具 | 阻塞等待结果 | `query_db`、`read_file` | — |
+| **执行** | 异步工具 | 提交后轮询 | `train_model`、`batch_process` | — |
+| **执行** | 流式工具 | SSE 实时推送进度 | `generate_report`、`crawl_site` | — |
+
+#### 5.1.2 工具注册与元数据管理
+
+工具注册是工具管理的起点，Server 通过注册表维护所有工具的元数据与处理函数映射。
+
+**工具元数据结构**：
+
+```python
+from dataclasses import dataclass, field
+from typing import Callable, Any
+
+@dataclass
+class ToolMetadata:
+    """工具元数据：完整描述一个工具的所有信息"""
+    # 基础信息
+    name: str                          # 工具名称（唯一标识）
+    description: str                   # 工具描述（供 LLM 理解用途）
+    version: str = "1.0.0"            # 工具版本号
+
+    # 参数定义
+    input_schema: dict = field(default_factory=dict)   # JSON Schema 参数定义
+    output_schema: dict = field(default_factory=dict)  # 输出格式定义
+
+    # 分类与权限
+    side_effect: bool = False          # 是否有副作用
+    permission_level: int = 0          # 权限等级 L0/L1/L2
+    execution_mode: str = "sync"       # sync/async/stream
+
+    # 生命周期
+    deprecated: bool = False           # 是否已废弃
+    successor: str = ""                # 废弃后的替代工具名
+
+    # 运行时
+    handler: Callable = None           # 处理函数
+    rate_limit: int = 0               # 调用频率限制（次/分钟）
+    timeout: int = 30                 # 超时时间（秒）
+```
+
+**工具注册表实现**：
+
+```python
+class ToolRegistry:
+    """工具注册表：管理工具的全生命周期"""
+
+    def __init__(self):
+        self._tools: dict[str, ToolMetadata] = {}
+        self._version_history: dict[str, list] = {}  # 版本历史
+
+    def register(self, metadata: ToolMetadata) -> None:
+        """注册新工具"""
+        if metadata.name in self._tools:
+            raise ValueError(f"工具已存在: {metadata.name}")
+        self._tools[metadata.name] = metadata
+        self._version_history[metadata.name] = [metadata.version]
+
+    def unregister(self, name: str) -> None:
+        """注销工具"""
+        if name in self._tools:
+            del self._tools[name]
+
+    def list_tools(self) -> list[dict]:
+        """列出所有工具元数据（供 tools/list 调用）"""
+        return [
+            {
+                "name": t.name,
+                "description": t.description,
+                "inputSchema": t.input_schema,
+            }
+            for t in self._tools.values()
+            if not t.deprecated  # 不返回已废弃工具
+        ]
+
+    def get_tool(self, name: str) -> ToolMetadata:
+        """获取工具元数据"""
+        return self._tools.get(name)
+
+    def update_tool(self, name: str, metadata: ToolMetadata) -> None:
+        """更新工具（触发变更通知）"""
+        old_version = self._tools[name].version
+        self._tools[name] = metadata
+        self._version_history[name].append(metadata.version)
+        # 触发变更通知
+        self._notify_change(name, old_version, metadata.version)
+```
+
+#### 5.1.3 工具调用执行机制
+
+工具调用是工具管理的核心环节，涉及参数校验、权限检查、执行、结果封装全流程。
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+flowchart TB
+    A[Client 发起 tools/call] --> B[查找注册表]
+    B --> C{工具存在?}
+    C -->|否| E1[返回错误<br/>Method not found]
+    C -->|是| D[参数校验<br/>JSON Schema]
+    D --> F{校验通过?}
+    F -->|否| E2[返回错误<br/>Invalid params]
+    F -->|是| G[权限检查<br/>L0/L1/L2]
+    G --> H{需要授权?}
+    H -->|L1 需确认| I[Host 弹窗确认]
+    H -->|L2 需审批| J[提交审批队列]
+    H -->|L0 免授权| K[执行 handler]
+    I --> L{用户同意?}
+    L -->|否| E3[返回错误<br/>Permission denied]
+    L -->|是| K
+    J --> M{审批通过?}
+    M -->|否| E3
+    M -->|是| K
+    K --> N[超时与异常捕获]
+    N --> O[结果封装<br/>content array]
+    O --> P[审计日志记录]
+    P --> Q[返回 JSON-RPC result]
+
+    style K fill:#e8f5e9,stroke:#2e7d32
+    style Q fill:#c8e6c9,stroke:#2e7d32
+    style E1 fill:#ffcdd2,stroke:#c62828
+    style E2 fill:#ffcdd2,stroke:#c62828
+    style E3 fill:#ffcdd2,stroke:#c62828
+```
+
+**工具调用核心实现**：
+
+```python
+import asyncio
+import jsonschema
+from datetime import datetime
+
+class ToolExecutor:
+    """工具执行器：封装工具调用的完整流程"""
+
+    def __init__(self, registry: ToolRegistry):
+        self._registry = registry
+        self._audit_log = []  # 审计日志
+
+    async def execute(self, tool_name: str, arguments: dict,
+                      caller_id: str = "") -> dict:
+        """执行工具调用"""
+        # 1. 查找工具
+        tool = self._registry.get_tool(tool_name)
+        if not tool:
+            return self._error(f"Tool not found: {tool_name}")
+
+        # 2. 参数校验（JSON Schema）
+        try:
+            jsonschema.validate(arguments, tool.input_schema)
+        except jsonschema.ValidationError as e:
+            return self._error(f"Invalid params: {e.message}")
+
+        # 3. 权限检查
+        if not await self._check_permission(tool, caller_id):
+            return self._error("Permission denied")
+
+        # 4. 频率限制检查
+        if not self._check_rate_limit(tool_name, caller_id):
+            return self._error("Rate limit exceeded")
+
+        # 5. 执行 handler（带超时）
+        start_time = datetime.now()
+        try:
+            result = await asyncio.wait_for(
+                tool.handler(**arguments),
+                timeout=tool.timeout
+            )
+        except asyncio.TimeoutError:
+            return self._error(f"Tool execution timeout ({tool.timeout}s)")
+        except Exception as e:
+            return self._error(f"Tool execution failed: {str(e)}")
+
+        # 6. 审计日志
+        self._audit_log.append({
+            "tool": tool_name,
+            "caller": caller_id,
+            "arguments": arguments,
+            "result": str(result)[:500],
+            "duration_ms": (datetime.now() - start_time).total_seconds() * 1000,
+            "timestamp": datetime.now().isoformat(),
+            "status": "success"
+        })
+
+        # 7. 结果封装
+        return {
+            "content": [{"type": "text", "text": str(result)}],
+            "isError": False
+        }
+
+    async def _check_permission(self, tool: ToolMetadata,
+                                caller_id: str) -> bool:
+        """权限检查"""
+        if tool.permission_level == 0:    # L0 免授权
+            return True
+        elif tool.permission_level == 1:  # L1 需确认（由 Host 处理）
+            return await self._request_user_confirmation(tool.name)
+        elif tool.permission_level == 2:  # L2 需审批
+            return await self._request_admin_approval(tool.name, caller_id)
+        return False
+```
+
+#### 5.1.4 工具版本管理与兼容性
+
+```python
+class ToolVersionManager:
+    """工具版本管理器"""
+
+    def __init__(self):
+        self._versions: dict[str, list[str]] = {}  # name -> [v1, v2, ...]
+
+    def register_version(self, name: str, version: str) -> None:
+        """注册新版本"""
+        if name not in self._versions:
+            self._versions[name] = []
+        self._versions[name].append(version)
+
+    def is_backward_compatible(self, name: str,
+                                old_version: str, new_version: str) -> bool:
+        """检查向后兼容性（语义化版本）"""
+        old_parts = [int(x) for x in old_version.split(".")]
+        new_parts = [int(x) for x in new_version.split(".")]
+        # 主版本号不变即向后兼容
+        return old_parts[0] == new_parts[0]
+
+    def deprecate_tool(self, name: str, successor: str) -> None:
+        """废弃工具，指定替代者"""
+        # 标记为 deprecated，tools/list 不再返回
+        # 但 tools/call 仍可调用，返回废弃警告
+        pass
+```
+
+**版本兼容策略**：
+
+| 变更类型 | 版本号变化 | 兼容性 | 处理策略 |
+|----------|-----------|--------|----------|
+| 参数新增（可选） | 补丁号 +1 | 完全兼容 | 旧 Client 正常调用 |
+| 参数修改 | 次版本号 +1 | 向后兼容 | 旧 Client 收到兼容警告 |
+| 参数删除/语义变更 | 主版本号 +1 | 不兼容 | 旧 Client 报错，需升级 |
+| 工具废弃 | 标记 deprecated | 过渡期 | 返回废弃提示 + 替代工具 |
+
+---
+
+### 5.2 资源管理（Resource Management）
+
+资源管理负责资源的寻址、读取、缓存、订阅与访问控制，是 MCP Server 对外暴露"只读数据"的核心机制。
+
+#### 5.2.1 资源管理范围与分类
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+mindmap
+  root((资源管理范围))
+    文件资源
+      本地文件
+        代码文件
+        配置文件
+        日志文件
+      文件系统视图
+        目录结构
+        Root沙箱
+    数据资源
+      数据库Schema
+        表结构
+        字段定义
+      查询结果集
+        静态数据
+        动态查询
+    服务资源
+      API文档
+        OpenAPI Spec
+        接口说明
+      服务端点
+        健康状态
+        版本信息
+    知识资源
+      知识库文档
+        Wiki页面
+        技术文档
+      向量索引
+        Embedding库
+        检索索引
+```
+
+**资源分类与特性**：
+
+| 资源类型 | URI 示例 | 变更频率 | 缓存策略 | 典型场景 |
+|----------|----------|----------|----------|----------|
+| **静态文件** | `file:///config/app.yaml` | 低 | 长期缓存 | 配置文件读取 |
+| **动态文件** | `file:///logs/app.log` | 高 | 不缓存/短TTL | 日志实时查看 |
+| **数据库 Schema** | `db://schema/users` | 极低 | 长期缓存 | 表结构查询 |
+| **查询结果** | `db://query/results` | 高 | 不缓存 | 实时数据查询 |
+| **API 文档** | `api://docs/openapi.json` | 低 | 中期缓存 | 接口文档查阅 |
+| **服务状态** | `svc://health/check` | 高 | 不缓存 | 健康检查 |
+| **知识库** | `wiki://docs/architecture` | 中 | 中期缓存 | 架构文档查阅 |
+| **向量索引** | `vector://index/kb` | 中 | 不缓存 | 语义检索 |
+
+#### 5.2.2 资源 URI 寻址机制
+
+MCP 资源通过 URI（统一资源标识符）进行寻址，支持多种协议前缀：
+
+```python
+from urllib.parse import urlparse, parse_qs
+from dataclasses import dataclass
+
+@dataclass
+class ResourceURI:
+    """资源 URI 解析结果"""
+    scheme: str       # 协议：file/db/api/svc/wiki/vector
+    path: str         # 资源路径
+    params: dict      # 查询参数
+    raw: str          # 原始 URI
+
+    @classmethod
+    def parse(cls, uri: str) -> 'ResourceURI':
+        """解析资源 URI"""
+        parsed = urlparse(uri)
+        return cls(
+            scheme=parsed.scheme,
+            path=parsed.path,
+            params=parse_qs(parsed.query),
+            raw=uri
+        )
+
+
+class ResourceResolver:
+    """资源解析器：根据 URI scheme 路由到对应适配器"""
+
+    def __init__(self):
+        self._adapters: dict[str, 'ResourceAdapter'] = {}
+
+    def register_adapter(self, scheme: str, adapter: 'ResourceAdapter'):
+        """注册资源适配器"""
+        self._adapters[scheme] = adapter
+
+    async def read(self, uri: str) -> str:
+        """读取资源"""
+        parsed = ResourceURI.parse(uri)
+        adapter = self._adapters.get(parsed.scheme)
+        if not adapter:
+            raise ValueError(f"Unsupported scheme: {parsed.scheme}")
+        return await adapter.read(parsed)
+```
+
+#### 5.2.3 资源缓存与调度策略
+
+资源缓存是提升性能的关键，需根据资源特性选择合适的缓存策略：
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+flowchart TB
+    A[资源读取请求] --> B{缓存命中?}
+    B -->|命中| C{缓存是否过期?}
+    C -->|未过期| D[返回缓存数据]
+    C -->|已过期| E{缓存策略?}
+    B -->|未命中| F[从后端读取]
+
+    E -->|TTL| F
+    E -->|LRU| F
+    E -->|Tag| G{收到失效通知?}
+    G -->|是| F
+    G -->|否| D
+
+    F --> H[写入缓存]
+    H --> I[返回数据]
+
+    style D fill:#c8e6c9,stroke:#2e7d32
+    style I fill:#c8e6c9,stroke:#2e7d32
+    style F fill:#fff3e0,stroke:#e65100
+```
+
+**缓存策略对比**：
+
+| 策略 | 机制 | 适用资源 | 优点 | 缺点 |
+|------|------|----------|------|------|
+| **TTL 缓存** | 固定过期时间 | 配置、Schema、文档 | 实现简单，自动失效 | 过期前数据可能已变更 |
+| **LRU 缓存** | 按访问频率淘汰 | 查询结果、文档 | 内存可控 | 冷数据被淘汰 |
+| **Tag 失效** | 变更时主动失效 | 实时性要求高 | 数据一致性好 | 需要变更通知机制 |
+| **不缓存** | 每次直接读取 | 日志、状态、实时数据 | 数据最新 | 性能差 |
+
+**缓存层实现**：
+
+```python
+import time
+from collections import OrderedDict
+
+class ResourceCache:
+    """资源缓存：支持 TTL + LRU 双策略"""
+
+    def __init__(self, max_size: int = 1000, default_ttl: int = 300):
+        self._cache: OrderedDict[str, dict] = OrderedDict()
+        self._max_size = max_size
+        self._default_ttl = default_ttl
+
+    def get(self, uri: str) -> str | None:
+        """获取缓存"""
+        if uri not in self._cache:
+            return None
+
+        entry = self._cache[uri]
+        # TTL 检查
+        if time.time() > entry["expires_at"]:
+            del self._cache[uri]
+            return None
+
+        # LRU 更新（移到末尾表示最近访问）
+        self._cache.move_to_end(uri)
+        return entry["data"]
+
+    def set(self, uri: str, data: str, ttl: int = None) -> None:
+        """写入缓存"""
+        if ttl is None:
+            ttl = self._default_ttl
+
+        self._cache[uri] = {
+            "data": data,
+            "expires_at": time.time() + ttl,
+            "created_at": time.time()
+        }
+
+        # LRU 淘汰：超过容量时删除最久未访问
+        while len(self._cache) > self._max_size:
+            self._cache.popitem(last=False)
+
+    def invalidate(self, uri: str) -> None:
+        """主动失效（收到变更通知时调用）"""
+        if uri in self._cache:
+            del self._cache[uri]
+
+    def invalidate_pattern(self, pattern: str) -> int:
+        """批量失效（按 URI 前缀模式）"""
+        count = 0
+        keys_to_delete = [k for k in self._cache if k.startswith(pattern)]
+        for k in keys_to_delete:
+            del self._cache[k]
+            count += 1
+        return count
+```
+
+#### 5.2.4 资源订阅与变更通知
+
+MCP 支持资源变更通知，当资源内容变化时 Server 主动通知 Client 刷新：
+
+```python
+class ResourceManager:
+    """资源管理器：整合解析、缓存、订阅"""
+
+    def __init__(self):
+        self._resolver = ResourceResolver()
+        self._cache = ResourceCache()
+        self._subscribers: dict[str, list] = {}  # uri -> [client_ids]
+        self._watchers: dict[str, asyncio.Task] = {}  # uri -> 监听任务
+
+    async def read(self, uri: str, use_cache: bool = True) -> str:
+        """读取资源"""
+        # 1. 尝试缓存
+        if use_cache:
+            cached = self._cache.get(uri)
+            if cached is not None:
+                return cached
+
+        # 2. 从后端读取
+        data = await self._resolver.read(uri)
+
+        # 3. 写入缓存
+        self._cache.set(uri, data)
+        return data
+
+    async def subscribe(self, uri: str, client_id: str) -> None:
+        """订阅资源变更"""
+        if uri not in self._subscribers:
+            self._subscribers[uri] = []
+            # 启动资源监听
+            self._watchers[uri] = asyncio.create_task(
+                self._watch_resource(uri)
+            )
+        self._subscribers[uri].append(client_id)
+
+    async def _watch_resource(self, uri: str) -> None:
+        """监听资源变更（轮询或文件系统 Watch）"""
+        last_content = await self.read(uri, use_cache=False)
+        while True:
+            await asyncio.sleep(10)  # 轮询间隔
+            current = await self.read(uri, use_cache=False)
+            if current != last_content:
+                # 资源已变更，通知所有订阅者
+                self._cache.invalidate(uri)
+                await self._notify_subscribers(uri)
+                last_content = current
+
+    async def _notify_subscribers(self, uri: str) -> None:
+        """通知订阅者资源已变更"""
+        # 发送 notifications/resources/updated
+        for client_id in self._subscribers.get(uri, []):
+            await self._send_notification(
+                client_id,
+                "notifications/resources/updated",
+                {"uri": uri}
+            )
+```
+
+**订阅机制流程**：
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+sequenceDiagram
+    participant C as Client
+    participant S as Server
+    participant BE as 后端系统
+
+    C->>S: resources/subscribe(uri)
+    S->>S: 注册订阅者
+    S->>BE: 启动资源监听(轮询/Watch)
+
+    loop 监听循环
+        S->>BE: 读取资源当前内容
+        BE-->>S: 返回内容
+        S->>S: 对比是否变更
+    end
+
+    Note over BE: 资源发生变更
+    S->>S: 检测到内容变化
+    S->>S: 失效缓存
+    S-->>C: notifications/resources/updated(uri)
+    C->>S: resources/read(uri) 刷新
+    S-->>C: 返回最新内容
+```
+
+#### 5.2.5 资源访问控制
+
+资源虽为只读，但仍需访问控制，防止敏感数据泄露：
+
+```python
+class ResourceAccessControl:
+    """资源访问控制"""
+
+    def __init__(self):
+        # 资源权限矩阵：{uri_pattern: {role: allowed}}
+        self._permissions = {
+            "file:///public/*": {"*": True},              # 公开资源
+            "file:///internal/*": {"employee": True},      # 内部资源
+            "file:///confidential/*": {"manager": True},   # 机密资源
+            "db://schema/*": {"developer": True},          # 数据库 Schema
+            "db://query/*": {"analyst": True},             # 查询结果
+        }
+        # 敏感字段脱敏规则
+        self._masking_rules = {
+            r"\d{18}": "******************",  # 身份证号
+            r"\d{16,19}": "****",              # 银行卡号
+            r"[\w.]+@[\w.]+": "***@***.***",   # 邮箱
+        }
+
+    def check_access(self, uri: str, role: str) -> bool:
+        """检查访问权限"""
+        for pattern, roles in self._permissions.items():
+            if self._match_pattern(uri, pattern):
+                if "*" in roles or role in roles:
+                    return True
+        return False
+
+    def mask_sensitive(self, content: str) -> str:
+        """脱敏处理"""
+        import re
+        for pattern, replacement in self._masking_rules.items():
+            content = re.sub(pattern, replacement, content)
+        return content
+```
+
+**工具管理与资源管理对比总结**：
+
+| 维度 | 工具管理 | 资源管理 |
+|------|----------|----------|
+| **核心能力** | 执行操作（有副作用） | 提供数据（只读） |
+| **访问方法** | `tools/list`、`tools/call` | `resources/list`、`resources/read` |
+| **授权要求** | 必须授权（L0/L1/L2） | 通常免授权 |
+| **缓存策略** | 不缓存（每次执行） | TTL/LRU/Tag 失效 |
+| **变更通知** | `tools/list_changed` | `resources/updated` |
+| **幂等性** | 需保证幂等 | 天然幂等（只读） |
+| **寻址方式** | 工具名 + 参数 | URI |
+| **审计需求** | 高（需记录每次调用） | 低（只读无风险） |
+
+---
+
+## 六、MCP Server 完整生命周期管理
+
+> MCP Server 的生命周期管理涵盖从初始化到终止的完整过程，是保障 Server 稳定运行、可观测、可维护的关键。本章将生命周期划分为**初始化、注册、运行、监控、终止**五个阶段，详细说明各阶段的关键节点、技术实现与管理策略。
+
+### 6.1 生命周期总览
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+stateDiagram-v2
+    [*] --> 初始化阶段
+    初始化阶段 --> 注册阶段: 配置加载完成
+    注册阶段 --> 运行阶段: 能力协商成功
+    运行阶段 --> 运行阶段: 请求处理/动态更新
+    运行阶段 --> 监控阶段: 持续监控
+    监控阶段 --> 运行阶段: 健康恢复
+    监控阶段 --> 终止阶段: 异常/手动关闭
+    运行阶段 --> 终止阶段: 收到关闭信号
+    终止阶段 --> [*]
+
+    note right of 初始化阶段: 配置加载/依赖检查/连接池建立
+    note right of 注册阶段: 原语注册/能力声明/会话协商
+    note right of 运行阶段: 请求处理/状态维护/动态更新
+    note right of 监控阶段: 健康检查/性能指标/日志审计
+    note right of 终止阶段: 优雅关闭/资源清理/状态持久化
+```
+
+### 6.2 初始化阶段
+
+初始化阶段是 Server 启动的第一步，负责加载配置、检查依赖、建立资源连接。
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+flowchart TB
+    A[启动信号] --> B[加载配置文件]
+    B --> C[环境变量覆盖]
+    C --> D[配置校验]
+    D --> E{配置合法?}
+    E -->|否| F[启动失败<br/>输出错误日志]
+    E -->|是| G[依赖检查]
+    G --> H{依赖满足?}
+    H -->|否| F
+    H -->|是| I[建立连接池]
+    I --> J[初始化缓存]
+    J --> K[加载安全策略]
+    K --> L[初始化完成]
+
+    style L fill:#c8e6c9,stroke:#2e7d32
+    style F fill:#ffcdd2,stroke:#c62828
+```
+
+**初始化关键节点与实现**：
+
+```python
+import os
+import yaml
+import logging
+
+class ServerInitializer:
+    """Server 初始化器"""
+
+    def __init__(self):
+        self.config = {}
+        self.logger = logging.getLogger("mcp.server.init")
+
+    async def initialize(self, config_path: str) -> dict:
+        """完整初始化流程"""
+        # 1. 加载配置文件
+        self.config = self._load_config(config_path)
+        self.logger.info("配置加载完成")
+
+        # 2. 环境变量覆盖（优先级：环境变量 > 配置文件）
+        self._apply_env_overrides()
+        self.logger.info("环境变量覆盖完成")
+
+        # 3. 配置校验
+        if not self._validate_config():
+            raise RuntimeError("配置校验失败")
+        self.logger.info("配置校验通过")
+
+        # 4. 依赖检查
+        await self._check_dependencies()
+        self.logger.info("依赖检查通过")
+
+        # 5. 建立连接池
+        connections = await self._init_connections()
+        self.logger.info("连接池建立完成")
+
+        # 6. 初始化缓存
+        cache = self._init_cache()
+        self.logger.info("缓存初始化完成")
+
+        # 7. 加载安全策略
+        security = self._load_security_policy()
+        self.logger.info("安全策略加载完成")
+
+        return {
+            "config": self.config,
+            "connections": connections,
+            "cache": cache,
+            "security": security
+        }
+
+    def _load_config(self, path: str) -> dict:
+        """加载 YAML 配置文件"""
+        with open(path, 'r', encoding='utf-8') as f:
+            return yaml.safe_load(f)
+
+    def _apply_env_overrides(self):
+        """环境变量覆盖配置"""
+        env_mapping = {
+            "MCP_SERVER_NAME": "server.name",
+            "MCP_SERVER_PORT": "server.port",
+            "MCP_DB_URL": "database.url",
+            "MCP_LOG_LEVEL": "logging.level",
+        }
+        for env_key, config_key in env_mapping.items():
+            if env_val := os.environ.get(env_key):
+                self._set_nested(config_key, env_val)
+
+    async def _check_dependencies(self):
+        """依赖检查"""
+        deps = self.config.get("dependencies", {})
+        # 检查数据库连通性
+        if "database" in deps:
+            await self._check_db_connection(deps["database"])
+        # 检查外部 API 可达性
+        if "api_endpoints" in deps:
+            for endpoint in deps["api_endpoints"]:
+                await self._check_api_reachable(endpoint)
+```
+
+**初始化阶段管理策略**：
+
+| 节点 | 策略 | 失败处理 |
+|------|------|----------|
+| 配置加载 | 支持多源（文件+环境变量） | 启动失败，输出明确错误 |
+| 依赖检查 | 超时 5s 快速失败 | 标记不可用依赖，降级启动 |
+| 连接池建立 | 预热最小连接数 | 重试 3 次，失败则终止 |
+| 缓存初始化 | 按资源类型设置 TTL | 失败降级为不缓存 |
+| 安全策略 | 强制加载，不可跳过 | 失败则拒绝启动 |
+
+### 6.3 注册阶段
+
+注册阶段完成原语注册、能力声明与会话协商，是 Server 与 Client 建立通信的基础。
+
+```python
+class ServerRegistrar:
+    """Server 注册器"""
+
+    def __init__(self, tool_registry, resource_manager):
+        self._tool_registry = tool_registry
+        self._resource_manager = resource_manager
+        self._capabilities = {}
+        self._protocol_version = "2025-06-18"
+
+    def register_all_primitives(self, config: dict):
+        """批量注册所有原语"""
+        # 1. 注册工具
+        for tool_config in config.get("tools", []):
+            self._register_tool(tool_config)
+
+        # 2. 注册资源
+        for resource_config in config.get("resources", []):
+            self._register_resource(resource_config)
+
+        # 3. 注册提示词模板
+        for prompt_config in config.get("prompts", []):
+            self._register_prompt(prompt_config)
+
+        # 4. 声明能力
+        self._declare_capabilities()
+
+    def _declare_capabilities(self):
+        """声明 Server 能力"""
+        self._capabilities = {
+            "tools": len(self._tool_registry.list_tools()) > 0,
+            "resources": True,  # 根据实际资源数判断
+            "prompts": True,
+            "logging": True,
+        }
+
+    def get_server_info(self) -> dict:
+        """返回 serverInfo（供 initialize 响应）"""
+        return {
+            "name": "my-mcp-server",
+            "version": "1.0.0",
+        }
+
+    def get_capabilities(self) -> dict:
+        """返回 capabilities（供 initialize 响应）"""
+        return self._capabilities
+```
+
+**会话协商流程**：
+
+| 步骤 | Client 动作 | Server 动作 | 结果 |
+|------|------------|------------|------|
+| 1 | 发送 `initialize`（版本+能力） | 接收并匹配版本 | — |
+| 2 | — | 返回 `serverInfo` + `capabilities` | 协商结果 |
+| 3 | 校验 Server 能力是否满足需求 | — | — |
+| 4 | 发送 `notifications/initialized` | 进入运行阶段 | 会话建立 |
+
+### 6.4 运行阶段
+
+运行阶段是 Server 生命周期中持续时间最长的阶段，负责请求处理、状态维护与动态更新。
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+flowchart LR
+    subgraph 运行阶段核心循环
+        A[监听请求] --> B{请求类型?}
+        B -->|tools/call| C[工具执行]
+        B -->|resources/read| D[资源读取]
+        B -->|prompts/get| E[模板渲染]
+        B -->|notification| F[变更通知处理]
+        C --> G[结果返回]
+        D --> G
+        E --> G
+        F --> A
+        G --> A
+    end
+
+    subgraph 并发管理
+        H[连接池]
+        I[任务队列]
+        J[工作协程池]
+    end
+
+    subgraph 动态更新
+        K[热加载工具]
+        L[缓存刷新]
+        M[能力变更通知]
+    end
+
+    style A fill:#e3f2fd,stroke:#1565c0
+    style G fill:#c8e6c9,stroke:#2e7d32
+```
+
+**运行阶段核心实现**：
+
+```python
+import asyncio
+import signal
+
+class ServerRunner:
+    """Server 运行器"""
+
+    def __init__(self, initializer, registrar):
+        self._initializer = initializer
+        self._registrar = registrar
+        self._running = False
+        self._shutdown_event = asyncio.Event()
+        self._active_tasks: set[asyncio.Task] = set()
+
+    async def run(self, config_path: str):
+        """启动 Server 运行循环"""
+        # 1. 初始化
+        init_result = await self._initializer.initialize(config_path)
+
+        # 2. 注册原语
+        self._registrar.register_all_primitives(init_result["config"])
+
+        # 3. 注册信号处理（优雅关闭）
+        self._register_signal_handlers()
+
+        # 4. 进入运行循环
+        self._running = True
+        self._logger.info("Server 进入运行阶段")
+
+        # 5. 启动并发服务
+        await asyncio.gather(
+            self._serve_requests(),     # 请求处理循环
+            self._health_check_loop(),  # 健康检查循环
+            self._cleanup_loop(),       # 定期清理循环
+        )
+
+    async def _serve_requests(self):
+        """请求处理循环"""
+        while self._running:
+            try:
+                request = await self._receive_request()
+                # 为每个请求创建独立任务（并发处理）
+                task = asyncio.create_task(self._handle_request(request))
+                self._active_tasks.add(task)
+                task.add_done_callback(self._active_tasks.discard)
+            except asyncio.CancelledError:
+                break
+
+    async def _handle_request(self, request: dict):
+        """处理单个请求"""
+        method = request.get("method")
+        params = request.get("params", {})
+
+        if method == "tools/call":
+            result = await self._tool_executor.execute(
+                params["name"], params.get("arguments", {})
+            )
+        elif method == "resources/read":
+            result = await self._resource_manager.read(params["uri"])
+        elif method == "prompts/get":
+            result = await self._prompt_renderer.render(
+                params["name"], params.get("arguments", {})
+            )
+        else:
+            result = {"error": f"Unknown method: {method}"}
+
+        await self._send_response(request["id"], result)
+
+    async def dynamic_update_tools(self, updates: dict):
+        """动态更新工具（热加载）"""
+        for tool_name, tool_config in updates.items():
+            self._tool_registry.update_tool(tool_name, tool_config)
+        # 通知 Client 工具列表已变更
+        await self._broadcast_notification(
+            "notifications/tools/list_changed"
+        )
+```
+
+**运行阶段管理策略**：
+
+| 管理维度 | 策略 | 实现 |
+|----------|------|------|
+| **并发控制** | 协程池 + 任务队列 | 每请求独立协程，活跃任务集合管理 |
+| **背压控制** | 请求队列上限 | 超过阈值拒绝新请求，返回 503 |
+| **状态维护** | 会话级状态隔离 | 每个 Client 连接独立会话上下文 |
+| **动态更新** | 热加载 + 变更通知 | 运行时增删工具/资源，广播通知 |
+| **错误隔离** | 单请求异常不影响全局 | try-catch 包裹，异常记日志 |
+| **优雅降级** | 非核心功能可关闭 | 配置开关控制功能启停 |
+
+### 6.5 监控阶段
+
+监控阶段与运行阶段并行，持续收集健康状态、性能指标与审计日志。
+
+```python
+import time
+from collections import deque
+
+class ServerMonitor:
+    """Server 监控器"""
+
+    def __init__(self):
+        self._metrics = {
+            "requests_total": 0,
+            "requests_success": 0,
+            "requests_failed": 0,
+            "avg_response_ms": 0,
+            "active_connections": 0,
+        }
+        self._response_times = deque(maxlen=1000)  # 滑动窗口
+        self._health_status = "healthy"
+        self._alerts = []
+
+    async def health_check_loop(self):
+        """健康检查循环（每 30s）"""
+        while True:
+            await asyncio.sleep(30)
+            checks = await asyncio.gather(
+                self._check_db_health(),
+                self._check_memory_usage(),
+                self._check_connection_pool(),
+                self._check_response_latency(),
+            )
+            # 综合判定健康状态
+            if all(checks):
+                self._health_status = "healthy"
+            elif checks.count(True) >= 3:
+                self._health_status = "degraded"
+            else:
+                self._health_status = "unhealthy"
+                self._send_alert("Server 状态异常")
+
+    async def record_request(self, method: str, duration_ms: float,
+                             success: bool):
+        """记录请求指标"""
+        self._metrics["requests_total"] += 1
+        if success:
+            self._metrics["requests_success"] += 1
+        else:
+            self._metrics["requests_failed"] += 1
+        self._response_times.append(duration_ms)
+        # 计算平均响应时间（滑动窗口）
+        self._metrics["avg_response_ms"] = (
+            sum(self._response_times) / len(self._response_times)
+        )
+
+    def get_metrics(self) -> dict:
+        """获取监控指标"""
+        return {
+            **self._metrics,
+            "health": self._health_status,
+            "error_rate": (
+                self._metrics["requests_failed"] /
+                max(self._metrics["requests_total"], 1)
+            ),
+        }
+```
+
+**监控指标体系**：
+
+| 指标类别 | 指标名称 | 告警阈值 | 说明 |
+|----------|----------|----------|------|
+| **可用性** | health_status | unhealthy | 健康状态 |
+| **可用性** | uptime_seconds | — | 运行时长 |
+| **吞吐量** | requests_total | — | 总请求数 |
+| **吞吐量** | requests_per_second | >1000 | 每秒请求数 |
+| **延迟** | avg_response_ms | >500ms | 平均响应时间 |
+| **延迟** | p99_response_ms | >2000ms | 99 分位延迟 |
+| **错误** | error_rate | >5% | 错误率 |
+| **资源** | memory_usage_mb | >80% | 内存占用 |
+| **资源** | active_connections | >100 | 活跃连接数 |
+| **业务** | tool_call_top5 | — | 调用最多的工具 |
+
+### 6.6 终止阶段
+
+终止阶段负责优雅关闭 Server，确保在途请求完成、资源正确释放、状态持久化。
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+flowchart TB
+    A[收到关闭信号<br/>SIGTERM/SIGINT] --> B[停止接受新请求]
+    B --> C[等待在途请求完成<br/>超时30s]
+    C --> D{所有请求完成?}
+    D -->|是| E[保存状态快照]
+    D -->|否| F{超时?}
+    F -->|否| C
+    F -->|是| G[强制终止在途请求<br/>记录警告日志]
+    G --> E
+    E --> H[关闭连接池]
+    H --> I[刷新缓存到磁盘]
+    I --> J[输出关闭报告]
+    J --> K[通知 Client 连接断开]
+    K --> L[Server 关闭完成]
+
+    style L fill:#c8e6c9,stroke:#2e7d32
+    style G fill:#ffcdd2,stroke:#c62828
+```
+
+**优雅关闭实现**：
+
+```python
+class ServerShutdown:
+    """Server 优雅关闭器"""
+
+    def __init__(self, runner, monitor):
+        self._runner = runner
+        self._monitor = monitor
+        self._shutdown_timeout = 30  # 秒
+
+    async def graceful_shutdown(self):
+        """优雅关闭流程"""
+        self._runner._logger.info("开始优雅关闭...")
+
+        # 1. 标记为停止接受新请求
+        self._runner._running = False
+        self._runner._logger.info("已停止接受新请求")
+
+        # 2. 等待在途请求完成（带超时）
+        try:
+            await asyncio.wait_for(
+                self._wait_active_tasks(),
+                timeout=self._shutdown_timeout
+            )
+            self._runner._logger.info("所有在途请求已完成")
+        except asyncio.TimeoutError:
+            self._runner._logger.warning(
+                f"超时 {self._shutdown_timeout}s，强制终止在途请求"
+            )
+            for task in self._runner._active_tasks:
+                task.cancel()
+
+        # 3. 保存状态快照
+        await self._save_state_snapshot()
+
+        # 4. 关闭连接池
+        await self._close_connections()
+
+        # 5. 刷新缓存
+        await self._flush_cache()
+
+        # 6. 输出关闭报告
+        self._output_shutdown_report()
+
+        # 7. 通知 Client
+        await self._notify_clients_disconnect()
+
+        self._runner._logger.info("Server 关闭完成")
+
+    async def _wait_active_tasks(self):
+        """等待所有活跃任务完成"""
+        if self._runner._active_tasks:
+            await asyncio.gather(
+                *self._runner._active_tasks,
+                return_exceptions=True
+            )
+
+    async def _save_state_snapshot(self):
+        """保存状态快照（便于重启恢复）"""
+        snapshot = {
+            "timestamp": time.time(),
+            "metrics": self._monitor.get_metrics(),
+            "active_sessions": self._get_active_sessions(),
+        }
+        # 持久化到文件
+        with open("server_snapshot.json", "w") as f:
+            json.dump(snapshot, f, indent=2)
+
+    def _output_shutdown_report(self):
+        """输出关闭报告"""
+        metrics = self._monitor.get_metrics()
+        report = f"""
+        ========== Server 关闭报告 ==========
+        运行时长: {metrics.get('uptime', 'N/A')}
+        总请求数: {metrics['requests_total']}
+        成功请求: {metrics['requests_success']}
+        失败请求: {metrics['requests_failed']}
+        错误率: {metrics.get('error_rate', 0):.2%}
+        最终状态: {metrics['health']}
+        ====================================
+        """
+        self._runner._logger.info(report)
+```
+
+**生命周期管理策略总结**：
+
+| 阶段 | 核心目标 | 关键策略 | 失败处理 |
+|------|----------|----------|----------|
+| **初始化** | 准备运行环境 | 多源配置 + 依赖检查 + 连接预热 | 快速失败，明确报错 |
+| **注册** | 建立通信基础 | 批量注册 + 能力声明 + 版本协商 | 协商失败终止连接 |
+| **运行** | 稳定服务请求 | 并发控制 + 动态更新 + 错误隔离 | 单请求失败不影响全局 |
+| **监控** | 保障可观测性 | 健康检查 + 指标采集 + 告警 | 降级运行 + 自动告警 |
+| **终止** | 优雅退出 | 等待在途 + 状态持久化 + 资源清理 | 超时强制终止 + 记录日志 |
+
+---
+
+## 七、面试题及详解
 
 ### 题目 1：MCP 定义与核心价值（选择题·基础）
 
@@ -836,7 +2607,7 @@ MCP 在安全与权限控制方面有哪些核心机制？请列举至少 5 项�
 
 ---
 
-## 五、考点速查表
+## 八、考点速查表
 
 | 题号 | 类型 | 难度 | 考点 | 满分 |
 |------|------|------|------|------|
