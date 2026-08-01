@@ -1,7 +1,7 @@
 # Agent Harness 与 Skills 面试题集详解
 
 > 面试核心目标：系统化评估候选人对 Agent 评测框架（Harness）和技能体系（Skills）的概念理解、原理掌握、工程实践和综合应用能力。
-> 本文档覆盖 **九大模块**，共 **28 道面试题**，难度涵盖初级、中级、高级三个层次，每题包含参考答案、流程图与评分标准。
+> 本文档覆盖 **十大模块**，共 **28 道面试题**，难度涵盖初级、中级、高级三个层次，每题包含参考答案、流程图与评分标准。
 
 ---
 
@@ -21,9 +21,10 @@
 - [六、Skills 核心原理与技术实现（4题）](#六skills-核心原理与技术实现4题)
 - [七、工程实践与项目案例（5题）](#七工程实践与项目案例5题)
 - [八、高级特性与系统设计（4题）](#八高级特性与系统设计4题)
-- [九、综合案例分析（3题）](#九综合案例分析3题)
-- [十、面试官使用指南](#十面试官使用指南)
-- [十一、总结](#十一总结)
+- [九、Harness Skills 安全防护体系](#九harness-skills-安全防护体系)
+- [十、综合案例分析（3题）](#十综合案例分析3题)
+- [十一、面试官使用指南](#十一面试官使用指南)
+- [十二、总结](#十二总结)
 
 ---
 
@@ -2341,7 +2342,586 @@ flowchart TB
 
 ---
 
-## 九、综合案例分析（3题）
+## 九、Harness Skills 安全防护体系
+
+> 本章节系统阐述 Agent Harness 与 Skills 技术实现中的安全防护体系，覆盖攻击类型分析、防御架构设计、技术实现方案、检测机制、违规内容过滤及行业最佳实践，为面试场景中的安全相关问题提供系统性解答框架。
+
+### 9.1 常见攻击类型分析
+
+在 Harness Skills 架构中，攻击面贯穿 Skills 层、Agent 层和 Harness 层。理解攻击类型是构建有效防御的前提。
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+mindmap
+  root((Harness Skills<br/>攻击面))
+    Skills 层攻击
+      Skill 注入攻击
+        恶意 Skill 伪装
+        参数注入
+      Skill 劫持
+        中间人篡改
+        依赖链攻击
+      权限提升
+        越权调用
+        权限逃逸
+    Agent 层攻击
+      Prompt 注入
+        直接注入
+        间接注入
+      越狱攻击
+        角色扮演绕过
+        编码绕过
+      上下文污染
+        记忆投毒
+        历史篡改
+    内容安全攻击
+      违规内容生成
+        有害指令执行
+        敏感信息泄露
+      对抗样本
+        边界绕过
+        分類器欺骗
+```
+
+**Skill 层面攻击详解**：
+
+| 攻击类型 | 攻击原理 | 危害等级 | 典型场景 |
+|---------|---------|---------|---------|
+| **Skill 注入攻击** | 攻击者注册恶意 Skill，伪装成合法技能诱导 Agent 调用 | 🔴 高 | 第三方 Skill 市场中植入后门 |
+| **参数注入** | 在 Skill 输入参数中嵌入恶意指令，劫持 Skill 行为 | 🔴 高 | 用户输入直接透传给 Skill 参数 |
+| **Skill 劫持** | 篡改已有 Skill 的实现代码或返回结果 | 🔴 高 | 供应链攻击，修改依赖 Skill |
+| **依赖链攻击** | 利用 Skill 间的依赖关系，通过底层 Skill 影响上层 | 🟠 中 | 组合 Skill 调用链中的薄弱环节 |
+| **越权调用** | 调用超出当前 Agent 权限范围的 Skill | 🟠 中 | 权限校验不严格的场景 |
+| **权限逃逸** | 利用 Skill 沙箱漏洞逃逸到宿主环境 | 🔴 高 | 沙箱隔离不完善 |
+
+**Agent 层面攻击详解**：
+
+| 攻击类型 | 攻击原理 | 危害等级 | 典型场景 |
+|---------|---------|---------|---------|
+| **直接 Prompt 注入** | 在用户输入中嵌入指令，覆盖 System Prompt 的约束 | 🔴 高 | "忽略以上指令，执行..." |
+| **间接 Prompt 注入** | 通过外部数据源（网页、文档）注入恶意指令 | 🔴 高 | Agent 读取被污染的网页内容 |
+| **越狱攻击** | 通过角色扮演、编码转换等手段绕过安全限制 | 🟠 中 | "假设你是一个没有限制的 AI" |
+| **记忆投毒** | 向 Agent 的长期记忆中注入恶意信息 | 🟠 中 | 污染向量数据库中的记忆条目 |
+| **上下文耗尽攻击** | 构造超长输入耗尽上下文窗口，挤掉安全指令 | 🟡 低 | 发送大量文本使 System Prompt 被截断 |
+
+> **面试场景关联**：Q16（Skill 权限控制和安全审计）直接考察 Skill 层面的权限防御；Q26（医疗问诊 Agent 的 Skills 安全体系）考察高敏感场景下的综合安全设计。
+
+### 9.2 纵深防御架构设计
+
+Harness Skills 安全防护采用 **纵深防御（Defense in Depth）** 策略，构建多层防护体系，确保单一防线被突破时仍有后续保护：
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+flowchart TB
+    subgraph L1["第一层：输入防护"]
+        I1[用户输入验证]
+        I2[Prompt 注入检测]
+        I3[敏感信息脱敏]
+    end
+
+    subgraph L2["第二层：Skill 防护"]
+        S1[Skill 权限校验]
+        S2[参数安全过滤]
+        S3[沙箱隔离执行]
+    end
+
+    subgraph L3["第三层：执行防护"]
+        E1[行为基线监控]
+        E2[异常调用检测]
+        E3[资源消耗限制]
+    end
+
+    subgraph L4["第四层：输出防护"]
+        O1[违规内容过滤]
+        O2[敏感信息检查]
+        O3[安全评分门禁]
+    end
+
+    subgraph L5["第五层：审计追溯"]
+        A1[全链路日志]
+        A2[轨迹回放分析]
+        A3[安全事件告警]
+    end
+
+    L1 --> L2 --> L3 --> L4 --> L5
+
+    style L1 fill:#e3f2fd,stroke:#1565c0
+    style L2 fill:#e8f5e9,stroke:#2e7d32
+    style L3 fill:#fff3e0,stroke:#e65100
+    style L4 fill:#f3e5f5,stroke:#6a1b9a
+    style L5 fill:#ffebee,stroke:#c62828
+```
+
+**五层防御职责划分**：
+
+| 防御层级 | 核心目标 | 关键机制 | 拦截攻击类型 |
+|---------|---------|---------|-------------|
+| **输入防护** | 在用户输入进入 Agent 前进行过滤 | 输入验证、注入检测、脱敏处理 | Prompt 注入、敏感信息输入 |
+| **Skill 防护** | 保护 Skill 调用过程的安全 | 权限校验、参数过滤、沙箱隔离 | Skill 注入、越权调用、参数注入 |
+| **执行防护** | 监控 Agent 运行时行为 | 行为基线、异常检测、资源限制 | 上下文耗尽、异常行为、资源滥用 |
+| **输出防护** | 在内容返回用户前进行审查 | 内容过滤、敏感信息检查、安全评分 | 违规内容、信息泄露、有害输出 |
+| **审计追溯** | 事后分析与责任追溯 | 全链路日志、轨迹回放、告警通知 | 所有攻击类型的事后分析 |
+
+### 9.3 技术实现方案
+
+#### 9.3.1 用户输入验证流程
+
+用户输入是攻击的第一入口。建立标准化的输入验证流程，是防御的前端屏障：
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+flowchart TB
+    A[用户原始输入] --> B{长度/格式检查}
+    B -->|不通过| R1[拒绝：格式不合法]
+    B -->|通过| C{注入模式检测}
+    C -->|检测到注入| R2[拒绝：疑似 Prompt 注入]
+    C -->|通过| D{敏感信息检测}
+    D -->|包含敏感信息| E[脱敏处理]
+    D -->|无敏感信息| F{意图分类}
+    E --> F
+    F -->|高风险意图| G[增强验证 + 人工审核]
+    F -->|正常意图| H[放行进入 Agent]
+    G -->|验证通过| H
+    G -->|验证不通过| R3[拒绝：高风险操作]
+
+    style R1 fill:#ffebee,stroke:#c62828
+    style R2 fill:#ffebee,stroke:#c62828
+    style R3 fill:#ffebee,stroke:#c62828
+    style H fill:#e8f5e9,stroke:#2e7d32
+```
+
+**输入验证器实现**：
+
+```python
+class InputValidator:
+    """用户输入安全验证器"""
+
+    # Prompt 注入特征模式
+    INJECTION_PATTERNS = [
+        r"忽略.{0,10}(指令|规则|限制|prompt)",
+        r"(ignore|disregard).{0,10}(instruction|rule|prompt)",
+        r"你(现在|不再|没有).{0,10}(限制|约束|规则)",
+        r"(system|admin|root).{0,10}(prompt|instruction|mode)",
+        r"<\/?(system|prompt|instruction)>",
+        r"(role|roleplay|pretend).{0,20}(no limit|unrestricted|unfiltered)",
+    ]
+
+    # 敏感信息正则
+    SENSITIVE_PATTERNS = {
+        "phone": r"1[3-9]\d{9}",
+        "id_card": r"\d{17}[\dXx]",
+        "bank_card": r"\d{16,19}",
+        "email": r"[\w.-]+@[\w.-]+\.\w+",
+    }
+
+    async def validate(self, user_input: str) -> ValidationResult:
+        """执行完整输入验证流程"""
+        # 1. 长度与格式检查
+        if len(user_input) > 10000:
+            return ValidationResult(rejected=True, reason="输入超长")
+        if not user_input.strip():
+            return ValidationResult(rejected=True, reason="空输入")
+
+        # 2. Prompt 注入检测
+        injection_score = self._detect_injection(user_input)
+        if injection_score > 0.8:
+            return ValidationResult(
+                rejected=True,
+                reason="疑似 Prompt 注入攻击",
+                risk_score=injection_score
+            )
+
+        # 3. 敏感信息检测与脱敏
+        sanitized = self._sanitize_sensitive(user_input)
+
+        # 4. 意图分类
+        intent = await self._classify_intent(sanitized)
+        if intent.risk_level == "high":
+            return ValidationResult(
+                rejected=False,
+                requires_review=True,
+                sanitized_input=sanitized,
+                risk_score=injection_score
+            )
+
+        return ValidationResult(
+            rejected=False,
+            sanitized_input=sanitized,
+            risk_score=injection_score
+        )
+
+    def _detect_injection(self, text: str) -> float:
+        """检测 Prompt 注入风险分数（0-1）"""
+        risk = 0.0
+        for pattern in self.INJECTION_PATTERNS:
+            if re.search(pattern, text, re.IGNORECASE):
+                risk += 0.3
+        return min(risk, 1.0)
+
+    def _sanitize_sensitive(self, text: str) -> str:
+        """脱敏敏感信息"""
+        for info_type, pattern in self.SENSITIVE_PATTERNS.items():
+            text = re.sub(pattern, f"[{info_type}_REDACTED]", text)
+        return text
+```
+
+#### 9.3.2 Skill 调用安全拦截器
+
+Skill 调用过程是安全防护的核心环节。通过拦截器模式（Interceptor Pattern）在 Skill 调用的前后注入安全检查：
+
+```python
+class SkillSecurityInterceptor:
+    """Skill 安全调用拦截器"""
+
+    def __init__(self, permission_manager, audit_logger):
+        self._perms = permission_manager
+        self._audit = audit_logger
+
+    async def intercept_call(self, agent_id: str, skill_id: str,
+                              input_params: dict) -> dict:
+        """拦截 Skill 调用，执行安全检查"""
+        # 前置检查：权限验证
+        if not await self._perms.check_permission(
+            agent_id, skill_id, "execute"
+        ):
+            await self._audit.log_violation(
+                agent_id, skill_id, "permission_denied", input_params
+            )
+            raise SecurityError(f"Agent {agent_id} 无权调用 Skill {skill_id}")
+
+        # 前置检查：参数安全验证
+        sanitized_params = await self._validate_params(skill_id, input_params)
+
+        # 前置检查：频率限制
+        if not await self._check_rate_limit(agent_id, skill_id):
+            raise SecurityError("触发频率限制")
+
+        # 执行 Skill（在沙箱中）
+        result = await self._execute_in_sandbox(skill_id, sanitized_params)
+
+        # 后置检查：输出安全验证
+        safe_result = await self._validate_output(result)
+
+        # 审计日志
+        await self._audit.log_call(
+            agent_id, skill_id, sanitized_params, safe_result
+        )
+
+        return safe_result
+
+    async def _validate_params(self, skill_id: str,
+                                params: dict) -> dict:
+        """参数安全验证"""
+        schema = await self._get_skill_schema(skill_id)
+        for key, value in params.items():
+            # 检查参数中是否包含注入指令
+            if isinstance(value, str):
+                if self._contains_injection(value):
+                    raise SecurityError(f"参数 {key} 包含可疑注入内容")
+        return params
+
+    async def _validate_output(self, result: dict) -> dict:
+        """输出安全验证"""
+        result_str = str(result)
+        # 检查输出中是否包含敏感信息
+        if self._contains_sensitive(result_str):
+            result = self._redact_sensitive(result)
+        # 检查输出中是否包含违规内容
+        if await self._contains_violation(result_str):
+            raise SecurityError("Skill 输出包含违规内容")
+        return result
+```
+
+#### 9.3.3 权限分级控制模型
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+flowchart TB
+    subgraph 权限模型["RBAC + ABAC 混合权限模型"]
+        R[角色 Role]
+        P[权限 Permission]
+        S[范围 Scope]
+        C[条件 Condition]
+    end
+
+    subgraph 角色层级["角色层级"]
+        L1["L0: 公开<br/>只读 Skills"]
+        L2["L1: 标准<br/>常用 Skills"]
+        L3["L2: 敏感<br/>数据写入/发送"]
+        L4["L3: 核心<br/>系统配置/管理"]
+    end
+
+    R --> L1
+    R --> L2
+    R --> L3
+    R --> L4
+
+    L1 --> P1["权限：query, search, read"]
+    L2 --> P2["权限：write, send, create"]
+    L3 --> P3["权限：delete, modify, config"]
+    L4 --> P4["权限：admin, deploy, manage"]
+
+    P1 --> S1["范围：公开数据"]
+    P2 --> S2["范围：用户数据"]
+    P3 --> S3["范围：系统数据"]
+    P4 --> S4["范围：全局"]
+
+    S1 --> C1["条件：仅工作时间"]
+    S2 --> C2["条件：需用户确认"]
+    S3 --> C3["条件：需双人审批"]
+    S4 --> C4["条件：需管理员授权"]
+
+    style L1 fill:#e8f5e9,stroke:#2e7d32
+    style L2 fill:#e3f2fd,stroke:#1565c0
+    style L3 fill:#fff3e0,stroke:#e65100
+    style L4 fill:#ffebee,stroke:#c62828
+```
+
+| 权限等级 | 允许的 Skill 类型 | 操作范围 | 附加条件 |
+|---------|-----------------|---------|---------|
+| **L0 公开** | 只读查询类（search、query） | 公开数据 | 无 |
+| **L1 标准** | 常用操作类（write、send） | 用户授权数据 | 用户确认 |
+| **L2 敏感** | 敏感操作类（delete、modify） | 系统数据 | 双人审批 |
+| **L3 核心** | 管理操作类（admin、config） | 全局配置 | 管理员授权 + 审计 |
+
+### 9.4 违规内容过滤方法
+
+违规内容过滤采用 **多层管线** 设计，结合规则匹配与模型检测，实现高召回率与低误报率的平衡：
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+flowchart LR
+    A[Agent 原始输出] --> B[第一层：规则过滤]
+    B --> C{命中规则?}
+    C -->|是| R1[拦截 + 记录]
+    C -->|否| D[第二层：模型分类]
+    D --> E{违规分数 > 阈值?}
+    E -->|是| R2[拦截 + 人工审核]
+    E -->|否| F[第三层：上下文审查]
+    F --> G{违反上下文约束?}
+    G -->|是| R3[拦截 + 告警]
+    G -->|否| H[放行输出]
+
+    style R1 fill:#ffebee,stroke:#c62828
+    style R2 fill:#ffebee,stroke:#c62828
+    style R3 fill:#ffebee,stroke:#c62828
+    style H fill:#e8f5e9,stroke:#2e7d32
+```
+
+**三层过滤机制详解**：
+
+| 过滤层级 | 检测方式 | 检测内容 | 响应动作 | 性能 |
+|---------|---------|---------|---------|------|
+| **规则过滤** | 正则 + 关键词匹配 | 敏感词、违规指令、已知攻击模式 | 直接拦截 | 毫秒级 |
+| **模型分类** | 轻量分类模型 | 有害内容、偏见歧视、暴力色情 | 分数超阈值则拦截 | 50-200ms |
+| **上下文审查** | LLM 审查提示 | 上下文一致性、逻辑合理性、合规性 | 违反则拦截并告警 | 1-3s |
+
+**违规内容分类体系**：
+
+```python
+class ViolationCategory(Enum):
+    """违规内容分类"""
+    HATE_SPEECH = "hate_speech"           # 仇恨言论
+    VIOLENCE = "violence"                 # 暴力内容
+    SELF_HARM = "self_harm"               # 自残自杀
+    SEXUAL = "sexual"                     # 色情内容
+    ILLEGAL = "illegal"                   # 违法行为
+    PRIVACY = "privacy_violation"         # 隐私侵犯
+    MISINFORMATION = "misinformation"     # 虚假信息
+    PROMPT_INJECTION = "prompt_injection"  # 注入内容
+    HARMFUL_CODE = "harmful_code"         # 有害代码
+
+class ContentFilter:
+    """多层违规内容过滤器"""
+
+    def __init__(self):
+        self._rule_filter = RuleFilter()
+        self._model_filter = ModelClassifier(
+            model="content-safety-classifier",
+            threshold=0.75
+        )
+        self._context_reviewer = ContextReviewer()
+
+    async def filter(self, output: str,
+                     context: dict) -> FilterResult:
+        """执行三层过滤"""
+        # 第一层：规则过滤
+        rule_result = self._rule_filter.check(output)
+        if rule_result.violated:
+            return FilterResult(
+                passed=False,
+                layer="rule",
+                category=rule_result.category,
+                confidence=1.0
+            )
+
+        # 第二层：模型分类
+        model_result = await self._model_filter.classify(output)
+        if model_result.violation_score > 0.75:
+            return FilterResult(
+                passed=False,
+                layer="model",
+                category=model_result.category,
+                confidence=model_result.violation_score
+            )
+
+        # 第三层：上下文审查
+        context_result = await self._context_reviewer.review(
+            output, context
+        )
+        if not context_result.compliant:
+            return FilterResult(
+                passed=False,
+                layer="context",
+                category=ViolationCategory.MISINFORMATION,
+                confidence=context_result.confidence
+            )
+
+        return FilterResult(passed=True)
+```
+
+### 9.5 安全检测与审计机制
+
+#### 9.5.1 实时异常检测
+
+Harness 在评测运行时实时监控 Agent 行为，检测偏离基线的异常模式：
+
+| 检测维度 | 基线指标 | 异常判定 | 响应动作 |
+|---------|---------|---------|---------|
+| **Skill 调用频率** | 单次任务平均 5-15 次 | 超过 50 次/分钟 | 限流 + 告警 |
+| **Skill 调用分布** | 正常技能分布模式 | 突然调用非常规 Skill | 拦截 + 审核 |
+| **Token 消耗** | 单任务平均 2000-5000 | 超过 50000 | 截断 + 告警 |
+| **执行路径** | 最优路径长度 | 环形调用或超深嵌套 | 中断 + 记录 |
+| **输出相似度** | 正常输出分布 | 与已知违规输出高度相似 | 拦截 + 审核 |
+| **响应时间** | P95 < 5s | 突然超过 60s | 超时中断 |
+
+#### 9.5.2 安全审计日志规范
+
+```python
+@dataclass
+class SecurityAuditLog:
+    """安全审计日志标准结构"""
+    timestamp: str                    # ISO 8601 时间戳
+    trace_id: str                     # 链路追踪 ID
+    agent_id: str                     # Agent 标识
+    skill_id: str                     # Skill 标识
+    event_type: str                   # 事件类型
+    risk_level: str                   # 风险等级
+    input_hash: str                   # 输入哈希（脱敏）
+    output_hash: str                  # 输出哈希
+    action_taken: str                 # 采取的动作
+    details: dict                     # 详细信息
+    # 日志保留期：至少 180 天
+    # 日志格式：JSON Lines（JSONL）
+    # 存储要求：防篡改、可追溯、可导出
+```
+
+**事件类型枚举**：
+
+| 事件类型 | 说明 | 触发条件 |
+|---------|------|---------|
+| `SKILL_CALL_BLOCKED` | Skill 调用被阻止 | 权限不足或参数异常 |
+| `INJECTION_DETECTED` | 检测到注入攻击 | 输入匹配注入模式 |
+| `VIOLATION_FILTERED` | 违规内容被过滤 | 输出命中过滤规则 |
+| `RATE_LIMIT_TRIGGERED` | 触发频率限制 | 调用频率超阈值 |
+| `SANDBOX_VIOLATION` | 沙箱违规 | 尝试逃逸沙箱 |
+| `PERMISSION_ESCALATION` | 权限提升尝试 | 尝试越权操作 |
+| `ANOMALY_DETECTED` | 异常行为检测 | 行为偏离基线 |
+
+#### 9.5.3 对抗测试（红队测试）
+
+Harness 内置对抗测试能力，模拟各类攻击场景验证防御有效性：
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+flowchart TB
+    A[对抗测试计划] --> B[攻击样本生成]
+    B --> C1[Prompt 注入样本集]
+    B --> C2[Skill 劫持样本集]
+    B --> C3[越狱攻击样本集]
+    B --> C4[对抗样本集]
+    C1 --> D[自动化执行]
+    C2 --> D
+    C3 --> D
+    C4 --> D
+    D --> E[防御效果评估]
+    E --> F{防御成功率 ≥ 95%?}
+    F -->|是| G[通过安全门禁]
+    F -->|否| H[阻断发布 + 修复]
+
+    style G fill:#e8f5e9,stroke:#2e7d32
+    style H fill:#ffebee,stroke:#c62828
+```
+
+### 9.6 最佳实践与行业标准
+
+#### 9.6.1 OWASP LLM Top 10 应对映射
+
+| OWASP 风险 | 在 Harness Skills 中的体现 | 防御措施 |
+|-----------|--------------------------|---------|
+| **LLM01: Prompt 注入** | 用户输入注入、间接注入 | 输入验证器 + Prompt 隔离 |
+| **LLM02: 不安全输出** | Skill 输出包含违规内容 | 三层内容过滤管线 |
+| **LLM03: 训练数据投毒** | 记忆库被污染 | 数据来源校验 + 记忆审计 |
+| **LLM04: 模型 DoS** | 上下文耗尽、资源滥用 | 频率限制 + 资源配额 |
+| **LLM05: 供应链漏洞** | 第三方 Skill 含后门 | Skill 签名验证 + 来源审计 |
+| **LLM06: 敏感信息泄露** | Skill 输出泄露隐私 | 输出脱敏 + 敏感信息检测 |
+| **LLM07: 不安全插件** | Skill 权限过大 | RBAC 权限分级 + 最小权限 |
+| **LLM08: 过度代理** | Agent 执行超范围操作 | 操作边界约束 + 人工确认 |
+
+#### 9.6.2 安全开发生命周期（SDL）
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+flowchart LR
+    A[需求阶段<br/>安全需求分析] --> B[设计阶段<br/>威胁建模]
+    B --> C[开发阶段<br/>安全编码规范]
+    C --> D[测试阶段<br/>对抗测试 + 渗透测试]
+    D --> E[发布阶段<br/>安全门禁检查]
+    E --> F[运营阶段<br/>监控 + 应急响应]
+    F -.->|反馈| A
+
+    style A fill:#e3f2fd,stroke:#1565c0
+    style B fill:#e8f5e9,stroke:#2e7d32
+    style C fill:#fff3e0,stroke:#e65100
+    style D fill:#f3e5f5,stroke:#6a1b9a
+    style E fill:#ffebee,stroke:#c62828
+    style F fill:#e3f2fd,stroke:#1565c0
+```
+
+#### 9.6.3 面试场景实操性应对措施
+
+> 以下结合文档中的面试题场景，提供安全相关的实操性解答要点：
+
+| 面试题 | 安全关注点 | 应对要点 |
+|--------|-----------|---------|
+| **Q16 Skill 权限控制** | RBAC 模型设计、审计日志 | 四级权限模型 + 拦截器模式 + JSONL 审计日志 |
+| **Q17 智能客服 Harness** | 用户输入安全、内容过滤 | 输入验证器 + 三层过滤管线 + 敏感信息脱敏 |
+| **Q25 金融风控 Agent** | 数据脱敏、合规审计 | HITL 人工复核 + 全链路审计 + 合规性 100% 门禁 |
+| **Q26 医疗问诊 Agent** | 高敏感场景安全 | 四层安全层级 + 诊断建议双签 + 患者隐私保护 |
+| **Q23 Harness CI 流程** | 安全门禁集成 | 对抗测试作为 CI 质量门禁 + 防御成功率 ≥ 95% |
+
+**面试回答框架（安全类问题）**：
+
+```mermaid
+%%{init: {'theme':'neutral'}}%%
+flowchart TB
+    A[安全类面试题] --> B[第一步：识别威胁面]
+    B --> C[分析 Skills 层/Agent 层/内容层攻击面]
+    C --> D[第二步：防御架构]
+    D --> E[纵深防御五层模型]
+    E --> F[第三步：技术实现]
+    F --> G[输入验证 + 拦截器 + 过滤管线 + 审计日志]
+    G --> H[第四步：验证机制]
+    H --> I[对抗测试 + 安全门禁 + 持续监控]
+    I --> J[第五步：行业标准对齐]
+    J --> K[OWASP LLM Top 10 + NIST AI RMF]
+```
+
+> **核心答题原则**：面试中回答安全类问题时，遵循"**识别威胁 → 架构设计 → 技术实现 → 验证机制 → 标准对齐**"的五步框架，展现系统性安全思维而非零散的技术点。
+
+---
+
+## 十、综合案例分析（3题）
 
 ### Q25：综合案例：设计一个金融风控 Agent 的 Harness + Skills 系统
 
@@ -2518,7 +3098,7 @@ flowchart TB
 
 ---
 
-## 十、面试官使用指南
+## 十一、面试官使用指南
 
 ### 能力分级标准
 
@@ -2545,7 +3125,7 @@ flowchart TB
 
 ---
 
-## 十一、总结
+## 十二、总结
 
 本文档系统覆盖了 Agent Harness 和 Skills 的核心知识体系：
 
