@@ -2,16 +2,45 @@
 
 ## 目录
 
-1. [Vue3响应式原理](#vue3响应式原理)
-2. [Computed实现原理](#computed实现原理)
-3. [Watch实现原理](#watch实现原理)
-4. [KeepAlive实现原理](#keepalive实现原理)
-5. [Vue3架构与优化](#vue3架构与优化)
-6. [组合式API深入](#组合式api深入)
-7. [Vue3编译原理](#vue3编译原理)
-8. [性能优化](#性能优化)
-9. [项目实战与最佳实践](#项目实战与最佳实践)
-10. [源码阅读与设计思想](#源码阅读与设计思想)
+- [高级Vue3工程师面试题](#高级vue3工程师面试题)
+  - [目录](#目录)
+  - [Vue3响应式原理](#vue3响应式原理)
+    - [选择题](#选择题)
+    - [简答题](#简答题)
+    - [编程题](#编程题)
+  - [Computed实现原理](#computed实现原理)
+    - [选择题](#选择题-1)
+    - [简答题](#简答题-1)
+    - [编程题](#编程题-1)
+  - [Watch实现原理](#watch实现原理)
+    - [选择题](#选择题-2)
+    - [简答题](#简答题-2)
+    - [编程题](#编程题-2)
+  - [KeepAlive实现原理](#keepalive实现原理)
+    - [选择题](#选择题-3)
+    - [简答题](#简答题-3)
+    - [设计题](#设计题)
+  - [Vue3架构与优化](#vue3架构与优化)
+    - [选择题](#选择题-4)
+    - [简答题](#简答题-4)
+  - [父子组件生命周期调用顺序](#父子组件生命周期调用顺序)
+    - [选择题](#选择题-5)
+    - [简答题](#简答题-5)
+  - [组合式API深入](#组合式api深入)
+    - [选择题](#选择题-6)
+    - [简答题](#简答题-6)
+  - [Vue3编译原理](#vue3编译原理)
+    - [选择题](#选择题-7)
+    - [简答题](#简答题-7)
+  - [性能优化](#性能优化)
+    - [选择题](#选择题-8)
+    - [简答题](#简答题-8)
+  - [项目实战与最佳实践](#项目实战与最佳实践)
+    - [选择题](#选择题-9)
+    - [案例分析题](#案例分析题)
+  - [源码阅读与设计思想](#源码阅读与设计思想)
+    - [简答题](#简答题-9)
+  - [总结](#总结)
 
 ---
 
@@ -1168,6 +1197,66 @@ D. 只在开发模式使用
 const _hoisted_1 = /*#__PURE__*/_createElementVNode("h1", null, "静态标题", -1)
 const _hoisted_2 = /*#__PURE__*/_createTextVNode("静态内容")
 ```
+
+---
+
+## 父子组件生命周期调用顺序
+
+### 选择题
+
+**1. Vue3中，父子组件生命周期的执行顺序是？**
+A. 父beforeCreate → 父created → 子beforeCreate → 子created → 子mounted → 父mounted
+B. 父beforeCreate → 子beforeCreate → 子created → 父created → 子mounted → 父mounted
+C. 子beforeCreate → 子created → 子mounted → 父beforeCreate → 父created → 父mounted
+D. 父beforeCreate → 父created → 父mounted → 子beforeCreate → 子created → 子mounted
+
+**答案：A**
+
+**2. 当父组件更新时，子组件的生命周期执行顺序是？**
+A. 父beforeUpdate → 子beforeUpdate → 子updated → 父updated
+B. 子beforeUpdate → 子updated → 父beforeUpdate → 父updated
+C. 父beforeUpdate → 父updated → 子beforeUpdate → 子updated
+D. 只有父组件执行生命周期，子组件不执行
+
+**答案：A**
+
+---
+
+### 简答题
+
+**1. 请详细说明Vue3中父子组件生命周期的完整调用顺序。**
+
+**答案：**
+
+Vue3 中父子组件生命周期的执行遵循"**从外到内，再从内到外**"的原则，具体顺序如下：
+
+**挂载阶段（首次渲染）：**
+```
+父 beforeCreate → 父 created → 父 beforeMount
+  → 子 beforeCreate → 子 created → 子 beforeMount → 子 mounted
+→ 父 mounted
+```
+
+**更新阶段：**
+```
+父 beforeUpdate
+  → 子 beforeUpdate → 子 updated
+→ 父 updated
+```
+
+**销毁阶段：**
+```
+父 beforeUnmount
+  → 子 beforeUnmount → 子 unmounted
+→ 父 unmounted
+```
+
+**核心规律：**
+- **挂载**：父组件"前三个"钩子先执行，等待子组件完全挂载后，父组件才执行 mounted
+- **更新**：父组件先开始更新，等待子组件更新完成后，父组件才完成更新
+- **销毁**：父组件先开始销毁，等待子组件销毁完成后，父组件才完成销毁
+
+**总结：父组件的"开始"钩子先执行，等待子组件完成所有操作后，父组件的"结束"钩子才执行。**
 
 ---
 
