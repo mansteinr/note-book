@@ -559,194 +559,869 @@ document.getElementById('disconnectBtn').onclick = () => {
 
 ### 题目 3：WebSocket 的心跳检测与断线重连
 
-**题目描述：** 请说明 WebSocket 心跳检测（Ping/Pong）的必要性，以及如何设计一个健壮的断线重连方案。同时说明为什么 TCP 长连接也会"假死"。
+**题目描述：** 请详细阐述 WebSocket 心跳检测的底层机制（TCP Keep-Alive、协议级 Ping/Pong、应用层心跳的区别与联系），并设计一个包含**状态机管理、指数退避、网络状态监听、状态恢复（鉴权+订阅+离线消息补发）**的健壮重连方案。最后说明 TCP 长连接"假死"的原因及解决手段。
 
-**考察知识点：** 心跳机制、重连策略 | **能力等级：** 中级
+**考察知识点：** 心跳分层机制、重连状态机、指数退避 | **能力等级：** 高级
 
-**参考答案：**
+---
 
-**为什么需要心跳检测：**
+#### 一、心跳检测机制深度解析
 
-TCP 连接可能因以下原因"假死"（连接表面正常但实际已断开）：
-- 中间网络设备（路由器、NAT、防火墙）的超时断开
-- 网络波动导致连接静默中断
-- 操作系统回收空闲连接
-- 移动端网络切换（WiFi → 4G/5G）
-- 代理服务器超时
+##### 1. 为什么长连接会“假死”？
 
-**WebSocket 协议级 Ping/Pong：**
+TCP 连接虽然可靠，但“可靠”仅限于内核层面的数据包收发。当链路中间节点（NAT、防火墙、负载均衡器）因**空闲超时**主动断开连接时，两端的内核可能并不知道，导致上层应用认为连接仍然存活，但数据实际无法送达。
 
-WebSocket 协议本身支持 Ping/Pong 帧，用于检测连接是否存活：
-
-```javascript
-// 服务端（Node.js ws 库）
-const WebSocket = require('ws');
-const wss = new WebSocket.Server({ port: 8080 });
-
-wss.on('connection', (ws) => {
-  ws.isAlive = true;
-  
-  // 收到 Pong 表示连接正常
-  ws.on('pong', () => {
-    ws.isAlive = true;
-  });
-  
-  ws.on('message', (data) => {
-    // 处理业务消息...
-  });
-});
-
-// 定期检测所有连接
-const interval = setInterval(() => {
-  wss.clients.forEach((ws) => {
-    if (ws.isAlive === false) {
-      console.log('连接已死亡，断开');
-      return ws.terminate();
-    }
-    
-    ws.isAlive = false;
-    ws.ping(); // 发送 WebSocket 协议级 Ping 帧
-  });
-}, 30000);
-
-wss.on('close', () => clearInterval(interval));
+```
+┌─────────────┐    ┌──────────────┐    ┌─────────────┐
+│   客户端    │    │  中间设备    │    │   服务端    │
+│  (Client)   │    │ (NAT/防火墙) │    │  (Server)   │
+└──────┬──────┘    └──────┬───────┘    └──────┬──────┘
+       │  空闲 30s         │                │
+       │─────────────────►│                │
+       │                  │                │
+       │  空闲 31s...     │                │
+       │                  │  空闲超时断开   │
+       │                  │  (Connection   │
+       │                  │   Timeout)     │
+       │                  │◄───────────────│
+       │                  │   (连接已失效)  │
+       │                  │                │
+       │  继续发送数据     │                │
+       │─────────────────►│ 丢弃/拒绝      │
+       │                  │               ✗│ 收不到数据
+       │  (数据丢失，无反馈)│                │
+       ▼                  ▼                ▼
+  【应用层认为连接正常】  【连接已断开】  【服务端收不到数据】
 ```
 
-**应用层心跳（兼容性更好）：**
+**“假死”场景：**
+- **移动网络切换**：WiFi ↔ 4G/5G 切换时 IP 地址变化，原 TCP 连接失效
+- **NAT/防火墙超时**：企业网络、运营商网络的 NAT 设备通常有 30s~5min 的空闲超时
+- **服务器重启/升级**：服务端进程重启，主动关闭连接但客户端未收到 FIN 包
+- **操作系统休眠**：电脑睡眠唤醒后网络状态变化
+- **代理/CDN 超时**：某些 CDN/反向代理对 WebSocket 连接有最长保持时间
 
-```javascript
-/**
- * 健壮的心跳 + 重连方案
- */
-class RobustWebSocket {
-  constructor(url, options = {}) {
-    this.url = url;
+##### 2. 心跳检测的三个层级
+
+| 层级 | 技术方案 | 说明 | 优缺点 |
+| --- | --- | --- | --- |
+| **① TCP 层** | `SO_KEEPALIVE` 套接字选项 | 操作系统内核定时发送 TCP Keep-Alive 探测包 | ✅ 无需应用代码<br>❌ 间隔太长（默认 2 小时），且无法穿透所有中间节点 |
+| **② WebSocket 协议层** | 协议级 Ping/Pong 帧（opcode 0x9/0xA） | 由浏览器/WS 库底层处理，可配置间隔 | ✅ 自动处理<br>❌ 浏览器原生 WebSocket 不暴露 Ping 接口（仅服务端可发） |
+| **③ 应用层** | 自定义 `ping`/`pong` JSON 消息 | 应用层发送心跳业务消息 | ✅ 完全可控，兼容性最好<br>❌ 需手动实现 |
+
+##### 3. 应用层心跳实现（推荐方案）
+
+```typescript
+interface HeartbeatOptions {
+  interval: number;       // 心跳间隔（毫秒），默认 15s
+  timeout: number;        // 心跳超时（毫秒），默认 5s
+  maxMissed: number;     // 最大丢失次数，超过则判定连接死亡
+}
+
+class HeartbeatManager {
+  private pingTimer: number | null = null;
+  private missCount: number = 0;
+  private options: HeartbeatOptions;
+  private ws: WebSocket;
+  
+  constructor(ws: WebSocket, options: Partial<HeartbeatOptions> = {}) {
+    this.ws = ws;
     this.options = {
-      heartbeatInterval: 15000,       // 心跳间隔 15 秒
-      heartbeatTimeout: 5000,         // 心跳应答超时 5 秒
-      maxReconnectAttempts: Infinity, // 无限重连
-      reconnectBaseDelay: 1000,       // 基础重连延迟
-      reconnectMaxDelay: 30000,       // 最大重连延迟
-      reconnectBackoff: 1.5,          // 退避倍数
+      interval: 15000,
+      timeout: 5000,
+      maxMissed: 3,
       ...options
     };
-    
-    this.ws = null;
-    this.reconnectAttempts = 0;
-    this.heartbeatTimer = null;
-    this.heartbeatTimeoutTimer = null;
-    this.isManualClose = false;
-    this.messageQueue = [];  // 离线消息队列
   }
   
-  connect() {
-    this.isManualClose = false;
-    this.ws = new WebSocket(this.url);
+  /** 启动心跳 */
+  start(): void {
+    this.stop();
+    this.missCount = 0;
     
-    this.ws.onopen = () => {
-      console.log('连接成功');
-      this.reconnectAttempts = 0;
-      this.startHeartbeat();
-      this.flushMessageQueue(); // 发送离线期间积压的消息
-    };
-    
-    this.ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      
-      // 处理心跳应答
-      if (data.type === 'pong') {
-        this.receiveHeartbeat();
+    this.pingTimer = window.setInterval(() => {
+      // 1. 检查连接状态
+      if (this.ws.readyState !== WebSocket.OPEN) {
+        this.stop();
         return;
       }
       
-      // 处理业务消息
-      this.onMessage?.(data);
-    };
-    
-    this.ws.onclose = () => {
-      this.stopHeartbeat();
-      if (!this.isManualClose) {
-        this.scheduleReconnect();
-      }
-    };
-    
-    this.ws.onerror = () => {
-      // onerror 后会触发 onclose，在 onclose 中处理重连
-    };
-  }
-  
-  // 发送心跳
-  startHeartbeat() {
-    this.stopHeartbeat();
-    
-    this.heartbeatTimer = setInterval(() => {
-      this.send({ type: 'ping' });
+      // 2. 发送 ping
+      this.ws.send(JSON.stringify({
+        type: 'ping',
+        timestamp: Date.now()
+      }));
       
-      // 等待心跳应答超时
-      this.heartbeatTimeoutTimer = setTimeout(() => {
-        console.warn('心跳超时，主动断开');
-        this.ws?.close();
-      }, this.options.heartbeatTimeout);
-    }, this.options.heartbeatInterval);
+      // 3. 未收到 pong，累加丢失次数
+      this.missCount++;
+      console.log(`[Heartbeat] Ping 已发送，丢失次数: ${this.missCount}/${this.options.maxMissed}`);
+      
+      // 4. 超过最大次数，判定连接死亡
+      if (this.missCount >= this.options.maxMissed) {
+        console.error('[Heartbeat] 连接已死亡，主动断开');
+        this.ws.close(10003, '心跳超时');
+        this.stop();
+      }
+    }, this.options.interval);
   }
   
-  stopHeartbeat() {
-    clearInterval(this.heartbeatTimer);
-    clearTimeout(this.heartbeatTimeoutTimer);
+  /** 停止心跳 */
+  stop(): void {
+    if (this.pingTimer !== null) {
+      clearInterval(this.pingTimer);
+      this.pingTimer = null;
+    }
+    this.missCount = 0;
   }
   
-  receiveHeartbeat() {
-    clearTimeout(this.heartbeatTimeoutTimer);
+  /** 收到 pong 时调用，重置计数 */
+  onPong(): void {
+    this.missCount = 0;
+    console.log('[Heartbeat] Pong 收到，连接正常');
+  }
+}
+
+// 服务端（Node.js）实现对应的 pong 响应
+// wss.on('message', (ws, data) => {
+//   const msg = JSON.parse(data);
+//   if (msg.type === 'ping') {
+//     ws.send(JSON.stringify({ type: 'pong', timestamp: msg.timestamp }));
+//   }
+// });
+```
+
+---
+
+#### 二、断线重连机制深度解析
+
+##### 1. 重连状态机设计
+
+一个健壮的重连系统应该包含清晰的状态机管理：
+
+```
+                    ┌──────────────┐
+                    │  DISCONNECTED │ ← 初始状态 / 主动关闭
+                    └──────┬───────┘
+                           │ connect()
+                           ▼
+                    ┌──────────────┐
+              ┌────►│  CONNECTING  │ ← 正在建立连接
+              │     └──────┬───────┘
+              │            │ onopen
+              │            ▼
+              │     ┌──────────────┐
+              │     │   CONNECTED  │ ← 连接正常
+              │     └──────┬───────┘
+              │            │ onclose/onerror (非主动)
+              │            ▼
+              │     ┌──────────────┐
+              │     │   RECONNECTING│ ← 尝试重连
+              │     └──────┬───────┘
+              │            │ 
+              │            ├──► 重试次数达上限 ──► RECONNECT_FAILED (终态)
+              │            │
+              │            └──► 连接成功 ──► CONNECTED
+              │
+              └── 用户手动 close() ──► DISCONNECTED (终态，不再重连)
+```
+
+##### 2. 指数退避算法
+
+指数退避（Exponential Backoff）是重连的核心策略，避免频繁重连冲击服务器：
+
+```typescript
+interface ReconnectOptions {
+  baseDelay: number;       // 基础延迟 (ms)，默认 1000
+  maxDelay: number;        // 最大延迟 (ms)，默认 30000
+  maxAttempts: number;     // 最大重连次数，0 表示无限
+  multiplier: number;      // 指数倍数，默认 2
+  jitter: boolean;         // 是否添加随机抖动
+}
+
+class ReconnectManager {
+  private attempts: number = 0;
+  private timer: number | null = null;
+  private options: ReconnectOptions;
+  
+  constructor(options: Partial<ReconnectOptions> = {}) {
+    this.options = {
+      baseDelay: 1000,
+      maxDelay: 30000,
+      maxAttempts: 0, // 0 = 无限重连
+      multiplier: 2,
+      jitter: true,
+      ...options
+    };
   }
   
-  // 指数退避重连
-  scheduleReconnect() {
-    this.reconnectAttempts++;
+  /** 计算下一次重连延迟 */
+  getNextDelay(): number {
+    const { baseDelay, maxDelay, multiplier, jitter } = this.options;
     
-    // 计算延迟：指数退避，有上限
-    const delay = Math.min(
-      this.options.reconnectBaseDelay * Math.pow(
-        this.options.reconnectBackoff, this.reconnectAttempts - 1
-      ),
-      this.options.reconnectMaxDelay
-    );
+    // 1. 指数退避：baseDelay * multiplier^attempts
+    let delay = baseDelay * Math.pow(multiplier, this.attempts);
     
-    console.log(`第 ${this.reconnectAttempts} 次重连，等待 ${delay}ms`);
+    // 2. 限制上限
+    delay = Math.min(delay, maxDelay);
     
-    setTimeout(() => this.connect(), delay);
+    // 3. 添加随机抖动（0~20%），防止"惊群效应"
+    if (jitter) {
+      const jitterAmount = delay * 0.2;
+      delay += Math.random() * jitterAmount;
+    }
+    
+    return Math.floor(delay);
   }
   
-  // 发送消息（支持离线缓存）
-  send(data) {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(data));
-    } else {
-      // 离线时缓存消息，连接恢复后发送
-      this.messageQueue.push(data);
+  /** 尝试重连 */
+  schedule(connectCallback: () => void): boolean {
+    // 检查是否超过最大次数
+    if (this.options.maxAttempts > 0 && this.attempts >= this.options.maxAttempts) {
+      console.error(`[Reconnect] 已达最大重连次数 ${this.options.maxAttempts}`);
+      return false;
+    }
+    
+    this.attempts++;
+    const delay = this.getNextDelay();
+    
+    console.log(`[Reconnect] 第 ${this.attempts} 次重连，等待 ${delay}ms`);
+    
+    this.timer = window.setTimeout(() => {
+      connectCallback();
+    }, delay);
+    
+    return true;
+  }
+  
+  /** 重置重连状态（连接成功后调用） */
+  reset(): void {
+    this.attempts = 0;
+    if (this.timer !== null) {
+      clearTimeout(this.timer);
+      this.timer = null;
     }
   }
   
-  flushMessageQueue() {
-    while (this.messageQueue.length > 0) {
-      const msg = this.messageQueue.shift();
-      this.send(msg);
+  /** 取消重连（用户主动关闭时调用） */
+  cancel(): void {
+    this.attempts = 0;
+    if (this.timer !== null) {
+      clearTimeout(this.timer);
+      this.timer = null;
     }
-  }
-  
-  close() {
-    this.isManualClose = true;
-    this.stopHeartbeat();
-    this.ws?.close(1000, '正常关闭');
   }
 }
 ```
 
-**重连策略对比：**
+**指数退避延迟计算示例：**
 
-| 策略 | 延迟公式 | 适用场景 |
-|------|---------|---------|
-| 固定延迟 | 恒定值 | 简单场景 |
-| 线性退避 | `delay * attempt` | 轻量应用 |
+```
+第1次重试: 1000ms (1s)
+第2次重试: 2000ms (2s)
+第3次重试: 4000ms (4s)
+第4次重试: 8000ms (8s)
+第5次重试: 16000ms (16s)
+第6次重试: 30000ms (30s, 达到上限)
+第7次及以后: 30000ms + 随机抖动 (30s~36s)
+```
+
+**为什么需要抖动（Jitter）？**
+当大量客户端同时断线（如服务端重启），如果同时重连会造成**"惊群效应"**（Thundering Herd）。抖动可将重连时间分散开，降低服务端压力。
+
+##### 3. 网络状态监听
+
+利用浏览器 `Network Information API` 和 `online/offline` 事件优化重连策略：
+
+```typescript
+class NetworkMonitor {
+  private listeners: Set<(online: boolean, type?: string) => void> = new Set();
+  private currentOnline: boolean = navigator.onLine;
+  
+  constructor() {
+    // 监听在线/离线事件
+    window.addEventListener('online', () => {
+      this.currentOnline = true;
+      this.notifyListeners(true, this.getConnectionType());
+    });
+    
+    window.addEventListener('offline', () => {
+      this.currentOnline = false;
+      this.notifyListeners(false);
+    });
+    
+    // 监听网络状态变化（可选）
+    const connection = (navigator as any).connection;
+    if (connection) {
+      connection.addEventListener('change', () => {
+        console.log(`网络切换至: ${this.getConnectionType()}`);
+      });
+    }
+  }
+  
+  /** 获取当前网络类型 */
+  getConnectionType(): string {
+    const connection = (navigator as any).connection;
+    return connection?.effectiveType || 'unknown';
+  }
+  
+  /** 判断是否在线 */
+  isOnline(): boolean {
+    return this.currentOnline;
+  }
+  
+  /** 订阅状态变化 */
+  subscribe(callback: (online: boolean, type?: string) => void): () => void {
+    this.listeners.add(callback);
+    return () => this.listeners.delete(callback);
+  }
+  
+  private notifyListeners(online: boolean, type?: string): void {
+    this.listeners.forEach(cb => cb(online, type));
+  }
+}
+
+// 结合网络状态的重连策略
+const networkMonitor = new NetworkMonitor();
+
+// 离线时暂停重连，恢复网络后立即尝试
+networkMonitor.subscribe((online, type) => {
+  if (online) {
+    console.log(`[Network] 网络恢复(${type})，立即尝试重连`);
+    ws.reconnectNow(); // 跳过退避，立即重连
+  } else {
+    console.log('[Network] 网络断开，暂停重连');
+    ws.pauseReconnect();
+  }
+});
+```
+
+##### 4. 连接恢复与状态同步
+
+重连成功后需要恢复关键业务状态：
+
+```typescript
+interface ConnectionState {
+  token: string;           // 认证 Token
+  subscriptions: string[]; // 订阅的频道/主题列表
+  userInfo: { id: string; name: string };
+}
+
+class ResilientWebSocket {
+  private state: ConnectionState;
+  private heartbeat: HeartbeatManager;
+  private reconnectManager: ReconnectManager;
+  private networkMonitor: NetworkMonitor;
+  
+  /** 重连成功后的状态恢复 */
+  private async onConnected(): Promise<void> {
+    console.log('[WebSocket] 连接成功，恢复状态...');
+    
+    try {
+      // 1. 发送认证信息
+      this.ws.send(JSON.stringify({
+        type: 'auth',
+        token: this.state.token
+      }));
+      
+      // 2. 等待认证结果
+      await this.waitForAuthResult();
+      
+      // 3. 重新订阅频道
+      for (const channel of this.state.subscriptions) {
+        this.ws.send(JSON.stringify({
+          type: 'subscribe',
+          channel
+        }));
+      }
+      
+      // 4. 恢复成功，重置重连计数
+      this.reconnectManager.reset();
+      this.heartbeat.start();
+      
+      // 5. 发送离线积压消息
+      this.flushQueue();
+      
+      console.log('[WebSocket] 状态恢复完成');
+      this.emit('reconnected');
+    } catch (err) {
+      console.error('[WebSocket] 状态恢复失败:', err);
+      // 恢复失败，触发下一轮重连
+      this.scheduleReconnect();
+    }
+  }
+  
+  /** 发送消息（含离线缓存） */
+  send(data: any): void {
+    const msg = JSON.stringify(data);
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(msg);
+    } else {
+      this.messageQueue.push(msg);
+      console.log(`[WebSocket] 离线缓存消息，队列长度: ${this.messageQueue.length}`);
+    }
+  }
+}
+```
+
+---
+
+#### 三、完整实战：生产级 WebSocket 封装
+
+```typescript
+type EventCallback = (...args: any[]) => void;
+
+interface WSOptions {
+  url: string;
+  protocols?: string | string[];
+  heartbeat?: Partial<HeartbeatOptions>;
+  reconnect?: Partial<ReconnectOptions>;
+  token?: string | (() => Promise<string>);
+  onMessage?: (data: any) => void;
+  onConnected?: () => void;
+  onDisconnected?: (code: number, reason: string) => void;
+  onError?: (error: Event) => void;
+}
+
+class ProductionWebSocket {
+  private ws: WebSocket | null = null;
+  private url: string;
+  private protocols?: string | string[];
+  private token?: string | (() => Promise<string>);
+  
+  private heartbeat: HeartbeatManager | null = null;
+  private reconnectManager: ReconnectManager;
+  private networkMonitor: NetworkMonitor;
+  
+  private isManualClose: boolean = false;
+  private messageQueue: string[] = [];
+  private eventListeners: Map<string, Set<EventCallback>> = new Map();
+  
+  private readonly DEFAULT_HEARTBEAT = {
+    interval: 15000,
+    timeout: 5000,
+    maxMissed: 3
+  };
+  
+  constructor(options: WSOptions) {
+    this.url = options.url;
+    this.protocols = options.protocols;
+    this.token = options.token;
+    
+    // 初始化管理器
+    this.reconnectManager = new ReconnectManager(options.reconnect);
+    this.networkMonitor = new NetworkMonitor();
+    
+    // 监听网络状态
+    this.networkMonitor.subscribe(online => {
+      if (online) {
+        console.log('[WS] 网络恢复，尝试重连');
+        this.connect();
+      }
+    });
+  }
+  
+  /** 建立连接 */
+  async connect(): Promise<void> {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      console.log('[WS] 已连接，跳过');
+      return;
+    }
+    
+    console.log('[WS] 建立新连接...');
+    this.isManualClose = false;
+    
+    try {
+      this.ws = this.protocols
+        ? new WebSocket(this.url, this.protocols)
+        : new WebSocket(this.url);
+      
+      // 绑定事件
+      this.ws.onopen = async () => {
+        console.log('[WS] 连接成功');
+        this.reconnectManager.reset();
+        
+        // 启动心跳
+        this.heartbeat = new HeartbeatManager(this.ws!, this.options.heartbeat ?? this.DEFAULT_HEARTBEAT);
+        this.heartbeat.start();
+        
+        // 恢复状态
+        await this.authenticate();
+        
+        // 发送积压消息
+        this.flushMessageQueue();
+        
+        this.emit('connected');
+      };
+      
+      this.ws.onmessage = (event) => {
+        this.handleMessage(event.data);
+      };
+      
+      this.ws.onclose = (event) => {
+        console.log(`[WS] 连接关闭: code=${event.code}`);
+        this.heartbeat?.stop();
+        this.emit('disconnected', event.code, event.reason);
+        
+        // 非主动关闭则重连
+        if (!this.isManualClose && this.networkMonitor.isOnline()) {
+          this.scheduleReconnect();
+        }
+      };
+      
+      this.ws.onerror = (event) => {
+        this.emit('error', event);
+      };
+    } catch (err) {
+      console.error('[WS] 连接创建失败:', err);
+      this.scheduleReconnect();
+    }
+  }
+  
+  /** 发送消息 */
+  send(data: any): void {
+    const msg = typeof data === 'string' ? data : JSON.stringify(data);
+    
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(msg);
+    } else {
+      this.messageQueue.push(msg);
+      console.log(`[WS] 离线缓存: ${this.messageQueue.length} 条消息`);
+    }
+  }
+  
+  /** 手动关闭连接 */
+  close(code: number = 1000, reason: string = ''): void {
+    this.isManualClose = true;
+    this.heartbeat?.stop();
+    this.reconnectManager.cancel();
+    this.ws?.close(code, reason);
+    console.log('[WS] 主动关闭连接');
+  }
+  
+  /** 订阅事件 */
+  on(event: string, callback: EventCallback): () => void {
+    if (!this.eventListeners.has(event)) {
+      this.eventListeners.set(event, new Set());
+    }
+    this.eventListeners.get(event)!.add(callback);
+    return () => this.eventListeners.get(event)?.delete(callback);
+  }
+  
+  // ---- 私有方法 ----
+  
+  private scheduleReconnect(): void {
+    const ok = this.reconnectManager.schedule(() => this.connect());
+    if (!ok) {
+      this.emit('maxReconnectReached');
+      console.error('[WS] 已达最大重连次数');
+    }
+  }
+  
+  private handleMessage(raw: string): void {
+    let data: any;
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      data = raw;
+    }
+    
+    // 处理心跳
+    if (data?.type === 'pong') {
+      this.heartbeat?.onPong();
+      return;
+    }
+    
+    // 处理业务消息
+    this.emit('message', data);
+  }
+  
+  private async authenticate(): Promise<void> {
+    if (!this.token) return;
+    
+    const token = typeof this.token === 'function' 
+      ? await this.token() 
+      : this.token;
+    
+    this.send({ type: 'auth', token });
+  }
+  
+  private flushMessageQueue(): void {
+    while (this.messageQueue.length > 0) {
+      const msg = this.messageQueue.shift()!;
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this.ws.send(msg);
+      } else {
+        this.messageQueue.unshift(msg); // 放回队列
+        break;
+      }
+    }
+    console.log(`[WS] 离线消息已清空`);
+  }
+  
+  private emit(event: string, ...args: any[]): void {
+    this.eventListeners.get(event)?.forEach(cb => cb(...args));
+  }
+}
+
+// ---- 使用示例 ----
+const ws = new ProductionWebSocket({
+  url: 'wss://api.example.com/realtime',
+  token: () => localStorage.getItem('auth_token')!, // 动态获取 token
+  heartbeat: { interval: 15000, timeout: 5000, maxMissed: 3 },
+  reconnect: { baseDelay: 1000, maxDelay: 30000, maxAttempts: 10, jitter: true },
+  onMessage: (data) => console.log('收到消息:', data),
+  onConnected: () => console.log('连接已恢复'),
+  onDisconnected: (code) => console.log(`断开: ${code}`),
+});
+
+// 订阅业务事件
+const offMessage = ws.on('message', data => {
+  if (data.type === 'chat') renderChat(data);
+  if (data.type === 'notification') showNotification(data);
+});
+
+const offReconnected = ws.on('connected', () => {
+  console.log('WebSocket 已重新连接');
+  refreshUserData();
+});
+
+// 建立连接
+ws.connect();
+
+// 发送消息
+ws.send({ type: 'chat', content: 'Hello!' });
+
+// 页面卸载时清理
+window.addEventListener('beforeunload', () => {
+  ws.close();
+  offMessage();
+  offReconnected();
+});
+```
+
+---
+
+#### 四、重连策略对比总结
+
+| 策略 | 延迟公式 | 适用场景 | 优点 | 缺点 |
+| --- | --- | --- | --- | --- |
+| 固定延迟 | 恒定值（如 3s） | 简单Demo | 实现简单 | 服务端压力大 |
+| 线性退避 | `delay × attempt` | 轻量应用 | 逐步增加 | 增长过快 |
+| **指数退避** | `base × 2^attempts` | **生产环境首选** | 增长合理 | 需实现 |
+| 指数+抖动 | `base × 2^attempts + rand(0~20%)` | 多客户端场景 | 防止惊群 | 实现略复杂 |
+| 智能重连 | 网络状态+指数退避 | 移动端/H5 | 体验最优 | 实现最复杂 |
+
+---
+
+#### 五、考点与评分标准
+
+| 知识点 | 分值 | 说明 |
+| --- | --- | --- |
+| 解释 TCP 假死原因 | 2 分 | 中间设备超时、网络切换 |
+| 心跳三层架构 | 3 分 | TCP 层/协议层/应用层的区别 |
+| 应用层心跳实现 | 3 分 | 含超时检测和丢失计数 |
+| 重连状态机 | 3 分 | 状态流转设计清晰 |
+| 指数退避算法 | 3 分 | 含抖动防止惊群 |
+| 网络状态监听 | 2 分 | online/offline + Network API |
+| 状态恢复机制 | 3 分 | 鉴权、订阅恢复、离线消息 |
+| 生产级封装 | 1 分 | 代码结构清晰、异常处理完善 |
+
+**满分：20 分** | **及格线：12 分** | **优秀标准：17+ 分**
+
+---
+
+### 题目 3（补充）：心跳检测与重连的常见陷阱
+
+**题目描述：** 在实现 WebSocket 心跳与重连时，有哪些常见的"坑"？请列举至少 5 个并给出解决方案。
+
+**考察知识点：** 实战经验、问题排查 | **能力等级：** 高级
+
+**参考答案：**
+
+##### 陷阱 1：重连风暴
+
+**问题：** 服务端重启后，数千客户端同时重连，导致服务端 CPU 飙升甚至雪崩。
+
+**解决方案：**
+- 使用**随机抖动**（Jitter）分散重连时间
+- 设置**最小/最大重连间隔**限制
+- 服务端可返回 **Retry-After** 头提示客户端延迟重连
+
+```typescript
+// 客户端尊重服务端的 Retry-After 提示
+private async scheduleReconnectFromServer(): Promise<void> {
+  try {
+    const res = await fetch('/api/ws-retry-info');
+    const { retryAfter } = await res.json();
+    const jitter = Math.random() * 0.3 * retryAfter; // 30% 抖动
+    setTimeout(() => this.connect(), retryAfter + jitter);
+  } catch {
+    this.scheduleReconnect(); // 降级到本地策略
+  }
+}
+```
+
+##### 陷阱 2：心跳在页面不可见时仍在发送
+
+**问题：** 用户切换到其他标签页，浏览器会 setInterval 降频或暂停，导致心跳紊乱。
+
+**解决方案：**
+
+```typescript
+// 监听页面可见性，调整心跳策略
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    this.heartbeat?.stop();  // 暂停心跳
+    console.log('[Heartbeat] 页面隐藏，暂停心跳');
+  } else {
+    this.heartbeat?.start();  // 恢复心跳
+    console.log('[Heartbeat] 页面可见，恢复心跳');
+  }
+});
+```
+
+##### 陷阱 3：onerror 事件的不可靠性
+
+**问题：** 浏览器规范规定 onerror 事件可能不触发，或仅在控制台报错但不触发 onclose。
+
+**解决方案：**
+- **不要仅依赖 onerror**，onclose 才是连接关闭的可靠信号
+- 结合**心跳超时检测**主动发现连接死亡
+- 设置**连接超时定时器**，onopen 未在规定时间内触发则主动重连
+
+```typescript
+connectWithTimeout(timeout: number = 10000): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      this.ws?.close();
+      reject(new Error(`连接超时 (${timeout}ms)`));
+    }, timeout);
+    
+    this.ws.onopen = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    
+    this.ws.onclose = () => {
+      clearTimeout(timer);
+      reject(new Error('连接关闭'));
+    };
+  });
+}
+```
+
+##### 陷阱 4：重连后旧消息仍在队列中
+
+**问题：** 多次重连失败后，消息队列可能积压大量过时消息。
+
+**解决方案：**
+- **消息有效期**：每条消息携带时间戳，重连后丢弃超时消息
+- **最大队列长度**：超过阈值时丢弃最旧消息或拒绝新消息
+- **消息序号**：服务端可根据序号去重，防止重复消费
+
+```typescript
+interface QueueMessage {
+  id: string;
+  timestamp: number;
+  payload: any;
+}
+
+const MAX_QUEUE_SIZE = 100;
+const MESSAGE_TTL = 30000; // 消息有效期 30s
+
+send(data: any): void {
+  const msg: QueueMessage = {
+    id: crypto.randomUUID(),
+    timestamp: Date.now(),
+    payload: data
+  };
+  
+  if (this.ws?.readyState === WebSocket.OPEN) {
+    this.ws.send(JSON.stringify(msg));
+  } else {
+    // 队列满时丢弃最旧消息
+    if (this.messageQueue.length >= MAX_QUEUE_SIZE) {
+      this.messageQueue.shift();
+      console.warn('[WS] 消息队列已满，丢弃最旧消息');
+    }
+    this.messageQueue.push(msg);
+  }
+}
+
+flushMessageQueue(): void {
+  const now = Date.now();
+  this.messageQueue = this.messageQueue.filter(
+    msg => now - msg.timestamp < MESSAGE_TTL
+  );
+  // ... 发送剩余消息
+}
+```
+
+##### 陷阱 5：多标签页连接风暴
+
+**问题：** 用户打开多个标签页，每个标签页都建立 WebSocket 连接，消耗服务端资源。
+
+**解决方案：**
+- 使用 **BroadcastChannel** 在标签页间协调，只保留一个活跃连接
+- 实现**连接所有权**机制，非活跃标签页复用主标签页的连接
+
+```typescript
+// 主标签页建立连接，其他标签页通过 BroadcastChannel 复用
+const channel = new BroadcastChannel('ws-coordination');
+
+let isOwner = false;
+let ws: WebSocket | null = null;
+
+async function initializeConnection() {
+  // 尝试成为连接所有者
+  isOwner = await tryBecomeOwner();
+  
+  if (isOwner) {
+    ws = new WebSocket(url);
+    ws.onmessage = (e) => {
+      channel.postMessage({ type: 'message', data: e.data });
+    };
+  } else {
+    // 非所有者，监听主标签页的消息
+    channel.onmessage = (e) => {
+      if (e.data.type === 'message') {
+        handleMessage(e.data.data);
+      }
+    };
+  }
+}
+
+// 通过 localStorage 锁实现所有权
+async function tryBecomeOwner(): Promise<boolean> {
+  return new Promise(resolve => {
+    const key = 'ws-connection-owner';
+    const lock = navigator.locks.request(key, () => {
+      resolve(true); // 获取锁成功
+      return new Promise(() => {}); // 保持锁
+    });
+    // 5 秒内未获得锁则放弃
+    setTimeout(() => resolve(false), 5000);
+  });
+}
+```
+
+---
+
+#### 六、考点与评分标准
+
+| 陷阱 | 分值 | 解决方案可行性 |
+| --- | --- | --- |
+| 重连风暴 + 抖动 | 3 分 | ✅ 生产必需 |
+| 页面隐藏心跳暂停 | 2 分 | ✅ 移动端适配 |
+| onerror 不可靠 | 2 分 | ✅ 健壮性必备 |
+| 消息队列管理 | 3 分 | ✅ 数据可靠性 |
+| 多标签页协调 | 2 分 | ✅ 用户体验优化 |
+
+**满分：12 分** | **及格线：7 分**
+
+---
+
+### 题目 4：WebSocket 与 HTTP 长轮询对比
 | 指数退避 | `delay * factor^attempt` | 推荐方案，避免服务器压力 |
 | 随机退避 | `random(min, max)` | 避免惊群效应 |
 
