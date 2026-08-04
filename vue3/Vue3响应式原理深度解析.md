@@ -2,7 +2,7 @@
 
 > 本文档系统阐述 Vue3 响应式系统的核心实现机制，涵盖 Proxy 代理、依赖收集与追踪、变更检测、reactive/ref/computed/watch 的内部工作原理，并与 Vue2 响应式系统进行深度对比。包含代码示例、流程图与核心原理说明，适合深入理解 Vue3 响应式设计。
 
----
+***
 
 ## 目录
 
@@ -35,7 +35,7 @@
     - [6.2 ref 与 reactive 的关系](#62-ref-与-reactive-的关系)
     - [6.3 模板自动解包](#63-模板自动解包)
 
----
+***
 
 ## 一、响应式系统概述
 
@@ -60,11 +60,11 @@ count.value = 1  // 自动输出：count 是: 1
 
 实现响应式需解决三个核心问题：
 
-| 问题 | 说明 | 解决方案 |
-| --- | --- | --- |
-| **① 数据劫持** | 如何感知数据被读取/修改？ | Proxy / Object.defineProperty |
-| **② 依赖收集** | 如何知道"谁"依赖了"哪个数据"？ | track：读取时记录当前 effect |
-| **③ 派发更新** | 数据变化时如何通知依赖重新执行？ | trigger：修改时执行记录的 effect |
+| 问题         | 说明                | 解决方案                          |
+| ---------- | ----------------- | ----------------------------- |
+| **① 数据劫持** | 如何感知数据被读取/修改？     | Proxy / Object.defineProperty |
+| **② 依赖收集** | 如何知道"谁"依赖了"哪个数据"？ | track：读取时记录当前 effect          |
+| **③ 派发更新** | 数据变化时如何通知依赖重新执行？  | trigger：修改时执行记录的 effect       |
 
 ### 1.3 Vue3 响应式架构
 
@@ -102,7 +102,7 @@ count.value = 1  // 自动输出：count 是: 1
 └──────────────────────────────────────────────────────────┘
 ```
 
----
+***
 
 ## 二、Vue2 响应式原理回顾
 
@@ -191,14 +191,14 @@ Watcher.update() → 异步队列 → 重新渲染
 
 ### 2.2 Vue2 的局限性
 
-| 局限 | 说明 | 解决方案 |
-| --- | --- | --- |
-| **无法检测新增/删除属性** | `obj.newKey = 1` 不触发响应式 | `Vue.set()` / `Vue.delete()` |
-| **无法监听数组索引与 length** | `arr[0] = x`、`arr.length = 0` 不触发 | 重写 7 个数组方法 + `$set` |
-| **深度监听需递归遍历** | 初始化时递归整个对象，性能差 | 初始化慢 |
-| **无法监听 Map/Set/WeakMap** | 仅支持普通对象 | 不支持集合类型 |
-| **每个属性一个 Dep** | 对象大时 Dep 数量多，内存开销大 | 内存占用高 |
-| **无法监听属性的存在性** | 新增属性无 getter/setter | `Vue.set` |
+| 局限                       | 说明                                | 解决方案                         |
+| ------------------------ | --------------------------------- | ---------------------------- |
+| **无法检测新增/删除属性**          | `obj.newKey = 1` 不触发响应式           | `Vue.set()` / `Vue.delete()` |
+| **无法监听数组索引与 length**     | `arr[0] = x`、`arr.length = 0` 不触发 | 重写 7 个数组方法 + `$set`          |
+| **深度监听需递归遍历**            | 初始化时递归整个对象，性能差                    | 初始化慢                         |
+| **无法监听 Map/Set/WeakMap** | 仅支持普通对象                           | 不支持集合类型                      |
+| **每个属性一个 Dep**           | 对象大时 Dep 数量多，内存开销大                | 内存占用高                        |
+| **无法监听属性的存在性**           | 新增属性无 getter/setter               | `Vue.set`                    |
 
 **新增属性问题示例**：
 
@@ -253,7 +253,7 @@ const arrayMethods = Object.create(arrayProto)
 })
 ```
 
----
+***
 
 ## 三、Vue3 核心基础：Proxy
 
@@ -296,14 +296,14 @@ delete proxy.name   // 输出 "删除 name"
 
 **Proxy 的关键优势**：
 
-| 优势 | 说明 |
-| --- | --- |
-| **整体代理** | 代理整个对象，而非每个属性 |
-| **支持新增属性** | 新增属性自动被拦截（无需 `Vue.set`） |
-| **支持数组** | 索引赋值、length 修改、数组方法均能拦截 |
-| **支持集合** | Map/Set/WeakMap/WeakSet 可代理 |
+| 优势          | 说明                                         |
+| ----------- | ------------------------------------------ |
+| **整体代理**    | 代理整个对象，而非每个属性                              |
+| **支持新增属性**  | 新增属性自动被拦截（无需 `Vue.set`）                    |
+| **支持数组**    | 索引赋值、length 修改、数组方法均能拦截                    |
+| **支持集合**    | Map/Set/WeakMap/WeakSet 可代理                |
 | **13 种拦截器** | get/set/has/deleteProperty/ownKeys/apply 等 |
-| **惰性代理** | 访问嵌套属性时才递归代理（性能优） |
+| **惰性代理**    | 访问嵌套属性时才递归代理（性能优）                          |
 
 ### 3.2 Reflect 的作用
 
@@ -358,19 +358,19 @@ console.log(proxyChild.value)  // 10（正确，this 指向 proxyChild）
 
 ### 3.3 Proxy vs defineProperty
 
-| 维度 | Object.defineProperty | Proxy |
-| --- | --- | --- |
-| **代理范围** | 单个属性 | 整个对象 |
-| **新增属性** | ❌ 需 `Vue.set` | ✅ 自动响应 |
-| **删除属性** | ❌ 需 `Vue.delete` | ✅ deleteProperty 拦截 |
-| **数组监听** | ❌ 索引/length 失效 | ✅ 全部支持 |
-| **集合类型** | ❌ 不支持 Map/Set | ✅ 支持 |
-| **深度监听** | 初始化递归（慢） | 访问时递归（惰性，快） |
-| **性能** | 大对象初始化慢 | 初始化快，访问时按需代理 |
-| **兼容性** | IE9+ | ES6（不支持 IE） |
-| **拦截器数量** | 仅 get/set | 13 种 |
+| 维度        | Object.defineProperty | Proxy               |
+| --------- | --------------------- | ------------------- |
+| **代理范围**  | 单个属性                  | 整个对象                |
+| **新增属性**  | ❌ 需 `Vue.set`         | ✅ 自动响应              |
+| **删除属性**  | ❌ 需 `Vue.delete`      | ✅ deleteProperty 拦截 |
+| **数组监听**  | ❌ 索引/length 失效        | ✅ 全部支持              |
+| **集合类型**  | ❌ 不支持 Map/Set         | ✅ 支持                |
+| **深度监听**  | 初始化递归（慢）              | 访问时递归（惰性，快）         |
+| **性能**    | 大对象初始化慢               | 初始化快，访问时按需代理        |
+| **兼容性**   | IE9+                  | ES6（不支持 IE）         |
+| **拦截器数量** | 仅 get/set             | 13 种                |
 
----
+***
 
 ## 四、依赖收集与触发更新
 
@@ -591,7 +591,7 @@ function trigger(target: object, key: unknown, type: TriggerOpTypes) {
               └────────────────────────┘
 ```
 
----
+***
 
 ## 五、reactive 实现原理
 
@@ -859,11 +859,12 @@ function createReactiveObject(target, isReadonly, shallow, handlers) {
 ```
 
 **缓存的作用**：
+
 1. **避免重复代理**：同一对象多次 reactive 只创建一次 Proxy
 2. **保证一致性**：同一对象始终返回同一个代理
 3. **性能优化**：减少 Proxy 创建开销
 
----
+***
 
 ## 六、ref 实现原理
 
@@ -977,6 +978,7 @@ const isObject = (v: unknown): v is object =>
 ```
 
 **核心差异**：
+
 - **ref**：通过 `value` 属性的 get/set，依赖存在 ref 自己的 `dep`（Set）
 - **reactive**：通过 Proxy 拦截，依赖存在全局 `targetMap`
 - **ref 包对象**：内部用 reactive 包裹，但 ref 的 `.value` 替换仍触发 ref 的 dep
@@ -1033,13 +1035,14 @@ console.log(state.count)   // 0（自动解包）
 state.count = 1            // 等价于 count.value = 1
 ```
 
----
+***
 
 ## 七、computed 实现原理
 
 ### 7.1 惰性求值与缓存
 
 **computed** 的核心特性是**惰性求值**与**缓存**：
+
 - **惰性求值**：只有访问 `.value` 时才计算，不访问不计算
 - **缓存**：依赖不变时返回缓存值，依赖变化才重新计算
 
@@ -1169,10 +1172,11 @@ computed 的核心是"**依赖变化不立即计算，只标记脏；下次访�
 ```
 
 **computed 的 effect 与普通 effect 区别**：
+
 - **普通 effect**：依赖变化立即执行 `run()`
 - **computed 的 effect**：依赖变化执行 `scheduler()`（仅标记脏），不立即计算
 
----
+***
 
 ## 八、watch 与 watchEffect 实现原理
 
@@ -1417,14 +1421,14 @@ function traverse(value: any, seen = new Set()) {
 
 **watch vs watchEffect 原理对比**：
 
-| 维度 | watch | watchEffect |
-| --- | --- | --- |
-| **依赖收集** | 通过 getter 显式指定 | 自动收集回调内依赖 |
-| **执行时机** | 默认不立即执行（除非 immediate） | 默认立即执行 |
-| **旧值** | ✅ 可获取 | ❌ 无法获取 |
-| **实现** | getter + scheduler + 手动 job | effect + scheduler |
+| 维度       | watch                       | watchEffect        |
+| -------- | --------------------------- | ------------------ |
+| **依赖收集** | 通过 getter 显式指定              | 自动收集回调内依赖          |
+| **执行时机** | 默认不立即执行（除非 immediate）       | 默认立即执行             |
+| **旧值**   | ✅ 可获取                       | ❌ 无法获取             |
+| **实现**   | getter + scheduler + 手动 job | effect + scheduler |
 
----
+***
 
 ## 九、调度器 Scheduler
 
@@ -1536,32 +1540,32 @@ state.b = 20   // job 已在队列，不入队
 
 **flush 时机**：
 
-| flush | 说明 | 应用场景 |
-| --- | --- | --- |
-| `sync` | 同步执行 | 需要立即看到更新 |
-| `pre`（默认） | 组件更新前 | watch 回调中操作数据 |
-| `post` | 组件更新后（nextTick 后） | 需要访问更新后的 DOM |
+| flush     | 说明                | 应用场景          |
+| --------- | ----------------- | ------------- |
+| `sync`    | 同步执行              | 需要立即看到更新      |
+| `pre`（默认） | 组件更新前             | watch 回调中操作数据 |
+| `post`    | 组件更新后（nextTick 后） | 需要访问更新后的 DOM  |
 
----
+***
 
 ## 十、Vue2 vs Vue3 响应式对比
 
 ### 10.1 核心机制对比
 
-| 维度 | Vue2 | Vue3 |
-| --- | --- | --- |
-| **劫持方式** | Object.defineProperty | Proxy |
-| **劫持范围** | 单个属性 | 整个对象 |
-| **新增属性** | ❌ 需 Vue.set | ✅ 自动响应 |
-| **删除属性** | ❌ 需 Vue.delete | ✅ deleteProperty 拦截 |
-| **数组监听** | ❌ 重写 7 个方法 | ✅ 原生支持 |
-| **集合类型** | ❌ 不支持 | ✅ 支持 Map/Set |
-| **深度响应** | 初始化递归（慢） | 访问时惰性（快） |
-| **依赖存储** | 每属性一个 Dep | 全局 targetMap |
-| **副作用管理** | Watcher 类 | ReactiveEffect + effect 栈 |
-| **调度器** | nextTick + 队列 | 微任务 + 队列（类似） |
-| **缓存机制** | 无 | computed 脏标记 |
-| **TS 支持** | 弱（Options API） | 强（Composition API + 类型推导） |
+| 维度        | Vue2                  | Vue3                      |
+| --------- | --------------------- | ------------------------- |
+| **劫持方式**  | Object.defineProperty | Proxy                     |
+| **劫持范围**  | 单个属性                  | 整个对象                      |
+| **新增属性**  | ❌ 需 Vue.set           | ✅ 自动响应                    |
+| **删除属性**  | ❌ 需 Vue.delete        | ✅ deleteProperty 拦截       |
+| **数组监听**  | ❌ 重写 7 个方法            | ✅ 原生支持                    |
+| **集合类型**  | ❌ 不支持                 | ✅ 支持 Map/Set              |
+| **深度响应**  | 初始化递归（慢）              | 访问时惰性（快）                  |
+| **依赖存储**  | 每属性一个 Dep             | 全局 targetMap              |
+| **副作用管理** | Watcher 类             | ReactiveEffect + effect 栈 |
+| **调度器**   | nextTick + 队列         | 微任务 + 队列（类似）              |
+| **缓存机制**  | 无                     | computed 脏标记              |
+| **TS 支持** | 弱（Options API）        | 强（Composition API + 类型推导） |
 
 ### 10.2 依赖收集对比
 
@@ -1626,20 +1630,20 @@ Vue3 依赖收集结构：
 
 ### 10.4 API 对比
 
-| 能力 | Vue2 | Vue3 |
-| --- | --- | --- |
-| 响应式对象 | `data() { return {} }` | `reactive({})` |
-| 响应式基本类型 | `data() { return { x: 1 } }` | `ref(1)` |
-| 计算属性 | `computed: { double() {} }` | `computed(() => {})` |
-| 侦听器 | `watch: { x() {} }` | `watch(x, () => {})` |
-| 自动侦听 | 无 | `watchEffect(() => {})` |
-| 只读 | 无 | `readonly(obj)` |
-| 浅层 | 无 | `shallowReactive` / `shallowRef` |
-| 标记非响应式 | `Object.freeze()` | `markRaw(obj)` |
-| 转换 ref | 无 | `toRef` / `toRefs` |
-| 自定义 ref | 无 | `customRef` |
+| 能力      | Vue2                         | Vue3                             |
+| ------- | ---------------------------- | -------------------------------- |
+| 响应式对象   | `data() { return {} }`       | `reactive({})`                   |
+| 响应式基本类型 | `data() { return { x: 1 } }` | `ref(1)`                         |
+| 计算属性    | `computed: { double() {} }`  | `computed(() => {})`             |
+| 侦听器     | `watch: { x() {} }`          | `watch(x, () => {})`             |
+| 自动侦听    | 无                            | `watchEffect(() => {})`          |
+| 只读      | 无                            | `readonly(obj)`                  |
+| 浅层      | 无                            | `shallowReactive` / `shallowRef` |
+| 标记非响应式  | `Object.freeze()`            | `markRaw(obj)`                   |
+| 转换 ref  | 无                            | `toRef` / `toRefs`               |
+| 自定义 ref | 无                            | `customRef`                      |
 
----
+***
 
 ## 十一、常见问题与最佳实践
 
@@ -1755,25 +1759,26 @@ stop()  // 手动停止
 // <div v-memo="[item.id]">...</div>
 ```
 
----
+***
 
 ## 附录 核心源码索引
 
 Vue3 响应式源码位于 `packages/reactivity/src/`：
 
-| 文件 | 核心内容 |
-| --- | --- |
-| `reactive.ts` | reactive / readonly / shallowReactive 实现 |
-| `ref.ts` | ref / computed / customRef 实现 |
-| `effect.ts` | ReactiveEffect / track / trigger / cleanup |
-| `baseHandlers.ts` | 普通对象的 Proxy handlers（get/set/has/deleteProperty） |
-| `collectionHandlers.ts` | Map/Set 等集合类型的 handlers |
-| `dep.ts` | dep 数据结构与依赖管理 |
-| `computed.ts` | ComputedRefImpl 实现 |
-| `watch.ts` | watch / watchEffect 实现（在 runtime-core） |
-| `scheduler.ts` | 调度器与队列管理（在 runtime-core） |
+| 文件                      | 核心内容                                             |
+| ----------------------- | ------------------------------------------------ |
+| `reactive.ts`           | reactive / readonly / shallowReactive 实现         |
+| `ref.ts`                | ref / computed / customRef 实现                    |
+| `effect.ts`             | ReactiveEffect / track / trigger / cleanup       |
+| `baseHandlers.ts`       | 普通对象的 Proxy handlers（get/set/has/deleteProperty） |
+| `collectionHandlers.ts` | Map/Set 等集合类型的 handlers                          |
+| `dep.ts`                | dep 数据结构与依赖管理                                    |
+| `computed.ts`           | ComputedRefImpl 实现                               |
+| `watch.ts`              | watch / watchEffect 实现（在 runtime-core）           |
+| `scheduler.ts`          | 调度器与队列管理（在 runtime-core）                         |
 
 **推荐阅读顺序**：
+
 1. `effect.ts`：理解 ReactiveEffect、track、trigger（核心）
 2. `reactive.ts`：理解 Proxy 的创建
 3. `baseHandlers.ts`：理解 get/set 拦截细节
@@ -1781,18 +1786,18 @@ Vue3 响应式源码位于 `packages/reactivity/src/`：
 5. `collectionHandlers.ts`：理解集合类型处理
 6. `watch.ts`：理解 watch/watchEffect
 
----
+***
 
 ## 参考资料
 
-- Vue3 响应式官方文档：https://cn.vuejs.org/guide/extras/reactivity-in-depth.html
-- Vue3 响应式 API：https://cn.vuejs.org/api/reactivity-core.html
-- Vue3 源码：https://github.com/vuejs/core/tree/main/packages/reactivity
-- MDN Proxy：https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/Proxy
-- MDN Reflect：https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/Reflect
-- ES6 Proxy 规范：https://tc39.es/ecma262/#sec-proxy-object-internal-methods-and-internal-slots
+- Vue3 响应式官方文档：<https://cn.vuejs.org/guide/extras/reactivity-in-depth.html>
+- Vue3 响应式 API：<https://cn.vuejs.org/api/reactivity-core.html>
+- Vue3 源码：<https://github.com/vuejs/core/tree/main/packages/reactivity>
+- MDN Proxy：<https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/Proxy>
+- MDN Reflect：<https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/Reflect>
+- ES6 Proxy 规范：<https://tc39.es/ecma262/#sec-proxy-object-internal-methods-and-internal-slots>
 
----
+***
 
 > **文档说明**：本文档共 11 大章节 + 附录 + 参考资料，系统覆盖 Vue3 响应式系统的核心原理：从 Object.defineProperty 的局限到 Proxy 的优势，从 track/trigger 的依赖收集到 computed 的缓存机制，从 ReactiveEffect 到调度器的批量更新。每个原理均配简易实现代码与流程图，并包含 Vue2 vs Vue3 的深度对比。建议结合 Vue3 源码阅读，加深理解。
 
