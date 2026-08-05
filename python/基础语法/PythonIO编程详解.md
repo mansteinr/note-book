@@ -491,6 +491,8 @@ print(f"{student2.name}, {student2.age}岁, 入学：{student2.enroll_date}")
 
 `pickle` 可以序列化任意 Python 对象，但**不安全**，不要加载不受信任的 pickle 数据：
 
+> ⚠️ **安全警告**：`pickle` 反序列化时可以构造任意 Python 对象，攻击者可借此在 `pickle.load()` 时**执行任意代码**（远程代码执行 RCE）。因此：① 只 `pickle.load` 自己信任的数据；② 跨进程/跨网络传输请改用 `json`；③ 处理不可信输入可考虑 `pickle` 的受限替代方案（如 `json`、`shelve` 配合校验）。
+
 ```python
 import pickle
 

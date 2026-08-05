@@ -288,10 +288,13 @@ print(a == b)   # True，值相等
 print(a is b)   # False，不同对象
 print(a is c)   # True，同一对象
 
-# None 判断
+# None 判断：必须用 is，不要用 ==
 x = None
-print(x is None)  # True，推荐用法
+print(x is None)   # True，推荐用法
+print(x == None)   # True，但不推荐
 ```
+
+> **为何判断 None 用 `is` 而非 `==`？** `None` 是单例对象（全解释器唯一），`is` 直接比较内存地址，速度快且不会被自定义 `__eq__` 干扰；`==` 会触发相等运算符，可能被类重写导致行为异常。PEP 8 也明确建议：与 `None` 的比较一律使用 `is` / `is not`。
 
 ### 3.5 赋值运算符
 

@@ -152,6 +152,19 @@ t7 = tuple("abc")          # ('a', 'b', 'c')
 
 > **注意**：单元素元组必须加逗号 `(1,)`，否则 `(1)` 会被当作数学表达式，结果是整数 `1`。
 
+**不可变性的含义**：tuple 的元素不能增删改，试图修改会直接报错：
+
+```python
+t = (1, 2, 3)
+# t[0] = 10   # TypeError: 'tuple' object does not support item assignment
+# t.append(4) # AttributeError: 'tuple' object has no attribute 'append'
+
+# 注意：若元素本身是可变对象（如 list），该元素内部仍可修改
+t2 = (1, [2, 3])
+t2[1].append(4)
+print(t2)     # (1, [2, 3, 4])  —— 元组"指向"的对象没变，变的是对象内部
+```
+
 ### 2.2 访问与操作
 
 ```python

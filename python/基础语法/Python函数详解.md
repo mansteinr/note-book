@@ -503,8 +503,11 @@ print(triple(5))  # 15
 ### 6.3 装饰器基础
 
 ```python
+from functools import wraps
+
 def log_execution(func):
     """记录函数执行的装饰器"""
+    @wraps(func)            # 保留原函数的元信息（__name__、__doc__ 等）
     def wrapper(*args, **kwargs):
         print(f"调用 {func.__name__}，参数：{args}, {kwargs}")
         result = func(*args, **kwargs)
@@ -514,12 +517,18 @@ def log_execution(func):
 
 @log_execution
 def add(a, b):
+    """两数相加"""
     return a + b
 
 add(3, 5)
 # 调用 add，参数：(3, 5), {}
 # add 返回：8
+
+print(add.__name__)   # add（若不加 @wraps，这里会变成 wrapper）
+print(add.__doc__)    # 两数相加
 ```
+
+> **重要**：编写装饰器时务必用 `@functools.wraps(func)` 装饰内层 `wrapper`，否则被装饰函数的 `__name__`、`__doc__` 等元信息会被 `wrapper` 覆盖，影响调试与文档生成。
 
 ### 6.4 偏函数
 

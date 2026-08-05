@@ -69,6 +69,8 @@ from my_math import *
 print(square(5))
 ```
 
+> **为什么不推荐 `from module import *`？** 它会把模块中所有公开名字一股脑倒入当前命名空间，造成**命名空间污染**：① 容易与本地变量或其他模块的同名对象冲突，且难以追踪来源；② IDE 无法准确补全和跳转；③ 后续维护者无法一眼看出某个名字来自哪个模块。推荐显式导入 `from module import name` 或用别名 `import module as m`。模块可通过定义 `__all__` 列表控制 `import *` 实际导出的名字。
+
 ### 1.4 `__name__` 的作用
 
 ```python
