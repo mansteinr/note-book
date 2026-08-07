@@ -783,3 +783,715 @@ class DiversitySelector:
         total = len(words1 | words2)
         return overlap / total if total > 0 else 0.5
 ```
+
+---
+
+## 六、生成模块工作原理
+
+### 6.1 阶段核心职责
+
+生成模块是 RAG 系统的**输出引擎**，负责利用检索到的信息引导 LLM 生成准确、有依据的回答：
+
+> **"将检索到的相关文档片段与用户查询组合成增强型 Prompt，引导 LLM 基于检索到的真实信息生成回答，并提供引用溯源。"**
+
+### 6.2 生成模块架构
+
+```mermaid
+graph TB
+    subgraph "输入"
+        Q[用户查询]
+        D[检索文档片段]
+    end
+    
+    subgraph "上下文处理"
+        D --> C1[上下文窗口管理]
+        C1 --> C2[信息压缩筛选]
+        C2 --> C3[相关性排序]
+    end
+    
+    subgraph "Prompt工程"
+        Q & C3 --> P1[系统提示构建]
+        P1 --> P2[上下文注入]
+        P2 --> P3[查询整合]
+    end
+    
+    subgraph "LLM生成"
+        P3 --> L1[模型推理]
+        L1 --> L2[结果验证]
+        L2 --> L3[引用溯源]
+    end
+    
+    subgraph "输出"
+        L3 --> O[增强回答<br/>带引用]
+    end
+    
+    style C1 fill:#4a90d9,color:#fff
+    style P2 fill:#fa8c16,color:#fff
+    style L2 fill:#50b83c,color:#fff
+```
+
+### 6.3 上下文窗口管理
+
+#### 6.3.1 Token 预算分配
+
+```python
+class ContextWindowManager:
+    """上下文窗口管理器"""
+    
+    def __init__(self, max_context_tokens: int = 128000):
+        self.max_tokens = max_context_tokens
+        self.system_prompt_tokens = 500
+        self.user_query_tokens = 100
+        self.response_buffer = 2000
+        self.available_tokens = (
+            self.max_tokens 
+            - self.system_prompt_tokens 
+            - self.user_query_tokens 
+            - self.response_buffer
+        )
+    
+    def allocate(self, documents: List[RerankedDoc]) -> ContextAllocation:
+        """分配上下文窗口 - 贪心填充"""
+        sorted_docs = sorted(documents, key=lambda x: x.score, reverse=True)
+        selected_docs = []
+        total_tokens = 0
+        
+        for doc in sorted_docs:
+            doc_tokens = self._count_tokens(doc.content)
+            if total_tokens + doc_tokens <= self.available_tokens:
+                selected_docs.append(doc)
+                total_tokens += doc_tokens
+            else:
+                # 尝试截断
+                remaining = self.available_tokens - total_tokens
+                if remaining > 100:
+                    truncated = self._truncate(doc.content, remaining)
+                    selected_docs.append(RerankedDoc(
+                        id=doc.id, content=truncated,
+                        metadata=doc.metadata, score=doc.score
+                    ))
+                    total_tokens += remaining
+                break
+        
+        return ContextAllocation(
+            documents=selected_docs,
+            total_tokens=total_tokens,
+            utilization=total_tokens / self.available_tokens
+        )
+    
+    def _count_tokens(self, text: str) -> int:
+        """Token 计数"""
+        return len(text.split())  # 简化实现，实际使用 tokenizer
+    
+    def _truncate(self, text: str, max_tokens: int) -> str:
+        """截断文本"""
+        words = text.split()
+        return ' '.join(words[:max_tokens])
+```
+
+### 6.4 Prompt 工程
+
+#### 6.4.1 增强 Prompt 构建
+
+```python
+class PromptBuilder:
+    """增强 Prompt 构建器"""
+    
+    def build(self, query: str, context_docs: List[RerankedDoc]) -> str:
+        """构建增强型 Prompt"""
+        # 系统提示
+        system = self._get_system_prompt()
+        
+        # 上下文部分
+        context = self._build_context(context_docs)
+        
+        # 用户查询
+        user = f"用户问题：{query}"
+        
+        # 组合
+        return f"{system}\n\n{context}\n\n{user}"
+    
+    def _get_system_prompt(self) -> str:
+        """获取系统提示"""
+        return """你是一个智能问答助手。请严格基于提供的参考资料回答用户问题。
+
+回答规则：
+1. 只使用参考资料中的信息回答
+2. 如果参考资料中没有相关信息，请说"根据现有资料无法回答该问题"
+3. 回答时标注信息来源编号
+4. 使用清晰、准确的语言"""
+    
+    def _build_context(self, docs: List[RerankedDoc]) -> str:
+        """构建上下文"""
+        parts = ["参考资料：\n"]
+        for i, doc in enumerate(docs, start=1):
+            source = doc.metadata.get('source', '未知')
+            parts.append(f"[{i}] 来源：{source}")
+            parts.append(f"内容：{doc.content}\n")
+        return "\n".join(parts)
+```
+
+#### 6.4.2 不同 Prompt 策略
+
+| 策略 | 说明 | 优点 | 缺点 | 适用场景 |
+|------|------|------|------|---------|
+| **Stuff** | 所有文档放入 Prompt | 简单直接 | Token 限制 | 文档少（<5篇） |
+| **Map-Reduce** | 分批总结再汇总 | 支持长文档 | 多次调用 | 文档多且长 |
+| **Refine** | 迭代优化回答 | 高质量 | 耗时较长 | 需精确回答 |
+
+### 6.5 LLM 生成实现
+
+#### 6.5.1 响应生成
+
+```python
+class ResponseGenerator:
+    """响应生成器"""
+    
+    def __init__(self, llm_client: LLMClient):
+        self.llm = llm_client
+        self.prompt_builder = PromptBuilder()
+        self.context_manager = ContextWindowManager()
+    
+    async def generate(self, query: str, 
+                        context_docs: List[RerankedDoc]) -> GeneratedResponse:
+        """生成回答"""
+        # Step 1: 上下文分配
+        allocation = self.context_manager.allocate(context_docs)
+        
+        # Step 2: 构建 Prompt
+        prompt = self.prompt_builder.build(query, allocation.documents)
+        
+        # Step 3: 调用 LLM
+        messages = [
+            {"role": "user", "content": prompt}
+        ]
+        response = await self.llm.chat(
+            messages=messages,
+            temperature=0.3,
+            max_tokens=2000
+        )
+        
+        # Step 4: 解析和验证
+        parsed = self._parse_response(response.content)
+        validation = self._validate(parsed, allocation.documents)
+        
+        # Step 5: 构建结果
+        return GeneratedResponse(
+            answer=parsed.answer,
+            sources=self._extract_sources(parsed, allocation.documents),
+            confidence=validation.confidence,
+            token_usage=response.usage
+        )
+    
+    def _parse_response(self, content: str) -> ParsedResponse:
+        """解析响应"""
+        lines = content.strip().split('\n')
+        answer_lines = []
+        references = []
+        
+        for line in lines:
+            if line.startswith('[') and ']' in line:
+                references.append(line)
+            else:
+                answer_lines.append(line)
+        
+        return ParsedResponse(
+            answer='\n'.join(answer_lines),
+            references=references
+        )
+    
+    def _validate(self, parsed: ParsedResponse, 
+                    docs: List[RerankedDoc]) -> ValidationResult:
+        """验证回答"""
+        # 检查是否有引用
+        has_citations = len(parsed.references) > 0
+        # 检查回答长度
+        has_content = len(parsed.answer) > 10
+        # 检查是否提到"无法回答"
+        says_cannot = "无法回答" in parsed.answer
+        
+        confidence = 0.0
+        if has_citations:
+            confidence += 0.5
+        if has_content and not says_cannot:
+            confidence += 0.5
+        
+        return ValidationResult(
+            is_grounded=has_citations,
+            has_content=has_content,
+            confidence=confidence
+        )
+```
+
+#### 6.5.2 引用溯源
+
+```python
+class CitationTracker:
+    """引用溯源器"""
+    
+    def track(self, response: GeneratedResponse,
+               context_docs: List[RerankedDoc]) -> TrackedResponse:
+        """追踪引用来源"""
+        tracked_sources = []
+        
+        for source in response.sources:
+            # 解析编号
+            index = self._parse_index(source)
+            if 1 <= index <= len(context_docs):
+                doc = context_docs[index - 1]
+                tracked_sources.append({
+                    "index": index,
+                    "source": doc.metadata.get('source', '未知'),
+                    "snippet": doc.content[:150],
+                    "metadata": doc.metadata
+                })
+        
+        return TrackedResponse(
+            answer=response.answer,
+            sources=tracked_sources,
+            has_citations=len(tracked_sources) > 0
+        )
+    
+    def _parse_index(self, source_str: str) -> int:
+        """解析引用编号"""
+        import re
+        match = re.search(r'\[(\d+)\]', source_str)
+        return int(match.group(1)) if match else 0
+```
+
+---
+
+## 七、关键技术点与优化策略
+
+### 7.1 数据层面优化
+
+| 优化方向 | 技术手段 | 效果 |
+|---------|---------|------|
+| **切片优化** | 递归切片+重叠窗口 | 更好的语义完整性 |
+| **嵌入优化** | 领域微调嵌入模型 | 提升语义匹配精度 |
+| **元数据丰富** | 标签、分类、时间戳 | 更精确的过滤检索 |
+| **数据质量** | 自动质量评估流水线 | 保证知识库可靠性 |
+
+### 7.2 检索层面优化
+
+#### 7.2.1 查询改写
+
+```python
+class QueryRewriter:
+    """查询改写器"""
+    
+    async def rewrite(self, query: str) -> RewrittenQuery:
+        """改写用户查询"""
+        # Step 1: 子问题分解
+        sub_questions = await self._decompose(query)
+        
+        # Step 2: 同义词扩展
+        expanded = await self._expand_synonyms(query)
+        
+        # Step 3: HyDE（假设性文档嵌入）
+        hyde_doc = await self._generate_hypothetical(query)
+        
+        return RewrittenQuery(
+            original=query,
+            sub_questions=sub_questions,
+            expanded_terms=expanded,
+            hyde_document=hyde_doc
+        )
+    
+    async def _decompose(self, query: str) -> List[str]:
+        """分解为子问题"""
+        prompt = f"将以下问题分解为2-3个子问题：\n问题：{query}\n子问题："
+        result = await self.llm.generate(prompt)
+        return [q.strip() for q in result.split('\n') if q.strip()]
+    
+    async def _generate_hypothetical(self, query: str) -> str:
+        """生成假设性文档"""
+        prompt = f"请根据以下问题生成一段可能的回答作为检索线索：\n问题：{query}\n假设性回答："
+        return await self.llm.generate(prompt)
+```
+
+#### 7.2.2 混合检索增强
+
+```python
+class AdvancedHybridRetriever:
+    """高级混合检索器"""
+    
+    def __init__(self, vector_retriever, bm25_retriever, 
+                 query_rewriter, reranker):
+        self.vector_retriever = vector_retriever
+        self.bm25_retriever = bm25_retriever
+        self.query_rewriter = query_rewriter
+        self.reranker = reranker
+    
+    async def retrieve(self, query: str, top_k: int = 5) -> List[RerankedDoc]:
+        """高级检索流程"""
+        # Step 1: 查询改写
+        rewritten = await self.query_rewriter.rewrite(query)
+        
+        # Step 2: 多路召回
+        all_candidates = []
+        
+        # 原始查询检索
+        vector_results = await self.vector_retriever.search(query, 50)
+        keyword_results = self.bm25_retriever.search(query, 50)
+        all_candidates.extend(vector_results)
+        all_candidates.extend(keyword_results)
+        
+        # 子问题检索
+        for sub_q in rewritten.sub_questions:
+            sub_results = await self.vector_retriever.search(sub_q, 20)
+            all_candidates.extend(sub_results)
+        
+        # HyDE 文档检索
+        if rewritten.hyde_document:
+            hyde_results = await self.vector_retriever.search(
+                rewritten.hyde_document, 20
+            )
+            all_candidates.extend(hyde_results)
+        
+        # Step 3: 去重和融合
+        deduplicated = self._deduplicate(all_candidates)
+        
+        # Step 4: 重排序
+        reranked = await self.reranker.rerank(query, deduplicated, top_k=top_k * 3)
+        
+        # Step 5: 多样性选择
+        selector = DiversitySelector()
+        return selector.select(reranked, top_k)
+    
+    def _deduplicate(self, candidates: List) -> List:
+        """去重"""
+        seen = set()
+        unique = []
+        for doc in candidates:
+            if doc.id not in seen:
+                seen.add(doc.id)
+                unique.append(doc)
+        return unique
+```
+
+### 7.3 生成层面优化
+
+#### 7.3.1 上下文压缩
+
+```python
+class ContextCompressor:
+    """上下文压缩器"""
+    
+    def compress(self, documents: List[RerankedDoc], 
+                  query: str) -> List[CompressedDoc]:
+        """压缩上下文"""
+        compressed = []
+        
+        for doc in documents:
+            # 分割为段落
+            paragraphs = doc.content.split('\n\n')
+            
+            # 评分并选择最相关段落
+            scored_paragraphs = []
+            for para in paragraphs:
+                score = self._relevance_score(para, query)
+                scored_paragraphs.append((para, score))
+            
+            # 选择 Top-3 段落
+            top_paragraphs = sorted(
+                scored_paragraphs, 
+                key=lambda x: x[1], 
+                reverse=True
+            )[:3]
+            
+            compressed.append(CompressedDoc(
+                id=doc.id,
+                content='\n'.join(p[0] for p in top_paragraphs),
+                metadata=doc.metadata,
+                compression_ratio=len(doc.content) / sum(len(p[0]) for p in top_paragraphs)
+            ))
+        
+        return compressed
+    
+    def _relevance_score(self, text: str, query: str) -> float:
+        """计算相关性分数"""
+        # 简单的词重叠度
+        text_words = set(text.lower().split())
+        query_words = set(query.lower().split())
+        if not query_words:
+            return 0.0
+        overlap = text_words & query_words
+        return len(overlap) / len(query_words)
+```
+
+#### 7.3.2 生成质量评估
+
+| 评估维度 | 指标 | 计算方法 | 优化方向 |
+|---------|------|---------|---------|
+| **忠实度** | Faithfulness | 回答内容是否源自检索文档 | 优化 Prompt、增加引用检查 |
+| **相关性** | Answer Relevancy | 回答是否切中问题 | 改进检索精度 |
+| **完整性** | Context Recall | 是否覆盖所需信息 | 增大 Top-K、多轮检索 |
+| **简洁性** | Conciseness | 回答是否简洁明了 | 添加简洁性指令 |
+
+### 7.4 性能优化策略
+
+| 优化方向 | 技术手段 | 预期效果 |
+|---------|---------|---------|
+| **响应速度** | 缓存常用查询、异步预取 | 降低 50%+ 延迟 |
+| **Token 成本** | 上下文压缩、模型蒸馏 | 降低 30%+ 成本 |
+| **检索精度** | 重排序、多路召回 | 提升 10-20% 准确率 |
+| **可扩展性** | 分库分表、读写分离 | 支持千万级文档 |
+
+---
+
+## 八、完整伪代码实现
+
+### 8.1 RAG 系统主流程
+
+```python
+class RAGWorkflow:
+    """RAG 完整工作流程实现"""
+    
+    def __init__(self, config: RAGConfig):
+        # 初始化各组件
+        self.collector = DataCollector(config.sources)
+        self.preprocessor = PreprocessingPipeline(config.preprocessing)
+        self.embedder = EmbeddingService(config.embedding)
+        self.vector_store = VectorStoreManager(config.vector_store)
+        self.bm25 = BM25Searcher(config.bm25)
+        self.retriever = AdvancedHybridRetriever(
+            self.vector_store, self.bm25,
+            QueryRewriter(config.llm), Reranker(config.reranker)
+        )
+        self.generator = ResponseGenerator(config.llm)
+        self.citation_tracker = CitationTracker()
+    
+    async def build_knowledge_base(self):
+        """Step 1: 构建知识库（离线）"""
+        # 1. 数据采集
+        raw_docs = await self.collector.collect_all()
+        
+        # 2. 预处理
+        clean_chunks = self.preprocessor.process(raw_docs)
+        
+        # 3. 向量化
+        embeddings = await self.embedder.embed_chunks(
+            [chunk.content for chunk in clean_chunks]
+        )
+        
+        # 4. 存储
+        await self.vector_store.upsert(
+            ids=[chunk.id for chunk in clean_chunks],
+            embeddings=embeddings,
+            documents=[chunk.content for chunk in clean_chunks],
+            metadatas=[chunk.metadata for chunk in clean_chunks]
+        )
+        
+        # 5. 构建 BM25 索引
+        indexed_docs = [
+            IndexedDoc(
+                id=chunk.id,
+                tokens=chunk.content.split(),
+                metadata=chunk.metadata
+            )
+            for chunk in clean_chunks
+        ]
+        self.bm25.build_index(indexed_docs)
+        
+        return BuildResult(
+            total_documents=len(raw_docs),
+            total_chunks=len(clean_chunks),
+            total_embeddings=len(embeddings)
+        )
+    
+    async def query(self, user_query: str) -> RAGResponse:
+        """Step 2: 在线查询处理"""
+        # Step 1: 检索
+        retrieved_docs = await self.retriever.retrieve(user_query, top_k=5)
+        
+        if not retrieved_docs:
+            return RAGResponse(
+                answer="抱歉，知识库中没有找到相关信息。",
+                sources=[],
+                confidence=0.0
+            )
+        
+        # Step 2: 生成
+        generated = await self.generator.generate(user_query, retrieved_docs)
+        
+        # Step 3: 引用追踪
+        tracked = self.citation_tracker.track(generated, retrieved_docs)
+        
+        return RAGResponse(
+            answer=tracked.answer,
+            sources=tracked.sources,
+            confidence=generated.confidence,
+            token_usage=generated.token_usage
+        )
+```
+
+### 8.2 预处理流水线
+
+```python
+class PreprocessingPipeline:
+    """预处理流水线"""
+    
+    def __init__(self, config: PreprocessingConfig):
+        self.cleaner = TextCleaner()
+        self.chunker = SemanticChunker(
+            chunk_size=config.chunk_size,
+            overlap=config.overlap
+        )
+        self.annotator = MetadataAnnotator()
+        self.assessor = QualityAssessor()
+    
+    async def process(self, raw_documents: List[RawDocument]) -> List[CleanChunk]:
+        """完整预处理流程"""
+        clean_chunks = []
+        
+        for doc in raw_documents:
+            # Step 1: 文本清洗
+            clean_text = self.cleaner.clean(doc)
+            
+            # Step 2: 语义切片
+            chunks = self.chunker.chunk(clean_text.content)
+            
+            # Step 3: 元数据标注
+            for chunk_content in chunks:
+                chunk = CleanChunk(
+                    id=generate_id(),
+                    content=chunk_content,
+                    metadata=self.annotator.annotate(doc, chunk_content)
+                )
+                
+                # Step 4: 质量评估
+                quality = self.assessor.assess(chunk)
+                if quality.passed:
+                    clean_chunks.append(chunk)
+        
+        return clean_chunks
+```
+
+---
+
+## 九、端到端案例演示
+
+### 9.1 案例：企业知识问答系统
+
+#### 场景描述
+
+某企业员工向 AI 助手询问年假政策。
+
+#### 完整流程
+
+```mermaid
+sequenceDiagram
+    participant U as 用户
+    participant RAG as RAG系统
+    participant KB as 知识库
+    participant LLM as 大模型
+    
+    U->>RAG: "入职满1年的员工年假有多少天？"
+    
+    Note over RAG: 1. 查询处理
+    RAG->>RAG: 查询改写（子问题分解）
+    RAG->>RAG: 子问题：<br/>- 年假政策是什么？<br/>- 工作年限与年假天数的关系？
+    
+    Note over RAG,KB: 2. 多路检索
+    RAG->>KB: 向量检索（语义匹配）
+    KB-->>RAG: 返回 20 个候选文档
+    RAG->>KB: 关键词检索（"年假""工作年限"）
+    KB-->>RAG: 返回 15 个候选文档
+    RAG->>RAG: RRF 融合去重
+    
+    Note over RAG: 3. 重排序
+    RAG->>RAG: 重排序模型精排
+    RAG->>RAG: 选择 Top-5 最相关文档
+    
+    Note over RAG,LLM: 4. 生成回答
+    RAG->>LLM: 构建增强 Prompt<br/>[1] 来源：hr_policy.md<br/>内容：工作满1年不满10年的，年休假5天...
+    LLM->>LLM: 推理生成
+    LLM-->>RAG: "根据年假政策，工作满1年不满10年的员工，年休假5天。[1]"
+    
+    Note over RAG: 5. 引用验证
+    RAG->>RAG: 检查引用有效性
+    RAG-->>U: 返回回答<br/>答案：工作满1年不满10年，年休假5天<br/>来源：hr_policy.md
+```
+
+#### 数据流转表
+
+| 阶段 | 输入 | 处理 | 输出 | 数据量 |
+|------|------|------|------|--------|
+| **查询处理** | 用户问题 | 查询改写 | 子问题+扩展词 | 1→3 |
+| **向量检索** | 查询向量 | 余弦相似度 | Top-20 候选 | 1→20 |
+| **关键词检索** | 查询分词 | BM25 评分 | Top-15 候选 | 3→15 |
+| **融合去重** | 35 个候选 | RRF 融合 | 去重后列表 | 35→28 |
+| **重排序** | 28 个文档 | 重排序模型 | Top-5 精排结果 | 28→5 |
+| **上下文组装** | 5 个文档 | Token 分配 | 上下文窗口 | 5→3800 tokens |
+| **LLM 生成** | 增强 Prompt | 模型推理 | 回答+引用 | 3800→150 |
+
+#### 响应示例
+
+```json
+{
+  "answer": "根据《职工带薪年休假条例》，工作已满1年不满10年的员工，年休假5天。[1]",
+  "sources": [
+    {
+      "index": 1,
+      "source": "hr_policy.md",
+      "snippet": "第二条 机关、团体、企业、事业单位、民办非企业单位、有雇工的个体工商户等单位的职工连续工作1年以上的，享受带薪年休假（以下简称年休假）。单位应当保证职工享受年休假。职工在年休假期间享受与正常工作期间相同的工资收入。\n第三条 职工累计工作已满1年不满10年的，年休假5天；已满10年不满20年的，年休假10天；已满20年的，年休假15天。",
+      "metadata": {
+        "file_path": "/knowledge/hr_policy.md",
+        "chunk_index": 12,
+        "tags": ["年假", "政策", "HR"]
+      }
+    }
+  ],
+  "confidence": 0.9,
+  "processing_time_ms": 1250,
+  "token_usage": {
+    "prompt_tokens": 3800,
+    "completion_tokens": 150,
+    "total_tokens": 3950
+  }
+}
+```
+
+---
+
+## 十、总结与展望
+
+### 10.1 核心要点总结
+
+本文档详细阐述了 RAG 技术的完整工作流程：
+
+1. **数据收集与预处理**：从多源异构数据采集，经过清洗、语义切片、元数据标注，生成高质量文本块
+2. **知识库构建**：通过嵌入模型将文本向量化，存入向量数据库并构建倒排索引，支持增量更新
+3. **检索模块**：结合向量检索（余弦相似度）和关键词检索（BM25），通过 RRF 融合和重排序实现高精度检索
+4. **生成模块**：通过上下文窗口管理和 Prompt 工程，引导 LLM 基于检索结果生成有依据的回答，并提供引用溯源
+
+### 10.2 关键技术汇总
+
+| 技术领域 | 核心技术 | 作用 |
+|---------|---------|------|
+| **数据处理** | 递归切片、文本清洗 | 保证数据质量 |
+| **向量化** | 嵌入模型、批量编码 | 语义表示 |
+| **向量检索** | 余弦相似度、ANN 索引 | 语义匹配 |
+| **关键词检索** | BM25、倒排索引 | 精确匹配 |
+| **融合算法** | RRF、加权融合 | 多策略融合 |
+| **重排序** | Cross-Encoder、多样性选择 | 精排优化 |
+| **Prompt 工程** | 上下文注入、Token 管理 | 有效引导生成 |
+| **生成优化** | 引用溯源、质量验证 | 保证回答质量 |
+
+### 10.3 与系列文档的关系
+
+| 文档 | 视角 | 对应内容 |
+|------|------|---------|
+| `1RAG检索增强生成详解.md` | RAG 概念、组件、架构 | 工作流程的理论基础 |
+| **本文档** | RAG 工作流程实现 | 各阶段的具体技术实现 |
+
+### 10.4 未来发展方向
+
+| 方向 | 说明 |
+|------|------|
+| **多模态 RAG** | 支持图像、表格、代码等多种模态的检索和生成 |
+| **Agent RAG** | Agent 驱动的动态检索规划，更智能的查询处理 |
+| **实时 RAG** | 流式处理和实时知识更新，支持实时数据场景 |
+| **Graph RAG** | 引入知识图谱，提升关系推理和复杂问题回答能力 |
+| **小模型 RAG** | 使用小模型实现轻量级 RAG，降低部署成本 |
