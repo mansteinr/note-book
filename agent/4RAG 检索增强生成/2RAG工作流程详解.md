@@ -186,41 +186,8 @@ class DataCollector:
                 tasks.append(self._collect_from_database(source))
             elif source.type == "api":
                 tasks.append(self._collect_from_api(source))
-            elif source.type == "stream":
-                tasks.append(self._collect_from_stream(source))
-        
         results = await asyncio.gather(*tasks)
         return [doc for sublist in results for doc in sublist]
-    
-    async def _collect_from_files(self, source: DataSource) -> List[RawDocument]:
-        """从文件系统采集"""
-        documents = []
-        for file_path in glob.glob(source.path, recursive=True):
-            parser = self.parsers.get(self._get_extension(file_path))
-            if parser:
-                content = await parser.parse(file_path)
-                documents.append(RawDocument(
-                    id=generate_id(),
-                    source=source.name,
-                    content=content,
-                    metadata={"file_path": file_path, "type": "file"},
-                    collected_at=datetime.now()
-                ))
-        return documents
-    
-    async def _collect_from_database(self, source: DataSource) -> List[RawDocument]:
-        """从数据库采集"""
-        records = await self.db.query(source.query)
-        documents = []
-        for record in records:
-            documents.append(RawDocument(
-                id=generate_id(),
-                source=source.name,
-                content=self._record_to_text(record),
-                metadata={"table": source.table, "record_id": record.id},
-                collected_at=datetime.now()
-            ))
-        return documents
 ```
 
 ### 3.3 数据预处理流水线
@@ -230,15 +197,14 @@ class DataCollector:
 ```mermaid
 flowchart TD
     A[原始文档] --> B{格式检测}
-    B -->|HTML| C[HTML清洗<br/>提取纯文本]
-    B -->|PDF| D[PDF解析<br/>文本提取]
-    B -->|结构化| E[字段映射<br/>转文本格式]
-    B -->|代码| F[代码注释<br/>文档提取]
-    C & D & E & F --> G[文本清洗<br/>去噪/纠错]
-    G --> H[语义切片<br/>Chunking]
-    H --> I[元数据标注]
-    I --> J[质量评估]
-    J --> K[预处理完成<br/>CleanChunk]
+    B -->|HTML| C[HTML清洗]
+    B -->|PDF| D[PDF解析]
+    B -->|结构化| E[字段映射]
+    C & D & E --> F[文本清洗<br/>去噪/纠错]
+    F --> G[语义切片<br/>Chunking]
+    G --> H[元数据标注]
+    H --> I[质量评估]
+    I --> J[预处理完成]
 ```
 
 #### 3.3.2 文本清洗
@@ -250,44 +216,21 @@ class TextCleaner:
     def clean(self, raw_document: RawDocument) -> CleanText:
         """清洗原始文本"""
         text = raw_document.content
-        
-        # Step 1: 去除HTML标签
-        if self._is_html(text):
-            text = self._remove_html_tags(text)
-        
-        # Step 2: 去除特殊字符
-        text = self._remove_special_characters(text)
-        
-        # Step 3: 统一空白符
+        # 去除HTML标签
+        text = self._remove_html_tags(text)
+        # 去除特殊字符
+        text = self._remove_special_chars(text)
+        # 统一空白符
         text = self._normalize_whitespace(text)
-        
-        # Step 4: 去除页眉页脚
-        text = self._remove_headers_footers(text)
-        
-        # Step 5: 语言检测
+        # 检测语言
         language = self._detect_language(text)
-        
-        return CleanText(
-            content=text,
-            language=language,
-            cleaning_stats=self._get_stats(raw_document.content, text)
-        )
+        return CleanText(content=text, language=language)
     
-    def _remove_special_characters(self, text: str) -> str:
-        """移除特殊字符"""
-        # 保留：中文、英文、数字、标点、换行
-        pattern = r'[^\u4e00-\u9fa5a-zA-Z0-9\s，。！？；：""''（）《》\-—…·]'
+    def _remove_special_chars(self, text: str) -> str:
+        """移除特殊字符，保留中英文、数字、标点"""
+        import re
+        pattern = r'[^\u4e00-\u9fa5a-zA-Z0-9\s，。！？；：""''（）《》\-…·]'
         return re.sub(pattern, '', text)
-    
-    def _normalize_whitespace(self, text: str) -> str:
-        """统一空白符"""
-        # 合并多余空行
-        text = re.sub(r'\n{3,}', '\n\n', text)
-        # 合并多余空格
-        text = re.sub(r' {3,}', '  ', text)
-        # 去除行尾空格
-        text = '\n'.join(line.rstrip() for line in text.split('\n'))
-        return text.strip()
 ```
 
 #### 3.3.3 语义切片策略
@@ -308,48 +251,38 @@ class TextCleaner:
 
 ```python
 class SemanticChunker:
-    """语义切片器"""
+    """语义切片器 - 递归策略"""
     
-    def __init__(self, config: ChunkConfig):
-        self.chunk_size = config.chunk_size  # 目标大小
-        self.chunk_overlap = config.overlap  # 重叠大小
-        self.separators = config.separators  # 分隔符优先级
+    def __init__(self, chunk_size: int = 500, overlap: int = 100):
+        self.chunk_size = chunk_size
+        self.overlap = overlap
+        self.separators = ["\n\n", "\n", "。", "！", "？", "；", "，", ""]
     
-    def chunk(self, clean_text: CleanText) -> List<TextChunk>:
-        """将文本切片"""
-        chunks = self._recursive_split(clean_text.content)
-        return [TextChunk(
-            id=generate_id(),
-            content=chunk,
-            metadata=clean_text.metadata,
-            token_count=self._count_tokens(chunk),
-            chunk_index=idx
-        ) for idx, chunk in enumerate(chunks)]
+    def chunk(self, text: str) -> List[str]:
+        """递归切片"""
+        return self._recursive_split(text, 0)
     
-    def _recursive_split(self, text: str) -> List[str]:
+    def _recursive_split(self, text: str, level: int) -> List[str]:
         """递归分割"""
-        # 如果文本已经足够短，直接返回
-        if len(text) <= self.chunk_size:
-            return [text]
+        if len(text) <= self.chunk_size or level >= len(self.separators) - 1:
+            return self._hard_split(text)
         
-        # 尝试按分隔符分割
-        for separator in self.separators:
-            if separator in text:
-                splits = text.split(separator)
-                # 如果分割后都足够短，返回结果
-                if all(len(split) <= self.chunk_size for split in splits):
-                    return self._merge_with_overlap(splits, separator)
-                # 否则继续递归分割较长的部分
-                result = []
-                for split in splits:
-                    if len(split) > self.chunk_size:
-                        result.extend(self._recursive_split(split))
-                    else:
-                        result.append(split)
-                return self._merge_with_overlap(result, separator)
-        
-        # 没有合适的分隔符，按字符硬切
-        return self._hard_split(text)
+        separator = self.separators[level]
+        if separator and separator in text:
+            splits = text.split(separator)
+            # 检查分割后是否都足够短
+            if all(len(s) <= self.chunk_size for s in splits):
+                return self._merge_with_overlap(splits, separator)
+            # 继续递归分割较长的部分
+            result = []
+            for s in splits:
+                if len(s) > self.chunk_size:
+                    result.extend(self._recursive_split(s, level + 1))
+                else:
+                    result.append(s)
+            return self._merge_with_overlap(result, separator)
+        else:
+            return self._recursive_split(text, level + 1)
     
     def _merge_with_overlap(self, splits: List[str], separator: str) -> List[str]:
         """带重叠的合并"""
@@ -362,7 +295,6 @@ class SemanticChunker:
             else:
                 if current:
                     merged.append(current)
-                # 处理超长切片
                 if len(split) > self.chunk_size:
                     merged.extend(self._hard_split(split))
                     current = ""
@@ -373,100 +305,25 @@ class SemanticChunker:
         return merged
     
     def _hard_split(self, text: str) -> List[str]:
-        """硬切分（按字符数）"""
+        """硬切分"""
         chunks = []
-        for i in range(0, len(text), self.chunk_size - self.chunk_overlap):
+        step = self.chunk_size - self.overlap
+        for i in range(0, len(text), step):
             chunk = text[i:i + self.chunk_size]
             if chunk:
                 chunks.append(chunk)
         return chunks
 ```
 
-#### 3.3.4 元数据标注
-
-```python
-class MetadataAnnotator:
-    """元数据标注器"""
-    
-    def annotate(self, chunk: TextChunk, document: RawDocument) -> AnnotatedChunk:
-        """标注元数据"""
-        return AnnotatedChunk(
-            id=chunk.id,
-            content=chunk.content,
-            metadata={
-                # 基础元数据
-                "source": document.source,
-                "source_type": document.metadata.get("type", "unknown"),
-                "created_at": document.collected_at.isoformat(),
-                # 内容元数据
-                "token_count": chunk.token_count,
-                "char_count": len(chunk.content),
-                "chunk_index": chunk.chunk_index,
-                # 业务元数据
-                "tags": self._extract_tags(chunk.content),
-                "language": self._detect_language(chunk.content),
-                "quality_score": self._assess_quality(chunk.content)
-            }
-        )
-    
-    def _extract_tags(self, content: str) -> List[str]:
-        """提取关键词标签"""
-        # 使用关键词提取算法
-        keywords = self.keyword_extractor.extract(content, top_k=5)
-        return [kw.text for kw in keywords]
-    
-    def _assess_quality(self, content: str) -> float:
-        """评估文本质量"""
-        score = 1.0
-        # 检查内容长度
-        if len(content) < 50:
-            score *= 0.6
-        elif len(content) < 100:
-            score *= 0.8
-        # 检查语言一致性
-        if self._count_chinese(content) > 0 and self._count_english(content) > 0:
-            score *= 0.9  # 混合语言适度降分
-        return score
-```
-
 ### 3.4 数据质量保障
-
-#### 3.4.1 质量评估体系
 
 | 评估维度 | 检查项 | 合格标准 | 处理策略 |
 |---------|--------|---------|---------|
 | **完整性** | 文本是否完整 | 无截断、缺页 | 截断文本标记为低质量 |
 | **准确性** | 内容是否正确 | 人工抽检/交叉验证 | 错误内容过滤 |
-| **一致性** | 格式是否统一 | 统一的编码和标点 | 格式标准化 |
+| **一致性** | 格式是否统一 | 统一编码和标点 | 格式标准化 |
 | **时效性** | 内容是否过期 | 定期检查更新 | 过期内容标记/删除 |
 | **相关性** | 内容是否相关 | 与业务场景匹配 | 无关内容过滤 |
-
-#### 3.4.2 质量评分实现
-
-```python
-class QualityAssessor:
-    """质量评估器"""
-    
-    def assess(self, chunk: AnnotatedChunk) -> QualityReport:
-        """评估数据质量"""
-        scores = {
-            "completeness": self._check_completeness(chunk),
-            "accuracy": self._check_accuracy(chunk),
-            "consistency": self._check_consistency(chunk),
-            "freshness": self._check_freshness(chunk),
-            "relevance": self._check_relevance(chunk)
-        }
-        
-        overall_score = sum(scores.values()) / len(scores)
-        
-        return QualityReport(
-            chunk_id=chunk.id,
-            scores=scores,
-            overall_score=overall_score,
-            passed=overall_score >= self.config.min_quality_score,
-            issues=self._identify_issues(scores)
-        )
-```
 
 ---
 
@@ -482,8 +339,6 @@ class QualityAssessor:
 
 #### 4.2.1 嵌入模型选择
 
-嵌入模型的质量直接决定语义匹配的精度：
-
 | 模型 | 提供商 | 维度 | 特点 | 适用场景 |
 |------|--------|------|------|---------|
 | **text-embedding-3-large** | OpenAI | 3072 | 高语义精度 | 通用高质量需求 |
@@ -493,11 +348,10 @@ class QualityAssessor:
 | **gte-large** | 阿里 | 1024 | 中文优化 | 中文检索场景 |
 
 **选择要点：**
-- **语义匹配能力**：在你的业务领域中测试模型的检索效果
-- **维度与性能**：高维度精度高但存储和计算成本大
-- **语言支持**：选择针对目标语言优化的模型
-- **成本考量**：API 调用费用 vs 本地部署成本
-- **更新频率**：模型是否持续更新和优化
+- 语义匹配能力：在业务领域测试检索效果
+- 维度与性能：高维度精度高但成本大
+- 语言支持：选择针对目标语言优化的模型
+- 成本考量：API 调用费用 vs 本地部署成本
 
 #### 4.2.2 向量化实现
 
@@ -505,66 +359,27 @@ class QualityAssessor:
 class EmbeddingService:
     """向量化服务"""
     
-    def __init__(self, model_config: EmbeddingConfig):
-        self.model = self._load_model(model_config)
-        self.batch_size = model_config.batch_size
-        self.normalize = model_config.normalize
+    def __init__(self, model_name: str = "BAAI/bge-large-zh-v1.5"):
+        self.model = SentenceTransformer(model_name)
+        self.batch_size = 32
     
-    async def embed_chunks(self, chunks: List[AnnotatedChunk]) -> List[EmbeddedChunk]:
+    async def embed_chunks(self, chunks: List[str]) -> List[np.ndarray]:
         """批量向量化文本块"""
-        # 分批处理
-        batches = self._batch_chunks(chunks, self.batch_size)
-        embedded_chunks = []
-        
+        batches = [chunks[i:i + self.batch_size] 
+                   for i in range(0, len(chunks), self.batch_size)]
+        embeddings = []
         for batch in batches:
-            # 提取文本内容
-            texts = [chunk.content for chunk in batch]
-            
-            # 批量嵌入
-            embeddings = await self.model.embed(
-                texts=texts,
-                normalize_embeddings=self.normalize
+            batch_embeddings = self.model.encode(
+                batch, 
+                normalize_embeddings=True,
+                show_progress_bar=True
             )
-            
-            # 构建嵌入结果
-            for chunk, embedding in zip(batch, embeddings):
-                embedded_chunks.append(EmbeddedChunk(
-                    id=chunk.id,
-                    content=chunk.content,
-                    metadata=chunk.metadata,
-                    embedding=embedding,  # numpy array
-                    embedding_model=self.model.name,
-                    embedded_at=datetime.now()
-                ))
-        
-        return embedded_chunks
+            embeddings.extend(batch_embeddings)
+        return embeddings
     
-    def _batch_chunks(self, chunks: List, batch_size: int) -> List[List]:
-        """分批"""
-        return [chunks[i:i + batch_size] for i in range(0, len(chunks), batch_size)]
-```
-
-#### 4.2.3 嵌入数据结构
-
-```json
-{
-  "embedded_chunk": {
-    "id": "chunk_001",
-    "content": "退款政策：用户在购买后7天内可申请无理由退款...",
-    "metadata": {
-      "source": "refund_policy.md",
-      "source_type": "markdown",
-      "token_count": 85,
-      "tags": ["退款", "政策", "无理由"],
-      "language": "zh-CN",
-      "quality_score": 0.95
-    },
-    "embedding": [0.023, -0.156, 0.089, ...],
-    "embedding_dim": 1024,
-    "embedding_model": "bge-large-zh-v1.5",
-    "embedded_at": "2026-08-07T10:30:00Z"
-  }
-}
+    def embed_text(self, text: str) -> np.ndarray:
+        """单文本向量化"""
+        return self.model.encode(text, normalize_embeddings=True)
 ```
 
 ### 4.3 向量数据库存储
@@ -573,28 +388,21 @@ class EmbeddingService:
 
 | 数据库 | 类型 | 核心特性 | 适用场景 |
 |--------|------|---------|---------|
-| **Milvus** | 开源分布式 | 千亿级向量、高吞吐量、多种索引 | 大规模生产环境 |
+| **Milvus** | 开源分布式 | 千亿级向量、高吞吐 | 大规模生产环境 |
 | **Pinecone** | 全托管云 | 零运维、自动扩展 | 企业级 SaaS |
-| **Weaviate** | 开源混合 | 向量+关键词混合检索 | 需要混合检索 |
-| **Chroma** | 轻量级嵌入式 | 简单易用、本地部署 | 原型/中小项目 |
-| **FAISS** | Meta AI 库 | 高性能 CPU/GPU 搜索 | 研究/高性能需求 |
-| **Elasticsearch** | 搜索引擎 | 成熟的文本+向量检索 | 全文检索场景 |
+| **Weaviate** | 开源混合 | 向量+关键词混合 | 需要混合检索 |
+| **Chroma** | 轻量级嵌入式 | 简单易用 | 原型/中小项目 |
+| **FAISS** | Meta AI 库 | 高性能 CPU/GPU | 研究/高性能需求 |
+| **Elasticsearch** | 搜索引擎 | 文本+向量检索 | 全文检索场景 |
 
 #### 4.3.2 向量索引策略
 
-向量数据库的索引决定了检索效率和准确率的平衡：
-
-| 索引算法 | 说明 | 优点 | 缺点 | 适用场景 |
-|---------|------|------|------|---------|
-| **HNSW** | 层次化导航小世界图 | 高召回率、稳定 | 内存占用大 | 高精度需求 |
-| **IVF** | 倒排索引 | 高吞吐量 | 召回率依赖聚类 | 大规模数据 |
-| **PQ** | 乘积量化 | 高压缩率、低内存 | 精度略有损失 | 海量数据存储 |
-| **Flat** | 暴力搜索 | 100% 召回率 | 慢、高内存 | 小数据集（<10万） |
-
-**索引选择建议：**
-- 数据量 < 10万：使用 **Flat**（暴力搜索，100% 准确率）
-- 数据量 10万-1000万：使用 **HNSW** 或 **IVF**
-- 数据量 > 1000万：使用 **PQ** 或组合索引
+| 索引算法 | 说明 | 优点 | 适用场景 |
+|---------|------|------|---------|
+| **HNSW** | 层次化导航小世界图 | 高召回率、稳定 | 高精度需求 |
+| **IVF** | 倒排索引 | 高吞吐量 | 大规模数据 |
+| **PQ** | 乘积量化 | 高压缩率 | 海量数据存储 |
+| **Flat** | 暴力搜索 | 100% 召回率 | 小数据集（<10万） |
 
 #### 4.3.3 向量存储实现
 
@@ -602,222 +410,61 @@ class EmbeddingService:
 class VectorStoreManager:
     """向量存储管理器"""
     
-    def __init__(self, store_config: StoreConfig):
-        self.store = self._init_vector_store(store_config)
-        self.index = self._init_index(store_config)
+    def __init__(self, collection_name: str, dimension: int):
+        self.client = chromadb.Client()
+        self.collection = self.client.create_collection(
+            name=collection_name,
+            metadata={"hnsw:space": "cosine"}
+        )
+        self.dimension = dimension
     
-    async def upsert_chunks(self, embedded_chunks: List[EmbeddedChunk]):
+    async def upsert(self, ids: List[str], embeddings: List[List[float]],
+                      documents: List[str], metadatas: List[Dict]):
         """批量写入向量数据"""
-        # 准备数据
-        ids = [chunk.id for chunk in embedded_chunks]
-        embeddings = [chunk.embedding for chunk in embedded_chunks]
-        documents = [chunk.content for chunk in embedded_chunks]
-        metadatas = [chunk.metadata for chunk in embedded_chunks]
-        
-        # 写入向量数据库
-        await self.store.upsert(
+        self.collection.upsert(
             ids=ids,
             embeddings=embeddings,
             documents=documents,
             metadatas=metadatas
         )
-        
-        # 构建/更新索引
-        await self._update_index(embedded_chunks)
-        
-        return WriteResult(
-            inserted=len(embedded_chunks),
-            updated=0,
-            timestamp=datetime.now()
-        )
     
-    async def search(self, query_embedding: List[float], top_k: int, 
-                     filters: Dict = None) -> List[SearchResult]:
+    async def search(self, query_embedding: List[float], top_k: int = 5,
+                      filters: Dict = None) -> List[SearchResult]:
         """向量检索"""
-        results = await self.store.query(
+        results = self.collection.query(
             query_embeddings=[query_embedding],
             n_results=top_k,
-            where=filters  # 元数据过滤
+            where=filters
         )
-        
         return [SearchResult(
-            id=id,
-            content=doc,
-            metadata=meta,
-            distance=dist  # 距离/相似度
+            id=id, content=doc, metadata=meta, distance=dist
         ) for id, doc, meta, dist in zip(
-            results['ids'][0],
-            results['documents'][0],
-            results['metadatas'][0],
-            results['distances'][0]
+            results['ids'][0], results['documents'][0],
+            results['metadatas'][0], results['distances'][0]
         )]
 ```
 
-### 4.4 倒排索引构建
+### 4.4 知识库更新机制
 
-#### 4.4.1 关键词索引
-
-关键词索引支持高效的精确匹配和全文检索：
-
-```python
-class InvertedIndexBuilder:
-    """倒排索引构建器"""
-    
-    def build(self, embedded_chunks: List[EmbeddedChunk]) -> InvertedIndex:
-        """构建倒排索引"""
-        index = InvertedIndex()
-        
-        for chunk in embedded_chunks:
-            # 分词
-            terms = self._tokenize(chunk.content, chunk.metadata.get("language", "zh"))
-            
-            # 为每个词建立倒排链
-            for term in set(terms):  # 去重
-                if term not in index.postings:
-                    index.postings[term] = PostingList()
-                
-                # 记录词频和位置
-                term_freq = terms.count(term)
-                positions = [i for i, t in enumerate(terms) if t == term]
-                
-                index.postings[term].add(Posting(
-                    doc_id=chunk.id,
-                    frequency=term_freq,
-                    positions=positions
-                ))
-        
-        # 计算文档频率（用于 BM25）
-        index.doc_frequency = {
-            term: len(posting_list.postings)
-            for term, posting_list in index.postings.items()
-        }
-        
-        index.total_docs = len(embedded_chunks)
-        
-        return index
-    
-    def _tokenize(self, text: str, language: str) -> List[str]:
-        """分词"""
-        if language == "zh":
-            # 中文分词（使用 jieba 或其他中文分词库）
-            return self.chinese_tokenizer.cut(text)
-        else:
-            # 英文分词
-            return self.english_tokenizer.tokenize(text.lower())
-```
-
-#### 4.4.2 元数据索引
-
-元数据索引支持结构化的过滤查询：
-
-```python
-class MetadataIndex:
-    """元数据索引"""
-    
-    def __init__(self):
-        self.field_indices = {}  # 字段名 → 值 → 文档ID集合
-    
-    def index_chunk(self, chunk_id: str, metadata: Dict):
-        """索引文档元数据"""
-        for field_name, field_value in metadata.items():
-            if field_name not in self.field_indices:
-                self.field_indices[field_name] = {}
-            
-            # 将字段值转为可索引的键
-            key = self._normalize_value(field_value)
-            
-            if key not in self.field_indices[field_name]:
-                self.field_indices[field_name][key] = set()
-            
-            self.field_indices[field_name][key].add(chunk_id)
-    
-    def query(self, filters: Dict) -> Set[str]:
-        """根据条件查询"""
-        result_sets = None
-        
-        for field_name, expected_value in filters.items():
-            if field_name in self.field_indices:
-                key = self._normalize_value(expected_value)
-                matching_docs = self.field_indices[field_name].get(key, set())
-                
-                if result_sets is None:
-                    result_sets = matching_docs.copy()
-                else:
-                    result_sets &= matching_docs  # 交集
-            
-            if result_sets is not None and len(result_sets) == 0:
-                break  # 提前终止
-        
-        return result_sets or set()
-```
-
-### 4.5 知识库更新机制
-
-#### 4.5.1 更新策略
+#### 4.4.1 更新策略
 
 | 更新类型 | 说明 | 触发条件 | 实现方式 |
 |---------|------|---------|---------|
 | **全量更新** | 重建整个知识库 | 定期/手动触发 | 重新处理所有文档 |
 | **增量更新** | 添加新文档 | 新文档入库 | 只处理新增文档 |
 | **实时更新** | 即时更新 | 事件触发 | 流式处理管道 |
-| **定时同步** | 定期检查 | 定时任务 | 轮询检查变化 |
 
-#### 4.5.2 增量更新实现
-
-```python
-class IncrementalUpdater:
-    """增量更新器"""
-    
-    async def update(self, new_documents: List[RawDocument]):
-        """增量更新知识库"""
-        # Step 1: 过滤已存在的文档
-        existing_ids = await self.store.get_existing_ids()
-        new_docs = [doc for doc in new_documents if doc.id not in existing_ids]
-        
-        if not new_docs:
-            return UpdateResult(added=0, updated=0)
-        
-        # Step 2: 预处理新文档
-        cleaned_chunks = await self.preprocessor.process(new_docs)
-        
-        # Step 3: 向量化
-        embedded_chunks = await self.embedder.embed_chunks(cleaned_chunks)
-        
-        # Step 4: 写入向量数据库
-        await self.vector_store.upsert_chunks(embedded_chunks)
-        
-        # Step 5: 更新倒排索引
-        await self.inverted_index.update(embedded_chunks)
-        
-        # Step 6: 更新元数据索引
-        await self.metadata_index.update(embedded_chunks)
-        
-        return UpdateResult(
-            added=len(embedded_chunks),
-            updated=0,
-            timestamp=datetime.now()
-        )
-```
-
-#### 4.5.3 知识库维护
+#### 4.4.2 增量更新流程
 
 ```mermaid
 flowchart TD
-    A[知识库维护] --> B{定期检查}
-    B --> C[过期内容检测]
-    B --> D[质量监控]
-    B --> E[索引优化]
-    
-    C --> F[标记过期文档]
-    F --> G[清理/归档]
-    
-    D --> H[质量评分低的文档]
-    H --> I[重新处理或删除]
-    
-    E --> J[索引碎片整理]
-    J --> K[重新构建索引]
-    
-    G & I & K --> L[知识库优化完成]
+    A[新文档入库] --> B[检查是否已存在]
+    B -->|已存在| C[跳过]
+    B -->|新文档| D[预处理<br/>清洗/切片]
+    D --> E[向量化嵌入]
+    E --> F[写入向量库]
+    F --> G[更新索引]
+    G --> H[更新完成]
 ```
 
 ---
@@ -837,17 +484,15 @@ graph TB
     subgraph "查询处理"
         Q[用户查询] --> Q1[查询向量化]
         Q --> Q2[查询分词]
-        Q --> Q3[查询改写]
     end
     
     subgraph "多策略检索"
         Q1 --> R1[向量检索<br/>语义匹配]
         Q2 --> R2[关键词检索<br/>精确匹配]
-        Q3 --> R3[扩展检索<br/>同义词/假设文档]
     end
     
     subgraph "结果融合"
-        R1 & R2 & R3 --> F[RRF融合排序]
+        R1 & R2 --> F[RRF融合排序]
         F --> FS[初步候选集<br/>Top-N]
     end
     
@@ -855,11 +500,7 @@ graph TB
         FS --> RR[重排序模型]
         RR --> RR1[相关性精排]
         RR1 --> RR2[多样性去重]
-        RR2 --> RR3[上下文窗口<br/>Top-K]
-    end
-    
-    subgraph "检索结果"
-        RR3 --> O[检索到的文档片段]
+        RR2 --> O[检索结果<br/>Top-K]
     end
     
     style R1 fill:#4a90d9,color:#fff
@@ -869,56 +510,15 @@ graph TB
 
 ### 5.3 向量检索详解
 
-#### 5.3.1 查询向量化
-
-```python
-class QueryEncoder:
-    """查询编码器"""
-    
-    def __init__(self, embedding_service: EmbeddingService):
-        self.embedder = embedding_service
-    
-    async def encode(self, query: str) -> QueryVector:
-        """将用户查询编码为向量"""
-        # Step 1: 查询预处理
-        cleaned_query = self._preprocess_query(query)
-        
-        # Step 2: 查询向量化
-        query_embedding = await self.embedder.embed_text(cleaned_query)
-        
-        # Step 3: 归一化
-        if self.config.normalize:
-            query_embedding = self._normalize(query_embedding)
-        
-        return QueryVector(
-            original_query=query,
-            processed_query=cleaned_query,
-            embedding=query_embedding,
-            model=self.embedder.model_name
-        )
-    
-    def _preprocess_query(self, query: str) -> str:
-        """查询预处理"""
-        # 去除多余空白
-        query = ' '.join(query.split())
-        # 去除尾部标点
-        query = query.rstrip('？?！!。.')
-        # 统一大小写
-        query = query.lower() if self.config.lowercase else query
-        return query
-```
-
-#### 5.3.2 向量相似度计算
+#### 5.3.1 余弦相似度计算
 
 向量检索的核心是计算查询向量与知识库中各文档向量的相似度：
 
-**余弦相似度（Cosine Similarity）：**
+**余弦相似度公式：**
 
 $$
 \text{sim}(\mathbf{q}, \mathbf{d}) = \frac{\mathbf{q} \cdot \mathbf{d}}{\|\mathbf{q}\| \cdot \|\mathbf{d}\|}
 $$
-
-其中 $\mathbf{q}$ 是查询向量，$\mathbf{d}$ 是文档向量。
 
 **Python 实现：**
 
@@ -927,83 +527,29 @@ import numpy as np
 
 def cosine_similarity(query_vec: np.ndarray, doc_vec: np.ndarray) -> float:
     """计算余弦相似度"""
-    # 点积
     dot_product = np.dot(query_vec, doc_vec)
-    # 范数乘积
     norm_product = np.linalg.norm(query_vec) * np.linalg.norm(doc_vec)
-    # 避免除零
     if norm_product == 0:
         return 0.0
-    # 余弦相似度
     return dot_product / norm_product
 
 def batch_cosine_similarity(query_vec: np.ndarray, 
                               doc_matrix: np.ndarray) -> np.ndarray:
     """批量计算余弦相似度"""
-    # 文档向量矩阵的范数
     doc_norms = np.linalg.norm(doc_matrix, axis=1)
-    # 避免除零
     doc_norms = np.where(doc_norms == 0, 1e-10, doc_norms)
-    # 查询向量范数
     query_norm = np.linalg.norm(query_vec)
-    # 矩阵乘法批量计算
     similarities = doc_matrix.dot(query_vec) / (doc_norms * query_norm)
     return similarities
 ```
 
-**常见相似度度量对比：**
+#### 5.3.2 常见相似度度量对比
 
 | 度量方法 | 公式 | 特点 | 适用场景 |
 |---------|------|------|---------|
-| **余弦相似度** | $\frac{q \cdot d}{\|q\| \cdot \|d\|}$ | 衡量方向相似性，不受长度影响 | 文本嵌入（推荐） |
-| **欧氏距离** | $\|q - d\|_2$ | 衡量绝对距离，受长度影响 | 需要绝对距离的场景 |
-| **内积** | $q \cdot d$ | 计算简单，需要归一化 | 点积搜索（FastText） |
-| **Jaccard 相似度** | $\frac{|q \cap d|}{|q \cup d|}$ | 集合相似度 | 关键词重叠度 |
-
-#### 5.3.3 近似最近邻搜索（ANN）
-
-大规模向量检索使用 ANN 算法加速搜索：
-
-```python
-class ANNIndex:
-    """近似最近邻索引"""
-    
-    def __init__(self, dimension: int, index_type: str = "hnsw"):
-        self.dimension = dimension
-        self.index_type = index_type
-        self.index = self._init_index()
-    
-    def _init_index(self):
-        """初始化索引"""
-        if self.index_type == "hnsw":
-            # HNSW 索引
-            return faiss.IndexHNSWFlat(self.dimension, 16)  # 16个连接
-        elif self.index_type == "ivf":
-            # IVF 索引
-            nlist = 100  # 聚类中心数
-            quantizer = faiss.IndexFlatL2(self.dimension)
-            return faiss.IndexIVFFlat(quantizer, self.dimension, nlist)
-        elif self.index_type == "pq":
-            # PQ 索引
-            return faiss.IndexPQ(self.dimension, 64, 8)  # 64个子空间，8位编码
-    
-    def build(self, vectors: np.ndarray):
-        """构建索引"""
-        vectors = vectors.astype('float32')
-        if hasattr(self.index, 'train'):
-            self.index.train(vectors)
-        self.index.add(vectors)
-    
-    def search(self, query_vector: np.ndarray, top_k: int) -> SearchResult:
-        """搜索最近邻"""
-        query = query_vector.astype('float32').reshape(1, -1)
-        distances, indices = self.index.search(query, top_k)
-        
-        return SearchResult(
-            distances=distances[0],  # 距离数组
-            indices=indices[0]       # 索引数组
-        )
-```
+| **余弦相似度** | $\frac{q \cdot d}{\|q\| \cdot \|d\|}$ | 衡量方向相似性 | 文本嵌入（推荐） |
+| **欧氏距离** | $\|q - d\|_2$ | 衡量绝对距离 | 需绝对距离场景 |
+| **内积** | $q \cdot d$ | 计算简单 | 点积搜索 |
 
 ### 5.4 关键词检索详解
 
@@ -1015,19 +561,18 @@ $$
 \text{score}(D, Q) = \sum_{i=1}^{n} \text{IDF}(q_i) \cdot \frac{f(q_i, D) \cdot (k_1 + 1)}{f(q_i, D) + k_1 \cdot (1 - b + b \cdot \frac{|D|}{\text{avgdl}})}
 $$
 
-其中：
-- $f(q_i, D)$：词项 $q_i$ 在文档 $D$ 中的词频
-- $|D|$：文档 $D$ 的长度（词数）
-- $\text{avgdl}$：所有文档的平均长度
+**参数说明：**
+- $f(q_i, D)$：词频
+- $|D|$：文档长度
+- $\text{avgdl}$：平均文档长度
 - $k_1$：词频饱和参数（通常 1.2-2.0）
-- $b$：文档长度归一化参数（通常 0.75）
-- $\text{IDF}(q_i)$：逆文档频率
+- $b$：长度归一化参数（通常 0.75）
+
+**IDF 计算：**
 
 $$
 \text{IDF}(q_i) = \ln\left(1 + \frac{N - n(q_i) + 0.5}{n(q_i) + 0.5}\right)
 $$
-
-其中 $N$ 是文档总数，$n(q_i)$ 是包含词项 $q_i$ 的文档数。
 
 #### 5.4.2 BM25 实现
 
@@ -1043,31 +588,24 @@ class BM25Searcher:
         self.avgdl = 0
         self.total_docs = 0
     
-    def index(self, documents: List[IndexedDoc]):
-        """构建索引"""
+    def build_index(self, documents: List[IndexedDoc]):
+        """构建倒排索引"""
         self.total_docs = len(documents)
         total_length = 0
         
         for doc in documents:
-            # 记录文档长度
             self.doc_lengths[doc.id] = len(doc.tokens)
             total_length += len(doc.tokens)
             
-            # 构建倒排索引
             for token in set(doc.tokens):
                 if token not in self.inverted_index:
                     self.inverted_index[token] = []
-                
-                # 记录词频和位置
-                term_freq = doc.tokens.count(token)
-                positions = [i for i, t in enumerate(doc.tokens) if t == token]
+                tf = doc.tokens.count(token)
                 self.inverted_index[token].append({
                     'doc_id': doc.id,
-                    'term_freq': term_freq,
-                    'positions': positions
+                    'term_freq': tf
                 })
         
-        # 计算平均文档长度
         self.avgdl = total_length / self.total_docs if self.total_docs > 0 else 1
     
     def search(self, query_tokens: List[str], top_k: int) -> List[ScoredDoc]:
@@ -1076,35 +614,172 @@ class BM25Searcher:
         
         for token in query_tokens:
             if token in self.inverted_index:
-                # 计算 IDF
-                df = len(self.inverted_index[token])  # 包含该词的文档数
+                df = len(self.inverted_index[token])
                 idf = np.log(1 + (self.total_docs - df + 0.5) / (df + 0.5))
                 
-                # 对每个包含该词的文档计算分数
                 for posting in self.inverted_index[token]:
                     doc_id = posting['doc_id']
                     tf = posting['term_freq']
                     doc_length = self.doc_lengths.get(doc_id, self.avgdl)
                     
-                    # BM25 分数计算
                     numerator = tf * (self.k1 + 1)
                     denominator = tf + self.k1 * (1 - self.b + self.b * doc_length / self.avgdl)
                     score = idf * numerator / denominator
                     
-                    if doc_id not in scores:
-                        scores[doc_id] = 0.0
-                    scores[doc_id] += score
+                    scores[doc_id] = scores.get(doc_id, 0.0) + score
         
-        # 排序并返回 Top-K
         sorted_docs = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-        return [ScoredDoc(doc_id=doc_id, score=score) 
-                for doc_id, score in sorted_docs[:top_k]]
+        return [ScoredDoc(doc_id=id, score=score) for id, score in sorted_docs[:top_k]]
 ```
 
-#### 5.4.3 关键词匹配增强
+### 5.5 混合检索策略
+
+#### 5.5.1 RRF 融合算法
+
+RRF（Reciprocal Rank Fusion）是融合多种检索结果的经典算法：
+
+$$
+\text{RRF\_score}(d) = \sum_{r \in R} \frac{1}{k + \text{rank}_r(d)}
+$$
+
+其中 $k$ 是平滑因子（通常为 60）。
 
 ```python
-class KeywordEnhancer:
-    """关键词增强器"""
+class RRFFusion:
+    """倒数排名融合"""
     
-    def enhance_query(self, query: str, language: str = "zh")
+    def __init__(self, k: int = 60):
+        self.k = k
+    
+    def fuse(self, rank_lists: List[List[str]]) -> List[FusedResult]:
+        """融合多个排名列表"""
+        scores = {}
+        for rank_list in rank_lists:
+            for rank, doc_id in enumerate(rank_list, start=1):
+                scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (self.k + rank)
+        fused = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        return [FusedResult(doc_id=id, fused_score=score) for id, score in fused]
+```
+
+#### 5.5.2 混合检索实现
+
+```python
+class HybridRetriever:
+    """混合检索器"""
+    
+    def __init__(self, vector_retriever, keyword_retriever, 
+                 fusion: RRFFusion):
+        self.vector_retriever = vector_retriever
+        self.keyword_retriever = keyword_retriever
+        self.fusion = fusion
+    
+    async def retrieve(self, query: str, top_k: int = 5) -> List[RerankedDoc]:
+        """混合检索"""
+        # Step 1: 向量检索
+        vector_results = await self.vector_retriever.search(query, top_k=50)
+        vector_ranks = [r.id for r in vector_results]
+        
+        # Step 2: 关键词检索
+        keyword_results = self.keyword_retriever.search(query, top_k=50)
+        keyword_ranks = [r.doc_id for r in keyword_results]
+        
+        # Step 3: RRF 融合
+        fused_results = self.fusion.fuse([vector_ranks, keyword_ranks])
+        
+        # Step 4: 映射回完整结果
+        result_map = {r.id: r for r in vector_results}
+        result_map.update({r.doc_id: r for r in keyword_results})
+        
+        final_results = []
+        for fused in fused_results[:top_k]:
+            doc = result_map.get(fused.doc_id)
+            if doc:
+                final_results.append(RerankedDoc(
+                    id=doc.id,
+                    content=doc.content,
+                    metadata=doc.metadata,
+                    score=fused.fused_score
+                ))
+        
+        return final_results
+```
+
+### 5.6 重排序（Rerank）
+
+#### 5.6.1 重排序模型
+
+```python
+class Reranker:
+    """重排序器"""
+    
+    def __init__(self, model_name: str = "bge-reranker-large"):
+        self.model = SentenceTransformer(model_name)
+    
+    async def rerank(self, query: str, documents: List[RerankedDoc],
+                      top_k: int = 5) -> List[RerankedDoc]:
+        """重排序"""
+        # 构建查询-文档对
+        pairs = [(query, doc.content) for doc in documents]
+        
+        # 批量计算相关性分数
+        scores = self.model.predict(pairs, batch_size=32)
+        
+        # 排序并取 Top-K
+        ranked = sorted(
+            zip(documents, scores),
+            key=lambda x: x[1],
+            reverse=True
+        )[:top_k]
+        
+        return [RerankedDoc(
+            id=doc.id, content=doc.content,
+            metadata=doc.metadata,
+            score=float(score)
+        ) for doc, score in ranked]
+```
+
+#### 5.6.2 多样性去重
+
+```python
+class DiversitySelector:
+    """多样性选择器"""
+    
+    def select(self, documents: List[RerankedDoc], 
+                target_count: int) -> List[RerankedDoc]:
+        """选择多样化的结果"""
+        if len(documents) <= target_count:
+            return documents
+        
+        selected = [documents[0]]
+        remaining = documents[1:]
+        
+        while len(selected) < target_count and remaining:
+            best_idx = 0
+            best_diversity_score = -float('inf')
+            
+            for i, doc in enumerate(remaining):
+                max_sim = max(
+                    self._compute_similarity(doc, sel) 
+                    for sel in selected
+                )
+                # 多样性分数 = 分数 * (1 - 相似度)
+                score = doc.score * (1 - max_sim)
+                if score > best_diversity_score:
+                    best_diversity_score = score
+                    best_idx = i
+            
+            selected.append(remaining.pop(best_idx))
+        
+        return selected
+    
+    def _compute_similarity(self, doc1, doc2) -> float:
+        """计算文本相似度"""
+        # 使用简单的词重叠度
+        words1 = set(doc1.content.split())
+        words2 = set(doc2.content.split())
+        if not words1 or not words2:
+            return 0.5
+        overlap = len(words1 & words2)
+        total = len(words1 | words2)
+        return overlap / total if total > 0 else 0.5
+```

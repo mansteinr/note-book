@@ -56,13 +56,6 @@ graph LR
         E[Top-P Sampling\nTop-P采样]
         F[Typical Sampling\n典型采样]
     end
-    
-    A -->|单一确定| G[稳定但平淡]
-    B -->|多条路径| H[多样但慢]
-    C -->|调整分布| I[灵活]
-    D -->|固定数量| J[简单易用]
-    E -->|动态范围| K[推荐首选]
-    F -->|基于信息熵| L[减少重复]
 ```
 
 ---
@@ -75,7 +68,7 @@ Top-K 采样（Top-K Sampling）是一种简单的文本生成策略，它从概
 
 ### 2.2 算法原理
 
-#### 2.2.1 核心步骤
+#### 核心步骤
 
 ```mermaid
 graph TD
@@ -87,7 +80,7 @@ graph TD
     F --> G[返回选定的 Token];
 ```
 
-#### 2.2.2 算法伪代码
+#### 算法伪代码
 
 ```python
 def top_k_sampling(logits, k):
@@ -95,7 +88,7 @@ def top_k_sampling(logits, k):
     Top-K 采样算法
     
     Args:
-        logits: 模型输出的原始分数，形状为 [vocab_size]
+        logits: 模型输出的原始分数
         k: 保留的 Token 数量
         
     Returns:
@@ -107,13 +100,11 @@ def top_k_sampling(logits, k):
     # 2. 获取概率最高的 K 个 Token 的索引
     top_k_indices = np.argsort(probabilities)[-k:]
     
-    # 3. 创建只包含 Top-K 的概率分布
+    # 3. 创建只包含 Top-K 的概率分布并重新归一化
     top_k_probs = probabilities[top_k_indices]
-    
-    # 4. 重新归一化概率（确保和为1）
     top_k_probs = top_k_probs / top_k_probs.sum()
     
-    # 5. 在 Top-K 中随机采样
+    # 4. 在 Top-K 中随机采样
     sampled_index = np.random.choice(top_k_indices, p=top_k_probs)
     
     return sampled_index
@@ -129,8 +120,6 @@ x & \text{if } x \in \text{Top-K}(\text{sort}(P)) \\
 0 & \text{otherwise}
 \end{cases}
 $$
-
-其中 $\text{Top-K}(\text{sort}(P))$ 是概率最高的 K 个 Token 的集合。
 
 #### 步骤二：重新归一化
 
@@ -150,36 +139,6 @@ $$
 | :--- | :--- | :--- | :--- |
 | **K** | 1 - 词表大小 | 50 | 保留的 Token 数量 |
 
-#### 不同 K 值的影响
-
-```python
-# 代码示例：不同 K 值的效果对比
-import numpy as np
-
-# 模拟 Token 概率分布
-vocab_size = 10000
-logits = np.random.randn(vocab_size) * 2  # 随机生成 logits
-probabilities = np.exp(logits) / np.sum(np.exp(logits))
-
-# 不同 K 值下的采样
-def simulate_top_k(probabilities, k, n_samples=1000):
-    """模拟 Top-K 采样"""
-    samples = []
-    for _ in range(n_samples):
-        top_k_indices = np.argsort(probabilities)[-k:]
-        top_k_probs = probabilities[top_k_indices]
-        top_k_probs = top_k_probs / top_k_probs.sum()
-        sampled = np.random.choice(top_k_indices, p=top_k_probs)
-        samples.append(sampled)
-    return len(set(samples))  # 返回唯一 Token 数量
-
-# 测试不同 K 值
-k_values = [1, 5, 10, 50, 100, 500]
-for k in k_values:
-    unique_tokens = simulate_top_k(probabilities, k)
-    print(f"K={k:4d}: 可能输出的唯一 Token 数量 = {unique_tokens:4d}")
-```
-
 #### 典型 K 值选择
 
 | K 值范围 | 效果 | 适用场景 |
@@ -188,7 +147,6 @@ for k in k_values:
 | **K=5-10** | 非常稳定，变化很小 | 代码生成、格式固定文本 |
 | **K=20-50** | 适度多样性 | 通用对话、翻译 |
 | **K=100-500** | 高多样性 | 创意写作、头脑风暴 |
-| **K>500** | 可能引入低质量 Token | 实验性创作 |
 
 ### 2.5 Top-K 的优缺点
 
@@ -200,7 +158,6 @@ for k in k_values:
 #### 缺点
 - **静态固定**：K 值在整个生成过程中保持不变
 - **可能遗漏**：概率略低于阈值的优质 Token 被丢弃
-- **可能引入噪声**：当概率分布平坦时，K 个 Token 可能包含低质量选项
 - **不够自适应**：无法根据上下文动态调整采样范围
 
 ---
@@ -213,7 +170,7 @@ Top-P 采样（Top-P Sampling），又称 **Nucleus Sampling（核采样）**，
 
 ### 3.2 算法原理
 
-#### 3.2.1 核心步骤
+#### 核心步骤
 
 ```mermaid
 graph TD
@@ -226,7 +183,7 @@ graph TD
     G --> H[返回选定的 Token];
 ```
 
-#### 3.2.2 算法伪代码
+#### 算法伪代码
 
 ```python
 def top_p_sampling(logits, p):
@@ -234,7 +191,7 @@ def top_p_sampling(logits, p):
     Top-P 采样算法（核采样）
     
     Args:
-        logits: 模型输出的原始分数，形状为 [vocab_size]
+        logits: 模型输出的原始分数
         p: 累积概率阈值，取值范围 [0, 1]
         
     Returns:
@@ -243,7 +200,7 @@ def top_p_sampling(logits, p):
     # 1. 计算概率分布
     probabilities = softmax(logits)
     
-    # 2. 按概率降序排列，同时保留原始索引
+    # 2. 按概率降序排列
     sorted_indices = np.argsort(probabilities)[::-1]
     sorted_probs = probabilities[sorted_indices]
     
@@ -251,7 +208,6 @@ def top_p_sampling(logits, p):
     cumulative_probs = np.cumsum(sorted_probs)
     
     # 4. 找到累积概率首次超过 P 的位置
-    # 注意：需要包含使累积概率超过 P 的那个 Token
     last_token = np.searchsorted(cumulative_probs, p)
     
     # 5. 选取前 last_token+1 个 Token
@@ -281,18 +237,10 @@ $$
 \text{Kernel}(P) = \min \{ k \in \{1,...,n\} : \sum_{i=1}^{k} P_i \geq P \}
 $$
 
-即找到最小的 $k$，使得前 $k$ 个 Token 的累积概率不小于 $P$。
-
 #### 步骤三：重新归一化
 
 $$
 P'(x) = \frac{P(x)}{\sum_{y \in \text{Kernel}(P)} P(y)} \quad \text{for } x \in \text{Kernel}(P)
-$$
-
-#### 步骤四：采样
-
-$$
-\text{Token} \sim \text{Cat}(P')
 $$
 
 ### 3.4 参数设置
@@ -300,35 +248,6 @@ $$
 | 参数 | 取值范围 | 默认值 | 说明 |
 | :--- | :--- | :--- | :--- |
 | **P** | 0.0 - 1.0 | 0.9 | 累积概率阈值 |
-
-#### 不同 P 值的影响
-
-```python
-# 代码示例：不同 P 值的效果对比
-def simulate_top_p(probabilities, p, n_samples=1000):
-    """模拟 Top-P 采样"""
-    samples = []
-    for _ in range(n_samples):
-        sorted_indices = np.argsort(probabilities)[::-1]
-        sorted_probs = probabilities[sorted_indices]
-        cumulative_probs = np.cumsum(sorted_probs)
-        
-        last_token = np.searchsorted(cumulative_probs, p)
-        top_p_indices = sorted_indices[:last_token + 1]
-        top_p_probs = sorted_probs[:last_token + 1]
-        top_p_probs = top_p_probs / top_p_probs.sum()
-        
-        sampled = np.random.choice(top_p_indices, p=top_p_probs)
-        samples.append(sampled)
-    
-    return len(set(samples))
-
-# 测试不同 P 值
-p_values = [0.5, 0.7, 0.8, 0.9, 0.95, 0.99]
-for p in p_values:
-    unique_tokens = simulate_top_p(probabilities, p)
-    print(f"P={p:.2f}: 可能输出的唯一 Token 数量 = {unique_tokens:4d}")
-```
 
 #### 典型 P 值选择
 
@@ -338,7 +257,6 @@ for p in p_values:
 | **P=0.8-0.9** | 适度多样性 | 通用对话、翻译、摘要 |
 | **P=0.9-0.95** | 高多样性 | 创意写作、营销文案 |
 | **P=0.95-0.99** | 极高多样性 | 诗歌创作、头脑风暴 |
-| **P≈1.0** | 接近全词表采样 | 实验性、极富创造性任务 |
 
 ### 3.5 Top-P 的优缺点
 
@@ -351,7 +269,6 @@ for p in p_values:
 #### 缺点
 - **实现稍复杂**：需要计算累积概率和搜索阈值位置
 - **计算略高**：累积概率计算和搜索增加少量开销
-- **可能不稳定**：在某些极端情况下（如多峰分布）可能包含过多 Token
 
 ---
 
@@ -368,8 +285,8 @@ for p in p_values:
 | **实现复杂度** | 简单 | 中等 |
 | **计算效率** | 高 | 较高 |
 | **可控性** | 强（直接控制数量） | 中（控制概率阈值） |
-| **输出稳定性** | 高（范围固定） | 较高（范围动态但质量保证） |
-| **多样性上限** | 受限于 K 值 | 更灵活，可覆盖更多优质 Token |
+| **输出稳定性** | 高 | 较高 |
+| **多样性上限** | 受限于 K 值 | 更灵活 |
 
 ### 4.2 数学原理对比
 
@@ -403,34 +320,24 @@ $$
 ```mermaid
 graph TD
     subgraph "Top-K 采样（K=5）"
-        A1[Token1: 40%] --> A2[Token2: 25%];
-        A2 --> A3[Token3: 15%];
-        A3 --> A4[Token4: 10%];
-        A4 --> A5[Token5: 6%];
-        A5 --> X1[↓ 筛选边界];
-        X1 --> A6[Token6: 3% - 被丢弃];
-        style A1 fill:#4CAF50,stroke:#333,color:#fff
-        style A2 fill:#4CAF50,stroke:#333,color:#fff
-        style A3 fill:#4CAF50,stroke:#333,color:#fff
-        style A4 fill:#4CAF50,stroke:#333,color:#fff
-        style A5 fill:#4CAF50,stroke:#333,color:#fff
-        style A6 fill:#f9f,stroke:#333
+        direction TB
+        A1[Token1: 40%] --> A2[Token2: 25%]
+        A2 --> A3[Token3: 15%]
+        A3 --> A4[Token4: 10%]
+        A4 --> A5[Token5: 6%]
+        A5 --> X1[↓ 筛选边界]
+        X1 --> A6[Token6: 3% - 被丢弃]
     end
     
     subgraph "Top-P 采样（P=0.85）"
-        B1[Token1: 40%] --> B2[Token2: 25%];
-        B2 --> B3[Token3: 15%];
-        B3 --> B4[Token4: 10%];
-        B4 --> Y1[累积: 90% ≥ 85%];
-        Y1 --> B5[Token5: 6% - 被包含];
-        B5 --> X2[↓ 筛选边界];
-        X2 --> B6[Token6: 3% - 被丢弃];
-        style B1 fill:#2196F3,stroke:#333,color:#fff
-        style B2 fill:#2196F3,stroke:#333,color:#fff
-        style B3 fill:#2196F3,stroke:#333,color:#fff
-        style B4 fill:#2196F3,stroke:#333,color:#fff
-        style B5 fill:#2196F3,stroke:#333,color:#fff
-        style B6 fill:#f9f,stroke:#333
+        direction TB
+        B1[Token1: 40%] --> B2[Token2: 25%]
+        B2 --> B3[Token3: 15%]
+        B3 --> B4[Token4: 10%]
+        B4 --> Y1[累积: 90% ≥ 85%]
+        Y1 --> B5[Token5: 6% - 被包含]
+        B5 --> X2[↓ 筛选边界]
+        X2 --> B6[Token6: 3% - 被丢弃]
     end
 ```
 
@@ -445,9 +352,6 @@ sharp_dist = np.array([0.9, 0.05, 0.03, 0.02])
 
 # 场景2：平坦分布（多个 Token 概率接近）
 flat_dist = np.array([0.3, 0.28, 0.25, 0.17])
-
-# 场景3：双峰分布（两个主要 Token）
-bimodal_dist = np.array([0.4, 0.35, 0.15, 0.1])
 
 def compare_sampling(probs, k_value, p_value, n_samples=10000):
     """对比两种采样方法"""
@@ -481,7 +385,7 @@ def compare_sampling(probs, k_value, p_value, n_samples=10000):
 # 测试对比
 print("分布类型 | Top-K (K=2) | Top-P (P=0.8)")
 print("-" * 50)
-for dist_name, dist in [("尖峰", sharp_dist), ("平坦", flat_dist), ("双峰", bimodal_dist)]:
+for dist_name, dist in [("尖峰", sharp_dist), ("平坦", flat_dist)]:
     result = compare_sampling(dist, k_value=2, p_value=0.8)
     print(f"{dist_name:6} | {result['top_k_unique']:11} | {result['top_p_unique']:11}")
 ```
@@ -499,30 +403,13 @@ for dist_name, dist in [("尖峰", sharp_dist), ("平坦", flat_dist), ("双峰"
 | **连贯性** | 上下文逻辑是否一致 | 重复率 + 逻辑检查 |
 | **准确性** | 事实是否正确 | 人工验证 |
 
-### 5.2 实验对比示例
-
-#### 实验设置
-
-```markdown
-**测试任务**：
-1. 事实性问答：回答常识问题
-2. 创意写作：写一段故事
-3. 代码生成：生成简单函数
-
-**参数配置**：
-- Top-K：K=10, K=50
-- Top-P：P=0.8, P=0.9
-- 温度统一设置为 1.0
-- 每个任务生成 100 个样本
-```
-
-#### 预期结果对比
+### 5.2 预期结果对比
 
 | 任务类型 | 评估指标 | Top-K (K=50) | Top-P (P=0.9) | 差异说明 |
 | :--- | :--- | :--- | :--- | :--- |
 | **事实问答** | 事实准确率 | 92% | 90% | Top-K 稍高，范围固定更稳定 |
 | | 文本流畅性 | 8.5/10 | 8.6/10 | 差异不大 |
-| **创意写作** | 创意性评分 | 7.5/10 | 8.2/10 | Top-P 更高，自适应范围保留更多创意 Token |
+| **创意写作** | 创意性评分 | 7.5/10 | 8.2/10 | Top-P 更高，自适应范围更好 |
 | | 多样性 | 中等 | 高 | Top-P 多样性更好 |
 | **代码生成** | 语法正确率 | 95% | 93% | Top-K 稍高，固定范围减少错误 |
 | | 代码风格一致性 | 高 | 中 | Top-K 一致性更好 |
@@ -537,7 +424,6 @@ for dist_name, dist in [("尖峰", sharp_dist), ("平坦", flat_dist), ("双峰"
 **Top-K 采样 (K=10) 生成结果**：
 ```python
 def is_prime(n):
-    """判断一个数是否为质数"""
     if n <= 1:
         return False
     if n <= 3:
@@ -556,7 +442,6 @@ def is_prime(n):
 **Top-P 采样 (P=0.9) 生成结果**：
 ```python
 def is_prime(num):
-    """检查数字是否为质数"""
     if num < 2:
         return False
     for i in range(2, int(num**0.5) + 1):
@@ -579,20 +464,19 @@ def is_prime(num):
 | **排序** | O(n log n) | O(n log n) | 相同 |
 | **筛选** | O(n) | O(n) | 相同 |
 | **累积概率** | O(1) | O(n) | Top-P 需要计算累积和 |
-| **归一化** | O(K) | O(m) | m 为动态大小，K 为固定值 |
-| **采样** | O(K) | O(m) | 差异不大 |
+| **采样** | O(K) | O(m) | m 为动态大小 |
 | **总计** | O(n log n) | O(n log n) | 理论复杂度相同 |
 
 其中 $n$ 为词表大小（通常 32K-128K）。
 
-### 6.2 实际性能对比
+### 6.2 性能基准测试
 
 ```python
 # 代码示例：性能基准测试
 import time
 import numpy as np
 
-def benchmark_sampling(method, logits, param, n_iterations=10000):
+def benchmark_sampling(method, logits, param, n_iterations=5000):
     """基准测试采样方法"""
     times = []
     for _ in range(n_iterations):
@@ -618,8 +502,7 @@ def benchmark_sampling(method, logits, param, n_iterations=10000):
     
     return {
         'avg_time_ms': np.mean(times) * 1000,
-        'p50_time_ms': np.percentile(times, 50) * 1000,
-        'p99_time_ms': np.percentile(times, 99) * 1000
+        'p50_time_ms': np.percentile(times, 50) * 1000
     }
 
 # 测试配置
@@ -631,11 +514,11 @@ print("基准测试结果（词表大小：50000）")
 print("=" * 60)
 
 for k in [10, 50, 100]:
-    result = benchmark_sampling('top_k', logits, k, n_iterations=5000)
+    result = benchmark_sampling('top_k', logits, k)
     print(f"Top-K (K={k:4d}): 平均 {result['avg_time_ms']:.4f} ms")
 
 for p in [0.8, 0.9, 0.95]:
-    result = benchmark_sampling('top_p', logits, p, n_iterations=5000)
+    result = benchmark_sampling('top_p', logits, p)
     print(f"Top-P (P={p:.2f}): 平均 {result['avg_time_ms']:.4f} ms")
 ```
 
@@ -674,11 +557,7 @@ flowchart TD
 
 ```markdown
 **需求**：生成高质量、可执行的代码
-**要求**：
-- 代码准确、无错误
-- 风格一致
-- 可预测
-
+**要求**：代码准确、无错误、风格一致
 **推荐策略**：Top-K 采样，K=5-10
 ```
 
@@ -689,9 +568,7 @@ flowchart TD
 code_generation_config = {
     "top_k": 10,           # 非常小的 K 值，确保确定性
     "temperature": 0.0,    # 零温度，完全确定性
-    "max_tokens": 2000,
-    "presence_penalty": 0,
-    "frequency_penalty": 0
+    "max_tokens": 2000
 }
 
 def generate_code(description, language="python"):
@@ -700,23 +577,11 @@ def generate_code(description, language="python"):
     请生成一个 {language} 函数，功能描述如下：
     {description}
     
-    要求：
-    1. 代码正确、可执行
-    2. 添加必要的中文注释
-    3. 遵循 PEP8 编码规范
+    要求：代码正确、可执行，添加必要的中文注释，遵循 PEP8 规范。
     """
     
     return llm.generate(prompt, **code_generation_config)
 ```
-
-#### 效果评估
-
-| 指标 | Top-K (K=10) | Top-P (P=0.9) |
-| :--- | :--- | :--- |
-| **语法正确率** | 98% | 94% |
-| **代码可执行率** | 96% | 92% |
-| **风格一致性** | 95% | 85% |
-| **创造性** | 低 | 中 |
 
 ### 7.3 场景二：创意写作助手
 
@@ -724,11 +589,7 @@ def generate_code(description, language="python"):
 
 ```markdown
 **需求**：生成富有创意的文学作品
-**要求**：
-- 想象力丰富
-- 风格多样
-- 语言优美
-
+**要求**：想象力丰富、风格多样、语言优美
 **推荐策略**：Top-P 采样，P=0.9-0.95
 ```
 
@@ -739,51 +600,24 @@ def generate_code(description, language="python"):
 creative_writing_config = {
     "top_p": 0.92,        # 高 P 值，保留更多创意 Token
     "temperature": 1.1,   # 稍高温度，增加创造性
-    "max_tokens": 2000,
-    "presence_penalty": 0.5,
-    "frequency_penalty": 0.3
+    "max_tokens": 2000
 }
 
-def generate_story(theme, style="现代"):
+def generate_story(theme):
     """生成故事"""
-    prompt = f"""
-    请写一个{style}风格的短篇小说，主题是"{theme}"。
-    
-    要求：
-    1. 故事有完整的情节和人物
-    2. 语言生动、富有想象力
-    3. 长度约 500-800 字
-    """
-    
+    prompt = f"请写一个短篇小说，主题是'{theme}'，要求语言生动、富有想象力。"
     return llm.generate(prompt, **creative_writing_config)
 
 def generate_poem(topic):
     """生成诗歌"""
-    prompt = f"""
-    请写一首关于"{topic}"的现代诗。
-    
-    要求：
-    1. 意境深远、画面感强
-    2. 语言优美、节奏和谐
-    3. 长度约 20-30 行
-    """
-    
     # 诗歌需要更高的创造性
     config = creative_writing_config.copy()
     config["top_p"] = 0.95
     config["temperature"] = 1.3
     
+    prompt = f"请写一首关于'{topic}'的现代诗，意境深远、语言优美。"
     return llm.generate(prompt, **config)
 ```
-
-#### 效果评估
-
-| 指标 | Top-K (K=50) | Top-P (P=0.92) |
-| :--- | :--- | :--- |
-| **创意性评分** | 7.2/10 | 8.5/10 |
-| **多样性** | 中 | 高 |
-| **语言优美度** | 7.8/10 | 8.3/10 |
-| **逻辑性** | 8.5/10 | 7.8/10 |
 
 ### 7.4 场景三：智能对话系统
 
@@ -791,11 +625,7 @@ def generate_poem(topic):
 
 ```markdown
 **需求**：自然流畅的人机对话
-**要求**：
-- 对话自然
-- 内容相关
-- 适度个性化
-
+**要求**：对话自然、内容相关、适度个性化
 **推荐策略**：Top-P 采样，P=0.85-0.9
 ```
 
@@ -806,56 +636,29 @@ def generate_poem(topic):
 dialog_config = {
     "top_p": 0.88,        # 中等 P 值，平衡稳定与创造
     "temperature": 0.7,   # 中低温度，保证相关性
-    "max_tokens": 500,
-    "presence_penalty": 0.3,
-    "frequency_penalty": 0.2
+    "max_tokens": 500
 }
 
-class ChatSystem:
-    def __init__(self, llm):
-        self.llm = llm
-        self.history = []
+def chat(user_input, history=None):
+    """处理用户对话"""
+    messages = history or []
+    messages.append({"role": "user", "content": user_input})
     
-    def chat(self, user_input):
-        """处理用户对话"""
-        # 构建上下文
-        context = self._build_context(user_input)
-        
-        # 生成回复
-        response = self.llm.generate(context, **dialog_config)
-        
-        # 更新历史
-        self.history.append({
-            "role": "user",
-            "content": user_input
-        })
-        self.history.append({
-            "role": "assistant",
-            "content": response
-        })
-        
-        return response
+    response = llm.chat(messages, **dialog_config)
     
-    def _build_context(self, current_input):
-        """构建对话上下文"""
-        messages = self.history[-5:]  # 只保留最近 5 轮对话
-        
-        context = "<|system|>你是一个友好、专业的AI助手。</system>"
-        for msg in messages:
-            context += f"<|{msg['role']}|>{msg['content']}</{msg['role']}>"
-        context += f"<|user|>{current_input}</user><|assistant|>"
-        
-        return context
+    return response
 ```
 
-#### 效果评估
+### 7.5 各场景效果评估
 
-| 指标 | Top-K (K=30) | Top-P (P=0.88) |
-| :--- | :--- | :--- |
-| **对话自然度** | 8.2/10 | 8.8/10 |
-| **上下文相关性** | 8.5/10 | 8.4/10 |
-| **个性化程度** | 7.5/10 | 8.2/10 |
-| **回复多样性** | 中 | 高 |
+| 场景 | 推荐策略 | 关键指标 | Top-K 效果 | Top-P 效果 |
+| :--- | :--- | :--- | :--- | :--- |
+| **代码生成** | Top-K | 语法正确率 | 98% | 94% |
+| | | 可执行率 | 96% | 92% |
+| **创意写作** | Top-P | 创意性评分 | 7.2/10 | 8.5/10 |
+| | | 多样性 | 中 | 高 |
+| **智能对话** | Top-P | 自然度评分 | 8.2/10 | 8.8/10 |
+| | | 个性化程度 | 7.5/10 | 8.2/10 |
 
 ---
 
@@ -879,16 +682,16 @@ top_k_output = model.generate(
     max_length=100,
     do_sample=True,           # 启用采样
     top_k=50,                # 设置 K 值
-    temperature=1.0          # 温度参数
+    temperature=1.0
 )
 
 # ===== Top-P 采样 =====
 top_p_output = model.generate(
     input_ids,
     max_length=100,
-    do_sample=True,           # 启用采样
+    do_sample=True,
     top_p=0.9,               # 设置 P 值
-    temperature=1.0          # 温度参数
+    temperature=1.0
 )
 
 # ===== 同时使用 Top-K 和 Top-P =====
@@ -897,8 +700,8 @@ combined_output = model.generate(
     input_ids,
     max_length=100,
     do_sample=True,
-    top_k=50,                # 先筛选 Top-50
-    top_p=0.95,              # 再在 Top-50 中应用 P 阈值
+    top_k=50,
+    top_p=0.95,
     temperature=0.8
 )
 
@@ -912,27 +715,11 @@ print("Top-P 输出:", tokenizer.decode(top_p_output[0], skip_special_tokens=Tru
 ```python
 import openai
 
-# 设置 API 密钥
-openai.api_key = "your-api-key"
-
-# ===== Top-K 采样 =====
-# 注意：OpenAI API 使用 top_logprobs 实现类似功能
-# 可以通过 logprobs 参数获取概率信息
-top_k_response = openai.ChatCompletion.create(
-    model="gpt-4",
-    messages=[
-        {"role": "user", "content": "生成一个随机数字"}
-    ],
-    top_p=1.0,                # 禁用 Top-P
-    temperature=0.8,
-    max_tokens=50,
-    logprobs=10               # 获取 Top-10 的概率
-)
-
-# ===== Top-P 采样 =====
+# ===== Top-P 采样（OpenAI 主要支持 Top-P）=====
 top_p_response = openai.ChatCompletion.create(
     model="gpt-4",
     messages=[
+        {"role": "system", "content": "你是一个专业助手。"},
         {"role": "user", "content": "写一首诗"}
     ],
     top_p=0.9,                # 设置 P 值
@@ -940,80 +727,25 @@ top_p_response = openai.ChatCompletion.create(
     max_tokens=200
 )
 
-# ===== 实际应用：多轮对话 =====
-def chat_with_sampling(user_input, history=None, strategy="top_p"):
-    """根据策略进行对话"""
-    messages = history or []
-    messages.append({"role": "user", "content": user_input})
-    
-    if strategy == "top_k":
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=messages,
-            top_p=1.0,          # OpenAI 主要用 Top-P
-            temperature=0.7
-        )
-    else:  # top_p
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=messages,
-            top_p=0.9,
-            temperature=0.7
-        )
-    
-    return response.choices[0].message.content
+# ===== 模拟 Top-K 采样 =====
+# OpenAI 没有直接的 Top-K 参数，但可以通过 temperature 间接控制
+top_k_simulation = openai.ChatCompletion.create(
+    model="gpt-4",
+    messages=[
+        {"role": "user", "content": "生成一个随机数字"}
+    ],
+    temperature=0.3,          # 低温度模拟 Top-K 效果
+    max_tokens=50
+)
 ```
 
-### 8.3 LlamaIndex 集成
-
-```python
-from llama_index.core.llms import ChatMessage
-from llama_index.llms.ollama import Ollama
-
-# 初始化 LLM（Ollama 本地模型）
-llm = Ollama(
-    model="qwen2.5",
-    temperature=0.7,
-    top_p=0.9,
-    top_k=50
-)
-
-# ===== 基础使用 =====
-messages = [
-    ChatMessage(role="system", content="你是一个专业的技术写作助手。"),
-    ChatMessage(role="user", content="写一段关于机器学习的简介")
-]
-
-response = llm.chat(messages)
-print(response)
-
-# ===== 自定义采样配置 =====
-from llama_index.core import Settings
-
-# 全局设置
-Settings.llm = Ollama(
-    model="llama3",
-    temperature=0.8,
-    top_p=0.92,
-    top_k=40
-)
-
-# 创建不同采样策略的实例
-top_k_llm = Ollama(model="qwen2.5", top_k=10, temperature=0.0)
-top_p_llm = Ollama(model="qwen2.5", top_p=0.95, temperature=1.0)
-
-# 使用不同实例
-code_response = top_k_llm.chat("生成一个 Python 排序函数")
-creative_response = top_p_llm.chat("写一个科幻故事开头")
-```
-
-### 8.4 自定义实现：FlexibleSampler
+### 8.3 自定义采样器实现
 
 ```python
 # 代码示例：灵活的采样器实现
 import torch
 import torch.nn.functional as F
-from typing import Optional, Tuple
+from typing import Optional
 
 class FlexibleSampler:
     """
@@ -1028,34 +760,18 @@ class FlexibleSampler:
         self,
         top_k: Optional[int] = None,
         top_p: Optional[float] = None,
-        temperature: float = 1.0,
-        repetition_penalty: float = 1.0
+        temperature: float = 1.0
     ):
-        """
-        初始化采样器
-        
-        Args:
-            top_k: Top-K 采样的 K 值，None 表示不使用
-            top_p: Top-P 采样的 P 值，None 表示不使用
-            temperature: 温度参数，控制随机性
-            repetition_penalty: 重复惩罚因子
-        """
         self.top_k = top_k
         self.top_p = top_p
         self.temperature = temperature
-        self.repetition_penalty = repetition_penalty
     
-    def sample(
-        self,
-        logits: torch.Tensor,
-        input_ids: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+    def sample(self, logits: torch.Tensor) -> torch.Tensor:
         """
         执行采样
         
         Args:
             logits: 模型输出的 logits，形状 [vocab_size] 或 [batch, vocab_size]
-            input_ids: 已生成的 token IDs，用于重复惩罚
             
         Returns:
             选定的 token ID
@@ -1064,117 +780,64 @@ class FlexibleSampler:
         if self.temperature > 0:
             logits = logits / self.temperature
         else:
-            # 温度为 0 时使用贪心搜索
-            return self._greedy_sample(logits)
+            return logits.argmax(dim=-1)  # 贪心搜索
         
-        # 2. 应用重复惩罚
-        if input_ids is not None and self.repetition_penalty != 1.0:
-            logits = self._apply_repetition_penalty(logits, input_ids)
-        
-        # 3. 转换为概率分布
+        # 2. 转换为概率分布
         probabilities = F.softmax(logits, dim=-1)
         
-        # 4. 应用 Top-K 过滤
+        # 3. 应用 Top-K 过滤
         if self.top_k is not None and self.top_k > 0:
             probabilities = self._apply_top_k(probabilities, self.top_k)
         
-        # 5. 应用 Top-P 过滤
+        # 4. 应用 Top-P 过滤
         if self.top_p is not None and 0.0 < self.top_p <= 1.0:
             probabilities = self._apply_top_p(probabilities, self.top_p)
         
-        # 6. 随机采样
+        # 5. 随机采样
         sampled_token = torch.multinomial(probabilities, num_samples=1)
-        
         return sampled_token.squeeze(-1)
     
-    def _greedy_sample(self, logits: torch.Tensor) -> torch.Tensor:
-        """贪心采样"""
-        return logits.argmax(dim=-1)
-    
-    def _apply_repetition_penalty(
-        self,
-        logits: torch.Tensor,
-        input_ids: torch.Tensor
-    ) -> torch.Tensor:
-        """应用重复惩罚"""
-        # 对已出现的 Token 进行惩罚
-        for batch_idx in range(logits.shape[0]):
-            for token_id in input_ids[batch_idx].unique():
-                if logits[batch_idx, token_id] < 0:
-                    logits[batch_idx, token_id] *= self.repetition_penalty
-                else:
-                    logits[batch_idx, token_id] /= self.repetition_penalty
-        return logits
-    
-    def _apply_top_k(
-        self,
-        probabilities: torch.Tensor,
-        k: int
-    ) -> torch.Tensor:
+    def _apply_top_k(self, probabilities, k):
         """应用 Top-K 过滤"""
-        # 获取 Top-K 的阈值
         top_k_threshold = torch.topk(probabilities, k=k).values[:, -1:]
-        
-        # 过滤低于阈值的概率
         probabilities = probabilities.where(
             probabilities >= top_k_threshold,
             torch.zeros_like(probabilities)
         )
-        
-        # 重新归一化
         probabilities = probabilities / probabilities.sum(dim=-1, keepdim=True)
-        
         return probabilities
     
-    def _apply_top_p(
-        self,
-        probabilities: torch.Tensor,
-        p: float
-    ) -> torch.Tensor:
+    def _apply_top_p(self, probabilities, p):
         """应用 Top-P 过滤"""
-        # 排序
         sorted_probs, sorted_indices = torch.sort(probabilities, descending=True, dim=-1)
-        
-        # 计算累积概率
         cumulative_probs = torch.cumsum(sorted_probs, dim=-1)
         
-        # 找到累积概率超过 P 的位置
         mask = cumulative_probs <= p
-        # 确保至少保留一个 Token
-        mask[:, 0] = True
+        mask[:, 0] = True  # 至少保留一个 Token
         
-        # 过滤
         sorted_probs = sorted_probs * mask
-        
-        # 重新归一化
         sorted_probs = sorted_probs / sorted_probs.sum(dim=-1, keepdim=True)
         
-        # 还原到原始索引顺序
         probabilities = torch.zeros_like(probabilities)
         probabilities.scatter_(1, sorted_indices, sorted_probs)
-        
         return probabilities
 
 
 # 使用示例
 if __name__ == "__main__":
-    # 模拟 logits
     vocab_size = 10000
     logits = torch.randn(vocab_size)
     
     # 创建不同配置的采样器
     top_k_sampler = FlexibleSampler(top_k=10, temperature=0.0)
     top_p_sampler = FlexibleSampler(top_p=0.9, temperature=0.7)
-    combined_sampler = FlexibleSampler(top_k=50, top_p=0.95, temperature=0.5)
     
     # 采样
     token_k = top_k_sampler.sample(logits)
     token_p = top_p_sampler.sample(logits)
-    token_combined = combined_sampler.sample(logits)
     
     print(f"Top-K 采样结果: Token ID = {token_k.item()}")
     print(f"Top-P 采样结果: Token ID = {token_p.item()}")
-    print(f"组合采样结果: Token ID = {token_combined.item()}")
 ```
 
 ---
@@ -1192,7 +855,7 @@ flowchart TD
     B --> |创意写作| F[Top-P: P=0.9-0.95\nTemp: 0.8-1.2];
     B --> |翻译任务| G[Top-P: P=0.85-0.9\nTemp: 0.3-0.5];
     
-    C --> H[验证输出];
+    C --> H[验证输出效果];
     D --> H;
     E --> H;
     F --> H;
@@ -1209,13 +872,12 @@ flowchart TD
 | :--- | :--- | :--- | :--- |
 | **代码生成** | Top-K | K=5-10, Temp=0.0-0.1 | 高准确率、稳定输出 |
 | **格式固定文本** | Top-K | K=10-20, Temp=0.1-0.2 | 格式规范、零错误 |
-| **事实问答** | Top-K/Top-P | K=10-30 或 P=0.7-0.85, Temp=0.1-0.3 | 事实准确、少幻觉 |
+| **事实问答** | Top-K/Top-P | K=10-30 或 P=0.7-0.85 | 事实准确、少幻觉 |
 | **翻译** | Top-P | P=0.85-0.9, Temp=0.3-0.5 | 翻译准确、语句通顺 |
 | **摘要生成** | Top-P | P=0.8-0.9, Temp=0.3-0.5 | 忠实原文、简洁明了 |
 | **通用对话** | Top-P | P=0.85-0.9, Temp=0.5-0.7 | 自然流畅、有温度 |
 | **邮件/文案** | Top-P | P=0.9-0.95, Temp=0.7-0.9 | 风格多样、表达自然 |
 | **创意写作** | Top-P | P=0.92-0.98, Temp=0.9-1.2 | 富有创意、想象力丰富 |
-| **诗歌/艺术** | Top-P | P=0.95-0.99, Temp=1.1-1.5 | 高度创意、风格独特 |
 
 ### 9.3 常见配置错误
 
@@ -1223,89 +885,49 @@ flowchart TD
 | :--- | :--- | :--- |
 | **高 K + 高温度** | 生成不稳定，可能产生无意义内容 | 降低温度或减小 K |
 | **低 P + 高温度** | 采样范围过小，但温度高导致不稳定 | 提高 P 值或降低温度 |
-| **同时设置过高的 K 和 P** | 逻辑矛盾，可能导致不可预期行为 | 只使用一种策略，或合理组合 |
-| **K 值过大（>500）** | 失去 Top-K 的意义，接近全词表采样 | 减小到合理范围（<100） |
+| **同时设置过高的 K 和 P** | 逻辑矛盾，可能导致不可预期行为 | 只使用一种策略或合理组合 |
+| **K 值过大（>500）** | 失去 Top-K 的意义 | 减小到合理范围（<100） |
 | **P 值过低（<0.5）** | 采样范围过小，丢失优质 Token | 提高到 0.7 以上 |
 
-### 9.4 调优流程建议
+### 9.4 配置调优流程
 
 #### 步骤一：基准测试
 
 ```python
-# 代码示例：采样策略基准测试框架
-class SamplingTuner:
-    def __init__(self, model, tokenizer):
-        self.model = model
-        self.tokenizer = tokenizer
-        self.results = []
+# 代码示例：采样策略基准测试
+def benchmark_strategies(model, tokenizer, test_prompts, configs):
+    """测试多种采样策略"""
+    results = []
     
-    def benchmark_strategy(self, strategy, params, test_prompts):
-        """测试采样策略"""
+    for config in configs:
         for prompt in test_prompts:
-            inputs = self.tokenizer(prompt, return_tensors="pt")
+            inputs = tokenizer(prompt, return_tensors="pt")
             
-            if strategy == "top_k":
-                output = self.model.generate(
-                    **inputs,
-                    max_length=200,
-                    do_sample=True,
-                    top_k=params['k'],
-                    temperature=params.get('temp', 1.0)
-                )
-            elif strategy == "top_p":
-                output = self.model.generate(
-                    **inputs,
-                    max_length=200,
-                    do_sample=True,
-                    top_p=params['p'],
-                    temperature=params.get('temp', 1.0)
-                )
+            output = model.generate(
+                **inputs,
+                max_length=200,
+                do_sample=True,
+                **config
+            )
             
-            decoded = self.tokenizer.decode(output[0], skip_special_tokens=True)
-            
-            self.results.append({
+            decoded = tokenizer.decode(output[0], skip_special_tokens=True)
+            results.append({
+                'config': config,
                 'prompt': prompt,
-                'strategy': strategy,
-                'params': params,
                 'output': decoded,
                 'length': len(decoded)
             })
-        
-        return self.results
     
-    def compare_strategies(self, strategies_config, test_prompts):
-        """对比多种策略"""
-        comparison = []
-        
-        for config in strategies_config:
-            results = self.benchmark_strategy(
-                config['strategy'],
-                config['params'],
-                test_prompts
-            )
-            
-            # 计算指标
-            avg_length = np.mean([r['length'] for r in results])
-            unique_ratio = self._calculate_diversity(results)
-            
-            comparison.append({
-                'config': config,
-                'avg_length': avg_length,
-                'diversity': unique_ratio,
-                'quality_score': None  # 需要人工评估
-            })
-        
-        return comparison
-    
-    def _calculate_diversity(self, results):
-        """计算多样性指标"""
-        all_tokens = []
-        for result in results:
-            tokens = self.tokenizer.encode(result['output'])
-            all_tokens.extend(tokens)
-        
-        unique_ratio = len(set(all_tokens)) / len(all_tokens) if all_tokens else 0
-        return unique_ratio
+    return results
+
+# 测试配置示例
+test_configs = [
+    {"top_k": 10, "temperature": 0.5},
+    {"top_k": 50, "temperature": 0.7},
+    {"top_p": 0.85, "temperature": 0.7},
+    {"top_p": 0.9, "temperature": 0.8},
+    {"top_p": 0.95, "temperature": 1.0}
+]
 ```
 
 #### 步骤二：人工评估
@@ -1321,9 +943,7 @@ class SamplingTuner:
 | 配置 | 流畅性 | 相关性 | 创造性 | 准确性 | 总分 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | Top-K (K=10) | | | | | |
-| Top-K (K=50) | | | | | |
 | Top-P (P=0.9) | | | | | |
-| Top-P (P=0.95) | | | | | |
 ```
 
 #### 步骤三：确定最优配置
@@ -1372,10 +992,9 @@ graph TD
 | 方向 | 说明 | 预期突破 |
 | :--- | :--- | :--- |
 | **自适应 Top-P** | 根据生成质量动态调整 P 值 | 实现真正的"智能"采样 |
-| **多粒度采样** | 在不同粒度（词级、句级）使用不同采样策略 | 更精细地控制生成过程 |
+| **多粒度采样** | 在不同粒度使用不同采样策略 | 更精细地控制生成过程 |
 | **信息论采样** | 基于信息论最优性选择采样范围 | 理论保证下的最优采样 |
 | **强化学习调优** | 用强化学习自动搜索最优采样参数 | 数据驱动的个性化配置 |
-| **与思维链结合** | 在 CoT 推理过程中使用不同采样策略 | 更复杂的推理任务支持 |
 
 ### 10.4 最终建议
 
