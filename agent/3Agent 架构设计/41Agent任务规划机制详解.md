@@ -1146,4 +1146,748 @@ class DynamicAdjuster:
         task.retry_count += 1
         task.error_message = execution_result.get("error", "Unknown error")
         
-        if task.re
+        if task.retry_count < task.max_retries:
+            task.status = TaskStatus.PENDING
+            self._record_adjustment("retry", task.task_id)
+            return {
+                "need_adjustment": True,
+                "action": "retry",
+                "affected_tasks": [task.task_id]
+            }
+        else:
+            task.status = TaskStatus.FAILED
+            self.resource_manager.release(task.task_id)
+            
+            affected_tasks = self._find_affected_tasks(task.task_id)
+            for tid in affected_tasks:
+                if tid in self.task_graph.nodes:
+                    self.task_graph.nodes[tid].status = TaskStatus.BLOCKED
+            
+            return {
+                "need_adjustment": True,
+                "action": "block",
+                "affected_tasks": affected_tasks
+            }
+    
+    def handle_environment_change(self, change: Dict) -> Dict:
+        """处理环境变化"""
+        change_type = change.get("type")
+        
+        if change_type == "new_requirement":
+            return {"need_adjustment": True, "action": "add_task"}
+        elif change_type == "requirement_change":
+            return {"need_adjustment": True, "action": "modify_plan"}
+        elif change_type == "resource_change":
+            return {"need_adjustment": True, "action": "reallocate"}
+        
+        return {"need_adjustment": False}
+    
+    def _find_affected_tasks(self, failed_task_id: str) -> List[str]:
+        """查找受失败影响的任务"""
+        affected = []
+        visited = set()
+        
+        def dfs(task_id):
+            if task_id in visited:
+                return
+            visited.add(task_id)
+            task = self.task_graph.nodes.get(task_id)
+            if task:
+                affected.append(task_id)
+                for dependent_id in task.dependents:
+                    dfs(dependent_id)
+        
+        task = self.task_graph.nodes.get(failed_task_id)
+        if task:
+            for dep_id in task.dependents:
+                dfs(dep_id)
+        
+        return affected
+    
+    def _propagate_completion(self, completed_task_id: str):
+        """传播完成状态"""
+        for task_id in self.task_graph.adjacency_list.get(completed_task_id, []):
+            task = self.task_graph.nodes.get(task_id)
+            if task and task.status == TaskStatus.PENDING:
+                if self.task_graph._are_dependencies_met(task_id):
+                    task.status = TaskStatus.READY
+    
+    def _record_adjustment(self, action: str, task_id: str, 
+                             details: Dict = None):
+        """记录调整历史"""
+        self.adjustment_history.append({
+            "timestamp": datetime.now(),
+            "action": action,
+            "task_id": task_id,
+            "details": details
+        })
+```
+
+---
+
+## 八、异常处理方案
+
+### 8.1 异常分类与处理策略
+
+```mermaid
+graph TD
+    A[任务执行异常] --> B[可恢复异常]
+    A --> C[部分可恢复异常]
+    A --> D[不可恢复异常]
+    
+    B --> B1[暂时性错误<br/>网络抖动、超时]
+    B --> B2[重试策略<br/>指数退避]
+    
+    C --> C1[需要调整的错误<br/>资源不足、依赖变化]
+    C --> C2[重新规划<br/>替代方案]
+    
+    D --> D1[致命错误<br/>权限不足、数据损坏]
+    D --> D2[任务终止<br/>通知用户、人工介入]
+    
+    style A fill:#f44336,color:#fff
+    style B fill:#4CAF50,color:#fff
+    style C fill:#FF9800,color:#fff
+    style D fill:#9E9E9E,color:#fff
+```
+
+### 8.2 异常处理实现
+
+```python
+# 代码示例：异常处理器
+class TaskExceptionHandler:
+    """任务异常处理器"""
+    
+    def __init__(self):
+        self.exception_handlers = {
+            "timeout": self._handle_timeout,
+            "resource_unavailable": self._handle_resource_unavailable,
+            "dependency_failure": self._handle_dependency_failure,
+            "permission_denied": self._handle_permission_denied,
+            "data_corruption": self._handle_data_corruption,
+            "rate_limit": self._handle_rate_limit
+        }
+    
+    def handle_exception(self, task: Task, 
+                          exception: Exception) -> Dict:
+        """处理任务异常"""
+        exception_type = self._classify_exception(exception)
+        handler = self.exception_handlers.get(exception_type)
+        
+        if handler:
+            return handler(task, exception)
+        else:
+            return self._default_handler(task, exception)
+    
+    def _classify_exception(self, exception: Exception) -> str:
+        """异常分类"""
+        exception_name = type(exception).__name__
+        classification_map = {
+            "TimeoutError": "timeout",
+            "ConnectionError": "timeout",
+            "ResourceUnavailableError": "resource_unavailable",
+            "DependencyFailureError": "dependency_failure",
+            "PermissionDeniedError": "permission_denied",
+            "DataCorruptionError": "data_corruption",
+            "RateLimitExceededError": "rate_limit"
+        }
+        return classification_map.get(exception_name, "unknown")
+    
+    def _handle_timeout(self, task: Task, exception: Exception) -> Dict:
+        """处理超时异常"""
+        if task.retry_count < task.max_retries:
+            delay = 2 ** task.retry_count
+            return {
+                "action": "retry",
+                "delay_seconds": delay,
+                "message": f"任务超时，{delay}秒后重试"
+            }
+        return {"action": "escalate", "message": "重试次数耗尽"}
+    
+    def _handle_resource_unavailable(self, task: Task, 
+                                      exception: Exception) -> Dict:
+        """处理资源不可用"""
+        return {
+            "action": "replan",
+            "need_new_plan": True,
+            "message": "资源不可用，需要重新规划"
+        }
+    
+    def _handle_dependency_failure(self, task: Task, 
+                                    exception: Exception) -> Dict:
+        """处理依赖失败"""
+        return {
+            "action": "replan",
+            "need_new_plan": True,
+            "message": "依赖任务失败，需要重新规划"
+        }
+    
+    def _handle_permission_denied(self, task: Task,
+                                    exception: Exception) -> Dict:
+        """处理权限拒绝"""
+        return {
+            "action": "escalate",
+            "need_human_intervention": True,
+            "message": "权限不足，需要人工处理"
+        }
+    
+    def _handle_data_corruption(self, task: Task,
+                                 exception: Exception) -> Dict:
+        """处理数据损坏"""
+        return {
+            "action": "abort",
+            "error_details": str(exception),
+            "message": "数据损坏，任务终止"
+        }
+    
+    def _handle_rate_limit(self, task: Task,
+                            exception: Exception) -> Dict:
+        """处理速率限制"""
+        delay = 60 * (task.retry_count + 1)
+        return {
+            "action": "retry",
+            "delay_seconds": delay,
+            "message": f"速率限制，{delay}秒后重试"
+        }
+    
+    def _default_handler(self, task: Task,
+                         exception: Exception) -> Dict:
+        """默认异常处理"""
+        return {
+            "action": "escalate",
+            "message": f"未知异常: {str(exception)}"
+        }
+```
+
+---
+
+## 九、完整工作流程与伪代码实现
+
+### 9.1 任务规划完整流程
+
+```mermaid
+graph TD
+    A[用户目标输入] --> B[意图理解]
+    B --> C[任务分解]
+    C --> D[依赖关系分析]
+    D --> E[循环依赖检测]
+    E -->|有循环| F[异常处理]
+    E -->|无循环| G[优先级计算]
+    G --> H[资源分配]
+    H --> I[生成执行计划]
+    I --> J[输出规划结果]
+    
+    subgraph "动态调整循环"
+        K[执行反馈] --> L[状态监测]
+        L --> M{是否需要调整}
+        M -->|是| N[重新规划]
+        M -->|否| O[继续执行]
+        N --> H
+    end
+    
+    J --> P[执行]
+    P --> K
+    
+    style A fill:#4a90d9,color:#fff
+    style I fill:#50b83c,color:#fff
+    style N fill:#fa8c16,color:#fff
+```
+
+### 9.2 任务规划器完整实现
+
+```python
+# 代码示例：完整的任务规划器
+class TaskPlanner:
+    """任务规划器"""
+    
+    def __init__(self, llm_client=None):
+        self.decomposer = HierarchicalTaskDecomposer(llm_client)
+        self.priority_calculator = PriorityCalculator()
+        self.sorter = TaskPrioritySorter()
+        self.adjuster = DynamicPriorityAdjuster(TaskDependencyGraph(), 
+                                                  ResourceManager(SystemResourceState()))
+        self.exception_handler = TaskExceptionHandler()
+        self.plan_history = []
+    
+    def create_plan(self, goal: str, context: Dict = None) -> TaskPlan:
+        """
+        创建任务执行计划
+        
+        Args:
+            goal: 用户目标
+            context: 上下文信息
+            
+        Returns:
+            完整的执行计划
+        """
+        # 1. 任务分解
+        root_task = self.decomposer.decompose(goal, depth=3)
+        
+        # 2. 构建依赖图
+        task_graph = self._build_task_graph(root_task)
+        
+        # 3. 检测循环依赖
+        cycles = task_graph.detect_cycles()
+        if cycles:
+            # 处理循环依赖
+            task_graph = self._break_cycles(task_graph, cycles)
+        
+        # 4. 计算优先级
+        self._calculate_priorities(task_graph, context or {})
+        
+        # 5. 生成执行计划
+        plan = self._generate_execution_plan(task_graph, context or {})
+        
+        # 6. 保存历史
+        self.plan_history.append(plan)
+        
+        return plan
+    
+    def _build_task_graph(self, root_task: Task) -> TaskDependencyGraph:
+        """构建任务依赖图"""
+        graph = TaskDependencyGraph()
+        
+        def add_task_recursive(task: Task):
+            graph.add_task(task)
+            for child_id in task.child_ids:
+                child_task = self._find_task_in_tree(root_task, child_id)
+                if child_task:
+                    # 添加依赖关系
+                    for dep in child_task.dependencies:
+                        graph.add_dependency(dep.task_id, child_id)
+                    add_task_recursive(child_task)
+        
+        add_task_recursive(root_task)
+        return graph
+    
+    def _find_task_in_tree(self, root: Task, task_id: str) -> Optional[Task]:
+        """在任务树中查找任务"""
+        if root.task_id == task_id:
+            return root
+        
+        for child_id in root.child_ids:
+            child = self._find_task_in_tree(root, child_id)
+            if child:
+                return child
+        
+        return None
+    
+    def _break_cycles(self, graph: TaskDependencyGraph, 
+                       cycles: List[List[str]]) -> TaskDependencyGraph:
+        """打断循环依赖"""
+        for cycle in cycles:
+            # 移除循环中的一条边
+            if len(cycle) >= 2:
+                from_id = cycle[-1]
+                to_id = cycle[0]
+                
+                if from_id in graph.adjacency_list:
+                    if to_id in graph.adjacency_list[from_id]:
+                        graph.adjacency_list[from_id].remove(to_id)
+        
+        return graph
+    
+    def _calculate_priorities(self, graph: TaskDependencyGraph, 
+                                context: Dict):
+        """计算任务优先级"""
+        for task_id, task in graph.nodes.items():
+            score = self.priority_calculator.calculate(task, context)
+            task.priority_score = score
+    
+    def _generate_execution_plan(self, graph: TaskDependencyGraph, 
+                                  context: Dict) -> TaskPlan:
+        """生成执行计划"""
+        # 1. 获取并行执行组
+        parallel_groups = graph.get_parallel_groups()
+        
+        # 2. 每组内按优先级排序
+        sorted_groups = []
+        for group in parallel_groups:
+            sorted_group = self.sorter.sort_tasks(group, "weighted")
+            sorted_groups.append(sorted_group)
+        
+        # 3. 计算时间线
+        timeline = self._calculate_timeline(sorted_groups)
+        
+        # 4. 生成计划
+        plan = TaskPlan(
+            task_graph=graph,
+            execution_groups=sorted_groups,
+            timeline=timeline,
+            created_at=datetime.now()
+        )
+        
+        return plan
+    
+    def _calculate_timeline(self, sorted_groups: List[List[Task]]) -> List[Dict]:
+        """计算执行时间线"""
+        timeline = []
+        current_time = datetime.now()
+        
+        for group_idx, group in enumerate(sorted_groups):
+            group_duration = max(t.duration_estimate for t in group)
+            group_end = current_time + timedelta(seconds=group_duration)
+            
+            timeline.append({
+                "group_index": group_idx,
+                "tasks": [t.task_id for t in group],
+                "start_time": current_time,
+                "end_time": group_end,
+                "duration": group_duration
+            })
+            
+            current_time = group_end
+        
+        return timeline
+    
+    def update_plan(self, plan: TaskPlan, 
+                     feedback: Dict) -> TaskPlan:
+        """
+        根据反馈更新计划
+        
+        Args:
+            plan: 原计划
+            feedback: 执行反馈
+            
+        Returns:
+            更新后的计划
+        """
+        task_id = feedback.get("task_id")
+        result = feedback.get("result", {})
+        
+        adjustment = self.adjuster.handle_execution_feedback(task_id, result)
+        
+        if adjustment.get("need_adjustment"):
+            action = adjustment.get("action")
+            
+            if action == "retry":
+                # 重试任务
+                plan.retry_tasks = adjustment.get("affected_tasks", [])
+            elif action == "block":
+                # 阻塞相关任务
+                plan.blocked_tasks = adjustment.get("affected_tasks", [])
+            elif action in ["replan", "add_task", "modify_plan"]:
+                # 重新规划
+                new_plan = self.create_plan(
+                    plan.root_goal,
+                    {"execution_context": feedback}
+                )
+                return new_plan
+        
+        return plan
+
+
+@dataclass
+class TaskPlan:
+    """任务执行计划"""
+    task_graph: TaskDependencyGraph
+    execution_groups: List[List[Task]]
+    timeline: List[Dict]
+    created_at: datetime = field(default_factory=datetime.now)
+    root_goal: str = ""
+    retry_tasks: List[str] = field(default_factory=list)
+    blocked_tasks: List[str] = field(default_factory=list)
+    completed: bool = False
+```
+
+---
+
+## 十、与其他模块的交互设计
+
+### 10.1 模块交互关系图
+
+```mermaid
+graph TD
+    A[任务规划模块] -->|接收意图| B[理解模块]
+    A -->|查询经验| C[记忆模块]
+    A -->|输出计划| D[执行模块]
+    A -->|接收反馈| D
+    A -->|查询状态| E[状态管理模块]
+    A -->|更新状态| E
+    
+    B -->|传递意图| A
+    C -->|返回经验| A
+    D -->|执行结果| A
+    E -->|当前状态| A
+    
+    subgraph "数据流向"
+        F["理解模块 → 规划模块<br/>用户意图 + 约束条件"]
+        G["规划模块 → 执行模块<br/>执行计划 + 资源分配"]
+        H["执行模块 → 规划模块<br/>执行反馈 + 异常信息"]
+    end
+    
+    B -- F --> A
+    A -- G --> D
+    D -- H --> A
+```
+
+### 10.2 接口定义
+
+```python
+# 代码示例：模块接口定义
+class PlannerInterface:
+    """规划模块接口"""
+    
+    def __init__(self, planner: TaskPlanner):
+        self.planner = planner
+    
+    # 接收理解模块的意图
+    def receive_intent(self, intent: IntentResult) -> TaskPlan:
+        """
+        接收用户意图，创建执行计划
+        
+        Args:
+            intent: 意图理解结果
+            
+        Returns:
+            执行计划
+        """
+        return self.planner.create_plan(
+            goal=intent.goal,
+            context={
+                "constraints": intent.constraints,
+                "resources": intent.available_resources,
+                "time_constraint": intent.time_constraint
+            }
+        )
+    
+    # 接收执行模块的反馈
+    def receive_feedback(self, feedback: ExecutionFeedback) -> TaskPlan:
+        """
+        接收执行反馈，更新计划
+        
+        Args:
+            feedback: 执行反馈
+            
+        Returns:
+            更新后的计划
+        """
+        return self.planner.update_plan(
+            feedback.current_plan,
+            {
+                "task_id": feedback.task_id,
+                "result": feedback.result
+            }
+        )
+    
+    # 查询当前计划状态
+    def get_plan_status(self, plan_id: str) -> PlanStatus:
+        """查询计划状态"""
+        plan = self.planner.plan_history[-1] if self.planner.plan_history else None
+        
+        if plan:
+            return PlanStatus(
+                plan_id=id(plan),
+                total_tasks=len(plan.task_graph.nodes),
+                completed_tasks=len([
+                    t for t in plan.task_graph.nodes.values()
+                    if t.status == TaskStatus.COMPLETED
+                ]),
+                failed_tasks=len([
+                    t for t in plan.task_graph.nodes.values()
+                    if t.status == TaskStatus.FAILED
+                ]),
+                blocked_tasks=plan.blocked_tasks,
+                retry_tasks=plan.retry_tasks
+            )
+        
+        return PlanStatus(plan_id="", total_tasks=0)
+
+
+@dataclass
+class IntentResult:
+    """意图理解结果"""
+    goal: str
+    constraints: List[str] = field(default_factory=list)
+    available_resources: Dict = field(default_factory=dict)
+    time_constraint: Optional[Dict] = None
+
+@dataclass
+class ExecutionFeedback:
+    """执行反馈"""
+    current_plan: TaskPlan
+    task_id: str
+    result: Dict
+
+@dataclass
+class PlanStatus:
+    """计划状态"""
+    plan_id: str
+    total_tasks: int = 0
+    completed_tasks: int = 0
+    failed_tasks: int = 0
+    blocked_tasks: List[str] = field(default_factory=list)
+    retry_tasks: List[str] = field(default_factory=list)
+```
+
+---
+
+## 十一、端到端案例演示
+
+### 11.1 案例：完成市场调研报告
+
+```mermaid
+graph TD
+    A[目标: 完成市场调研报告] --> B[任务规划]
+    B --> C[层级分解]
+    
+    C --> D[一级任务: 信息收集]
+    C --> E[一级任务: 数据分析]
+    C --> F[一级任务: 报告撰写]
+    C --> G[一级任务: 审核提交]
+    
+    D --> D1[行业数据收集]
+    D --> D2[竞品信息收集]
+    D --> D3[用户调研]
+    
+    E --> E1[市场规模分析]
+    E --> E2[竞争格局分析]
+    
+    F --> F1[撰写引言]
+    F --> F2[撰写主体]
+    F --> F3[撰写结论]
+    
+    G --> G1[内部审核]
+    G --> G2[修改完善]
+    G --> G3[正式提交]
+    
+    subgraph "依赖关系"
+        D -->|完成后| E
+        E -->|完成后| F
+        F -->|完成后| G
+        D1 -->|并行| D2
+        D1 -->|并行| D3
+    end
+    
+    style A fill:#4a90d9,color:#fff
+    style B fill:#fa8c16,color:#fff
+```
+
+### 11.2 案例执行过程
+
+```python
+# 代码示例：案例演示
+def demonstrate_market_research_planning():
+    """演示市场调研任务规划"""
+    
+    # 1. 初始化规划器
+    planner = TaskPlanner(llm_client=mock_llm_client)
+    
+    # 2. 定义目标
+    goal = "完成市场调研报告"
+    context = {
+        "time_constraint": {"deadline": datetime.now() + timedelta(hours=48)},
+        "resources": {"compute": 80, "memory": 32}
+    }
+    
+    # 3. 创建执行计划
+    print("=" * 60)
+    print("创建执行计划...")
+    plan = planner.create_plan(goal, context)
+    
+    # 4. 展示计划结构
+    print(f"\n目标: {goal}")
+    print(f"总任务数: {len(plan.task_graph.nodes)}")
+    print(f"执行组数: {len(plan.execution_groups)}")
+    
+    # 5. 展示并行执行组
+    print("\n并行执行组:")
+    for i, group in enumerate(plan.execution_groups):
+        task_names = [t.name for t in group]
+        print(f"  组{i+1}: {', '.join(task_names)}")
+    
+    # 6. 展示时间线
+    print("\n执行时间线:")
+    for item in plan.timeline:
+        print(f"  阶段{item['group_index']}: "
+              f"任务数={len(item['tasks'])}, "
+              f"时长={item['duration']}秒")
+    
+    # 7. 模拟执行反馈
+    print("\n模拟执行反馈...")
+    feedback = ExecutionFeedback(
+        current_plan=plan,
+        task_id=list(plan.task_graph.nodes.keys())[0],
+        result={"status": "success"}
+    )
+    
+    updated_plan = planner.update_plan(plan, feedback)
+    print(f"计划已更新: 第一组任务完成")
+    
+    # 8. 查询状态
+    interface = PlannerInterface(planner)
+    status = interface.get_plan_status(id(plan))
+    print(f"\n计划状态:")
+    print(f"  总任务: {status.total_tasks}")
+    print(f"  已完成: {status.completed_tasks}")
+    print(f"  已失败: {status.failed_tasks}")
+
+# 运行演示
+if __name__ == "__main__":
+    demonstrate_market_research_planning()
+```
+
+---
+
+## 十二、总结与展望
+
+### 12.1 核心要点总结
+
+```mermaid
+graph TD
+    A[Agent任务规划机制] --> B[任务分解]
+    A --> C[优先级排序]
+    A --> D[资源分配]
+    A --> E[动态调整]
+    A --> F[异常处理]
+    
+    B --> B1[HTN层级分解]
+    B --> B2[LLM辅助分解]
+    B --> B3[模板化分解]
+    
+    C --> C1[加权评分模型]
+    C --> C2[关键路径分析]
+    C --> C3[动态调整规则]
+    
+    D --> D1[即时/预留/抢占/弹性]
+    D --> D2[资源状态监控]
+    
+    E --> E1[执行反馈驱动]
+    E --> E2[环境变化响应]
+    
+    F --> F1[重试/重规划/升级]
+    F --> F2[循环依赖检测]
+    
+    style A fill:#4a90d9,color:#fff
+```
+
+### 12.2 关键设计原则
+
+| 原则 | 说明 | 实现方式 |
+| :--- | :--- | :--- |
+| **分层解耦** | 分解、排序、分配独立实现 | 模块化设计 |
+| **数据驱动** | 基于依赖图的规划 | TaskDependencyGraph |
+| **动态响应** | 根据反馈实时调整 | DynamicAdjuster |
+| **容错优先** | 异常处理多样化 | TaskExceptionHandler |
+| **LLM增强** | 复杂分解借助 LLM | LLM辅助分解 |
+
+### 12.3 未来发展方向
+
+| 方向 | 技术路径 | 预期突破 |
+| :--- | :--- | :--- |
+| **自动分解优化** | 强化学习优化分解策略 | 自适应最佳分解 |
+| **多Agent协作** | 分布式任务规划 | 大规模并行任务 |
+| **实时规划** | 流式规划与执行 | 亚秒级响应 |
+| **知识增强** | 知识图谱辅助规划 | 更智能的分解 |
+| **安全规划** | 约束条件检查与验证 | 保证规划安全性 |
+
+---
+
+## 参考资料
+
+1. **Task Planning for Agent Systems** - Russell & Norvig, AI: A Modern Approach
+2. **Hierarchical Task Networks** - Erol et al., 1994
+3. **LLM-Based Task Decomposition** - Zhou et al., 2023
+4. **ReAct: Synergizing Reasoning and Acting** - Yao et al., 2022
+5. **Planning with Large Language Models** - Hao et al., 2023
+6. **AutoGen: Enabling Next-Gen Conversational AI** - Wu et al., 2023
+7. **CrewAI: Role-Playing Autonomous Agents** - CrewAI Team, 2024
