@@ -1,0 +1,7 @@
+2026-08-08 07:04:16.304 [ERROR  ] [demo.m1             ] trace=req-demo span=s1  err_tag=FATAL_DEMO user=u001  ERROR自动捕获traceback
+Traceback (most recent call last):
+  File "M:\note-book\agent\10agent 性能优化\_smoke_test.py", line 16, in <module>
+    raise RuntimeError('boom for test')
+RuntimeError: boom for test
+2026-08-08 07:04:16.329 [CRIT   ] [demo.m1             ] trace=req-demo span=s1  code=RED_ALERT user=u001  CRITICAL同步flush测试
+2026-08-08 07:04:16.304 [WARN   ] [demo.m1             ] trace=req-demo span=s1  k2=123 user=u001  WARN测试
