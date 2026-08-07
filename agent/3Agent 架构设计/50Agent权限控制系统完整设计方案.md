@@ -1852,4 +1852,266 @@ def require_permission(resource_type: str,
     业务方法装饰器: 自动鉴权
     
     使用示例:
-        @require_permission("order", "read
+        @require_permission("order", "read", resource_id_param="order_id")
+        def get_order(order_id): ...
+        
+        @require_permission("tool", "invoke", resource_id_param="tool_name")
+        def invoke_tool(tool_name, **kwargs): ...
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            ctx = get_current_auth_context()
+            
+            # 从参数中提取 resource_id
+            res_id = None
+            if resource_id_param:
+                if resource_id_param in kwargs:
+                    res_id = kwargs[resource_id_param]
+                else:
+                    # 尝试从位置参数匹配
+                    import inspect
+                    sig = inspect.signature(func)
+                    bound = sig.bind_partial(*args, **kwargs).arguments
+                    res_id = bound.get(resource_id_param)
+            
+            # 调用 PDP
+            req = AuthzRequest(
+                subject_id=ctx.subject_id,
+                subject_type=ctx.subject_type,
+                resource_type=resource_type,
+                resource_id=res_id,
+                action=action,
+                env_attrs={"client_ip": ctx.client_ip,
+                           "mfa_verified": ctx.mfa_verified}
+            )
+            pdp = get_global_pdp()
+            decision = pdp.decide(req)
+            
+            if decision.effect == DecisionEffect.DENY:
+                raise PermissionDeniedError(decision.reason)
+            
+            if pass_authz_info:
+                kwargs["_authz_obligations"] = decision.obligations
+                kwargs["_authz_filters"] = decision.data_filter_conditions
+                kwargs["_authz_masking"] = decision.data_masking_rules
+            
+            result = func(*args, **kwargs)
+            
+            # 自动脱敏返回值
+            return DataMaskingEngine().apply_rules(result, decision.data_masking_rules)
+        return wrapper
+    return decorator
+```
+
+---
+
+## 十二、性能优化建议
+
+权限校验每请求都会执行，性能至关重要。
+
+### 12.1 性能优化全景
+
+| 优化点 | 手段 | 预期效果 |
+|-------|------|---------|
+| **决策结果缓存** | Redis 缓存 (sub+res+act) hash → Decision，TTL=5min | 命中率≥90% 时，P99 < 1ms |
+| **RBAC 用户权限预计算** | 用户登录时计算全量权限 → JWT Claims 或 Redis | 查表 0 次/请求 |
+| **ABAC 策略预编译** | 策略 DSL → 可执行代码对象 → 内存缓存 | 解析开销降为 0 |
+| **批量鉴权** | Planner 多步骤 → 1 次批量请求（合并属性拉取+策略加载） | N 步开销降为 1.2 倍（非 N 倍） |
+| **分层短路** | MAC→RBAC→ABAC 顺序，前面 Deny 不执行后续 | 大量无权限请求在 MAC/RBAC 层直接返回 |
+| **本地 + 远程二级缓存** | L1=Caffeine(本地) L2=Redis(共享) | 多数请求走内存，< 0.1ms |
+| **资源属性懒加载** | 优先用 ID 判断，命中再查详细属性 | 避免 90% 不必要的资源属性加载 |
+| **审计日志异步化** | 写入内存队列 → 批量落库（每 100ms 一批） | 鉴权主链路 = 0 写 DB 开销 |
+
+### 12.2 缓存 Key 设计
+
+```
+L1 本地缓存 Key 格式:
+  authz:v1:{hash(subject_attrs_hash + resource + action + env_hash)} → Decision
+  TTL: 30s, max_size: 10000
+
+L2 分布式缓存 Key 格式:
+  authz:v2:{subject_id}:{resource_type}:{action}:{resource_id_hash}
+  TTL: 300s
+  
+失效时机:
+  - 用户角色变更: 清除该 user_id 的所有 Key
+  - 策略变更: 清除该 resource_type 的所有 Key
+  - 数据密级变更: 清除该 resource_id 的 Key
+```
+
+### 12.3 性能基准参考
+
+| 鉴权层次 | 单次耗时 | 优化后耗时 | 吞吐量（单节点） |
+|---------|---------|-----------|----------------|
+| MAC（纯数值比较） | 0.001ms | 0.001ms | 1,000,000/s |
+| RBAC（纯内存查表） | 0.01ms | 0.005ms | 200,000/s |
+| ABAC（规则求值） | 0.5ms | 0.1ms（预编译） | 10,000/s |
+| 全链路（MAC+RBAC+ABAC）无缓存 | ~1ms | ~0.15ms | ~7,000/s |
+| 全链路（含缓存命中） | — | **< 0.3ms** | **> 3,000/s**（含审计异步写入） |
+
+> **结论**：通过缓存，鉴权 P99 可控制在 5ms 以内，对 Agent 响应延迟影响可忽略。
+
+---
+
+## 十三、典型场景案例
+
+### 13.1 场景一：薪资查询工具越权防御
+
+**场景描述**：员工 A 使用 Agent 查询自己的薪资 → Agent 误调用工具查询了经理 B 的薪资 → 防御成功。
+
+```mermaid
+sequenceDiagram
+    participant A as 员工A(u123)<br/>角色: ROLE_USER
+    participant Agent as Agent
+    participant TG as ToolGuard
+    participant PDP as PDP
+    participant Tool as user_salary_query_tool
+    participant DB as 数据库
+
+    A->>Agent: "帮我看下我的薪资"
+    Agent->>Agent: LLM生成计划: 调用薪资工具
+    Agent->>TG: invoke_tool(user_id=u789, ...) <-- 注入/误写!
+    TG->>PDP: AuthzRequest(sub=u123, tool=user_salary_query_tool, act=invoke, params={user_id:u789})
+    Note over PDP: MAC: 用户密级=1, 薪资密级=3 ✅可读<br/>RBAC: ROLE_USER含user:read:own ✅<br/>ABAC 策略匹配:
+    Note over PDP:  subject.role = ROLE_USER<br/>  resource.target_user_id = u789<br/>  规则: subject.user_id == resource.target_user_id → ❌不匹配
+    PDP-->>TG: Decision=DENY<br/>Reason: "ABAC拒绝: 仅允许查询自己的薪资"
+    TG-->>Agent: 抛出 ToolInvokeDeniedError
+    Agent->>Agent: 捕获异常，修正参数 user_id=u123
+    Agent->>TG: invoke_tool(user_id=u123, ...)
+    TG->>PDP: 再次鉴权 ✅ ABAC 匹配通过
+    Note over PDP: 附加脱敏规则: [{"field":"bank_account","rule":"hash"}, {"field":"id_card","rule":"id_card"}]
+    PDP-->>TG: Allow + 脱敏规则
+    TG->>Tool: execute(user_id=u123)
+    Tool-->>TG: 原始返回 {name, amount, bank_account, id_card}
+    TG-->>TG: 应用脱敏: 银行卡→哈希, 身份证→前6后4
+    TG-->>Agent: 安全返回 {name, amount, bank_account: "a1b2c3...", id_card: "110101********1234"}
+    Agent-->>A: "你的薪资是XXX元"
+```
+
+### 13.2 场景二：部门经理审批业务流程
+
+**场景描述**：销售部经理审批本部门 30 万元订单 → 通过；跨部门审批 60 万元 → 被拒绝。
+
+```python
+# 审批 ABAC 策略
+policies = [
+    {
+        "policy_id": "pol_dept_manager_approval",
+        "effect": "Allow",
+        "priority": 100,
+        "resource_types": ["approval"],
+        "subject_filter": {"roles": {"contains": "ROLE_DEPT_MANAGER"}},
+        "resource_filter": {
+            "attributes": [
+                {"key": "amount", "op": "less_than_or_equal", "value": 500000},
+                {"key": "dept_id", "op": "equals", "value": "${subject.dept_id}"}
+            ]
+        }
+    },
+    {
+        "policy_id": "pol_cross_dept_deny",
+        "effect": "Deny",  # 优先级更低的 Allow 无法覆盖此 Deny
+        "priority": 200,
+        "resource_types": ["approval"],
+        "resource_filter": {
+            "attributes": [
+                {"key": "dept_id", "op": "not_equals", "value": "${subject.dept_id}"}
+            ]
+        },
+        "description": "禁止跨部门审批（Deny 优先）"
+    },
+    {
+        "policy_id": "pol_over_500k_require_app_owner",
+        "effect": "Deny",
+        "priority": 250,
+        "resource_types": ["approval"],
+        "subject_filter": {"roles": {"contains": "ROLE_DEPT_MANAGER"}},
+        "resource_filter": {
+            "attributes": [
+                {"key": "amount", "op": "greater_than", "value": 500000}
+            ]
+        },
+        "description": "部门经理仅能审批≤50W，超过需应用负责人"
+    }
+]
+```
+
+### 13.3 场景三：长流程中途权限变更（员工离职）
+
+**场景描述**：员工发起请假流程（3 天假期）→ 流程运行中该员工离职，角色被 HR 撤销 → 执行后续节点时二次校验拦截。
+
+```mermaid
+flowchart LR
+    S[员工u1发起请假<br/>状态: 审批中] --> M1[节点1: 直属经理审批<br/>✅ 通过时员工仍在职]
+    M1 --> M2[节点2: HR 复核<br/>此时u1已离职]
+    M2 --> G{"ExecutorGuard 二次鉴权<br/>检查流程发起人u1是否仍在ACTIVE状态"}
+    G -->|DENY| X[流程自动终止<br/>记录审计: 发起人已离职<br/>通知HR手动处理]
+    G -->|Allow| C[正常完成]
+```
+
+> **设计要点**：长流程不能只在启动时鉴权一次，必须每个节点执行前做二次校验，同时支持 `流程暂停 + 人工介入` 模式。
+
+---
+
+## 十四、最佳实践与避坑指南
+
+### 14.1 权限设计最佳实践（Do's）
+
+| # | 最佳实践 | 说明 |
+|---|---------|------|
+| 1 | **默认拒绝** | 无明确 Allow 策略即为 Deny，不要反过来 |
+| 2 | **最小权限** | 初始授予 `ROLE_USER`，按需叠加角色，不要图省事直接给管理员 |
+| 3 | **权限收敛原则** | 用户权限 ⊆ Agent 权限 ⊆ 工具权限，绝对不能倒置 |
+| 4 | **多层防御** | 即使 PlannerGuard 已拦截，执行层/工具层/数据层仍需校验 |
+| 5 | **策略 Deny 优先** | 多条策略匹配时，任何 Deny 优先级高于所有 Allow |
+| 6 | **密级独立于角色** | 安全密级（MAC）是独立维度，不要用角色代替密级 |
+| 7 | **审计不可修改** | 审计日志表只做 INSERT，不做 UPDATE/DELETE，必要时按监管要求 WORM 存储 |
+| 8 | **脱敏在最后一跳** | 数据脱敏在返回给用户前（ToolGuard）做，中间环节保留原始数据便于 debug（需授权） |
+| 9 | **策略变更灰度** | ABAC 策略修改先在 staging 运行 24h，再灰度 10% 用户，观察误报率再全量 |
+| 10 | **越权尝试不等于攻击** | 先区分 S1(无意)/S2(试探)/S3+(攻击)，低风险仅记录不要频繁打扰管理员 |
+
+### 14.2 常见踩坑与避坑（Don'ts）
+
+| # | 踩坑 | 后果 | 避坑方案 |
+|---|------|------|---------|
+| ❌1 | **只在 API 入口鉴权** | Planner/Executor 内部调用可能绕过入口，导致越权 | 每层 Guard 独立校验，不要依赖入口 |
+| ❌2 | **只校验功能不校验数据** | 拥有查询订单功能 → 能查到所有订单（横向越权） | DataGuard 必须注入行级过滤条件，禁止只做功能级 |
+| ❌3 | **权限信息写入 JWT 永不失效** | 用户离职/角色变更后，旧 JWT 仍可使用数小时 | 关键变更强制吊销会话，或 JWT + 短 TTL + 黑名单 |
+| ❌4 | **ABAC 策略写死代码** | 每次策略变更要发版 → 响应慢 → 绕过权限 | ABAC 策略 DSL 外置，后台可配置，动态发布 |
+| ❌5 | **工具返回值完整返回** | 工具返回含冗余字段（如密码哈希、内部ID），LLM 可能输出给用户 | ToolGuard 严格按 L4 属性级白名单返回，禁止黑模式 |
+| ❌6 | **VectorStore 检索后过滤** | `top_k=5` 全是越权数据 → 过滤后剩 0 条，召回率低 | **检索前注入 metadata filter**，检索空间本身就是权限内的 |
+| ❌7 | **决策结果无限缓存** | 用户权限变更后，缓存仍返回旧决策 | 细粒度 Key + 变更事件精准失效 + 短 TTL（≤5min）双保险 |
+| ❌8 | **审计日志记录密码/Token** | 审计系统反而成为泄漏源 | 参数快照走脱敏白名单，敏感字段（password/token/secret）一律记录 `[REDACTED]` |
+| ❌9 | **越权直接 403 且详细报错** | 攻击者通过错误消息差异判断资源是否存在 | 对外统一"资源不存在或无权限"，内部记录详细 reason |
+| ❌10 | **权限系统自身无权限控制** | 任何人可修改角色/策略 → 提权攻击 | POLICY_CHANGE 类操作强制 ROLE_SECURITY_OFFICER + MFA + 双人复核 |
+
+### 14.3 落地实施路线图
+
+```mermaid
+gantt
+    title Agent 权限系统实施路线图
+    dateFormat  YYYY-MM-DD
+    section 基础能力（MVP）
+    RBAC 角色+权限表+基础鉴权         :done, 2026-08-10, 14d
+    ExecutorGuard + ToolGuard 集成     :done, 2026-08-17, 14d
+    基础审计日志                       :done, 2026-08-24, 10d
+    section 中级能力（v1.0 上线）
+    PlannerGuard 计划审查              :active, 2026-09-01, 14d
+    DataGuard 向量库+SQL 注入          :2026-09-08, 14d
+    ABAC 策略引擎                      :2026-09-15, 21d
+    MAC 密级体系                       :2026-09-22, 14d
+    section 高级能力（v2.0 强化）
+    策略动态管理 + 灰度发布            :2026-10-01, 14d
+    异常处置引擎 + 告警                :2026-10-08, 14d
+    临时授权 + 时间窗口                :2026-10-15, 10d
+    section 治理运营
+    权限报表 + 合规审查                :2026-10-20, 14d
+    权限冗余清理（最小权限审查）       :2026-11-01, 7d
+```
+
+---
+
+> **文档结语**：Agent 权限系统不是外挂的"安全壳"，而是深度嵌入 Agent 规划、执行、工具、记忆、流程每一个核心环节的"免疫系统"。本方案采用六层纵深防御 + MAC/RBAC/ABAC 组合策略 + 动态管理 + 审计追溯四大支柱，确保企业级 Agent 在享受 LLM 智能的同时，守住"不越权、不泄密、可追溯"的安全底线。
+>
+> **后续演进方向**：① 接入 UEBA（用户与实体行为分析），通过机器学习自动识别异常行为模式；② 权限冗余自动检测，基于实际使用数据定期推荐权限回收；③ 与零信任架构（ZTA）集成，每次访问执行"永不信任、始终验证"。
