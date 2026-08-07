@@ -171,7 +171,7 @@ graph LR
 Self-Attention 的核心机制是将输入矩阵 $X$ 通过三个不同的**可学习权重矩阵** $W^Q, W^K, W^V$ 进行线性变换，分别生成 Query、Key、Value 矩阵：
 
 $$
-Q = X \cdot W^K
+Q = X \cdot W^Q
 $$
 $$
 K = X \cdot W^K
