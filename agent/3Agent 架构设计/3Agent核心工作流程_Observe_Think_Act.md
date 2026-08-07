@@ -864,5 +864,764 @@ class DecisionStateManager:
 | **知识检索** | Milvus + Elasticsearch | 向量+关键词混合检索 |
 | **状态管理** | Redis + 状态机模式 | 快速状态读写 |
 | **决策追踪** | 思维链(CoT) + 树搜索 | 可解释性、多路径探索 |
+
+---
+
+## 五、Act 阶段：执行与反馈
+
+### 5.1 阶段核心职责
+
+Act 阶段是 Agent 的**执行终端**，负责将思考阶段生成的行动计划转化为实际的操作行为，并收集执行结果反馈给感知阶段。其核心职责可概括为：
+
+> **"将抽象的行动计划翻译为具体的工具调用和操作序列，在执行过程中实时监控状态、处理异常，并将执行结果整理后反馈给感知阶段，形成闭环。"**
+
+### 5.2 执行架构设计
+
+```mermaid
+graph TB
+    subgraph "输入"
+        A[行动计划<br/>ActionPlan]
+    end
+
+    subgraph "动作生成"
+        B1[动作解析]
+        B2[工具映射]
+        B3[参数构建]
+    end
+
+    subgraph "执行策略"
+        C1[顺序执行]
+        C2[并行执行]
+        C3[条件分支]
+        C4[循环迭代]
+    end
+
+    subgraph "执行引擎"
+        D1[工具调用执行]
+        D2[结果验证]
+        D3[错误处理]
+        D4[状态更新]
+    end
+
+    subgraph "输出/反馈"
+        E[执行结果<br/>ActionResult]
+        F[反馈数据 → Observe]
+    end
+
+    A --> B1
+    B1 --> B2
+    B2 --> B3
+    B3 --> C1 & C2 & C3 & C4
+    C1 & C2 & C3 & C4 --> D1
+    D1 --> D2
+    D2 --> D3
+    D3 --> D4
+    D4 --> E
+    D4 --> F
+
+    style A fill:#fa8c16,color:#fff
+    style D1 fill:#50b83c,color:#fff
+    style F fill:#4a90d9,color:#fff
 ```
+
+### 5.3 动作生成机制
+
+#### 5.3.1 动作解析与映射
+
+```python
+class ActionGenerator:
+    """动作生成器"""
+    
+    def __init__(self, tool_registry: ToolRegistry):
+        self.tool_registry = tool_registry
+    
+    def generate_actions(self, plan: ActionPlan) -> List[ActionCall]:
+        """将行动计划转换为可执行的动作序列"""
+        actions = []
+        
+        for step in plan.steps:
+            # 解析步骤，映射到具体工具
+            tool = self.tool_registry.resolve(step.tool_to_use)
+            
+            # 构建动作调用
+            action = ActionCall(
+                step_id=step.id,
+                tool=tool,
+                params=self._resolve_params(step.params, plan),
+                timeout_ms=step.estimated_duration * 3,  # 3倍安全系数
+                retry_policy=self._get_retry_policy(step)
+            )
+            actions.append(action)
+        
+        return actions
+    
+    def _resolve_params(self, params: Dict, plan: ActionPlan) -> Dict:
+        """解析参数引用"""
+        resolved = {}
+        for key, value in params.items():
+            if isinstance(value, str) and value.startswith("step_"):
+                # 引用其他步骤的输出
+                ref_step_id = value.split("_")[0]
+                resolved[key] = plan.get_step_output(ref_step_id)
+            else:
+                resolved[key] = value
+        return resolved
+```
+
+#### 5.3.2 执行策略选择
+
+```mermaid
+flowchart TD
+    A[行动计划] --> B{步骤有依赖?}
+    B -->|无| C[全部并行执行]
+    B -->|有| D[拓扑排序]
+    D --> E{同层步骤?}
+    E -->|是| F[批次并行执行]
+    E -->|否| G[顺序执行]
+    C & F & G --> H[条件分支处理]
+    H --> I{需循环?}
+    I -->|是| J[循环迭代执行]
+    I -->|否| K[一次性执行]
+    
+    style C fill:#50b83c,color:#fff
+    style F fill:#50b83c,color:#fff
+    style G fill:#fa8c16,color:#fff
+    style J fill:#722ed1,color:#fff
+```
+
+### 5.4 执行引擎实现
+
+#### 5.4.1 核心执行器
+
+```python
+class ActionExecutor:
+    """动作执行器"""
+    
+    async def execute(self, actions: List[ActionCall]) -> ActionResult:
+        """执行动作序列"""
+        execution_context = ExecutionContext()
+        
+        # Step 1: 初始化执行环境
+        await self._prepare_execution(execution_context)
+        
+        # Step 2: 按策略执行动作
+        results = await self._execute_strategy(actions, execution_context)
+        
+        # Step 3: 结果验证和整合
+        validated_result = await self._validate_and_assemble(results)
+        
+        # Step 4: 生成执行结果
+        return ActionResult(
+            status=validated_result.status,
+            outputs=validated_result.outputs,
+            execution_trace=execution_context.trace,
+            metrics=execution_context.metrics,
+            next_state_hint=validated_result.next_state
+        )
+    
+    async def _execute_strategy(self, actions: List[ActionCall], context: ExecutionContext):
+        """选择并执行最优策略"""
+        # 构建执行计划
+        execution_plan = self._build_execution_plan(actions)
+        
+        results = []
+        for batch in execution_plan.batches:
+            if batch.execution_mode == "parallel":
+                # 并行执行
+                batch_results = await asyncio.gather(*[
+                    self._execute_single(action, context)
+                    for action in batch.actions
+                ], return_exceptions=True)
+            else:
+                # 顺序执行
+                batch_results = []
+                for action in batch.actions:
+                    result = await self._execute_single(action, context)
+                    batch_results.append(result)
+                    
+                    # 检查是否需要提前返回
+                    if self._should_stop(result, context):
+                        break
+            
+            results.extend(batch_results)
+            
+            # 更新执行上下文
+            context.update_from_batch(batch_results)
+        
+        return results
+    
+    async def _execute_single(self, action: ActionCall, context: ExecutionContext) -> IndividualResult:
+        """执行单个动作"""
+        for attempt in range(action.retry_policy.max_retries):
+            try:
+                # 执行工具调用
+                raw_result = await asyncio.wait_for(
+                    action.tool.execute(**action.params),
+                    timeout=action.timeout_ms / 1000
+                )
+                
+                # 验证结果
+                validated = self._validate_result(raw_result, action.tool.output_schema)
+                
+                return IndividualResult(
+                    step_id=action.step_id,
+                    status="success",
+                    data=validated,
+                    execution_time_ms=context.get_elapsed_time()
+                )
+                
+            except Exception as e:
+                if attempt == action.retry_policy.max_retries - 1:
+                    return IndividualResult(
+                        step_id=action.step_id,
+                        status="failed",
+                        error=str(e),
+                        error_type=type(e).__name__,
+                        suggestions=self._get_fallback_suggestion(action, e)
+                    )
+                # 重试等待
+                await asyncio.sleep(2 ** attempt)
+```
+
+#### 5.4.2 执行结果数据结构
+
+```json
+{
+  "action_result": {
+    "status": "completed",
+    "outputs": {
+      "step_1_output": {
+        "log_analysis": {
+          "total_queries": 15000,
+          "slow_queries": 342,
+          "top_slow_patterns": ["SELECT * FROM orders...", "JOIN users..."]
+        }
+      },
+      "step_2_output": {
+        "bottleneck_analysis": {
+          "critical_query": "SELECT * FROM orders",
+          "bottleneck_type": "missing_index",
+          "impact_score": 0.85
+        }
+      },
+      "step_3_output": {
+        "optimization_plan": {
+          "recommendations": [
+            "添加索引 idx_orders(create_time)",
+            "优化 JOIN 顺序",
+            "使用覆盖索引"
+          ],
+          "estimated_improvement": "60-80%"
+        }
+      }
+    },
+    "execution_trace": [
+      {"step": "step_1", "status": "completed", "duration_ms": 5234},
+      {"step": "step_2", "status": "completed", "duration_ms": 10156},
+      {"step": "step_3", "status": "completed", "duration_ms": 2891}
+    ],
+    "metrics": {
+      "total_duration_ms": 18281,
+      "success_rate": 1.0,
+      "tools_used": ["log_analyzer", "profiler", "llm_reasoner"]
+    },
+    "next_state_hint": "建议执行数据库优化操作"
+  }
+}
+```
+
+### 5.5 反馈处理机制
+
+#### 5.5.1 结果反馈到 Observe
+
+```python
+class FeedbackProcessor:
+    """反馈处理器 - Act→Observe 闭环"""
+    
+    async def process(self, action_result: ActionResult) -> PerceptionUpdate:
+        """处理执行结果，生成感知更新"""
+        # 1. 提取关键信息
+        state_change = self._extract_state_changes(action_result)
+        
+        # 2. 生成新的感知输入
+        new_perception_input = PerceptionInput(
+            source="action_feedback",
+            changes_detected=state_change,
+            new_data=self._extract_output_data(action_result),
+            needs_observation=self._determine_need_for_reobserve(action_result)
+        )
+        
+        # 3. 返回给 Observe 阶段
+        return PerceptionUpdate(
+            input=new_perception_input,
+            continue_loop=action_result.status == "partial_success",
+            new_goal_suggestion=action_result.next_state_hint
+        )
+    
+    def _determine_need_for_reobserve(self, result: ActionResult) -> bool:
+        """判断是否需要重新感知"""
+        # 成功：结束当前循环
+        if result.status == "completed":
+            return False
+        
+        # 部分成功：需要继续
+        if result.status == "partial_success":
+            return True
+        
+        # 失败：需要重试或调整
+        if result.status == "failed":
+            return True
+        
+        return False
+```
+
+### 5.6 技术选型
+
+| 子模块 | 技术选型 | 选型依据 |
+|--------|---------|---------|
+| **动作调度** | asyncio + 调度器模式 | 高并发、可组合 |
+| **工具执行** | 适配器模式 + 插件机制 | 灵活扩展、统一接口 |
+| **错误处理** | 重试器 + 熔断器 | 容错、稳定性 |
+| **状态追踪** | 执行日志 + Trace ID | 可追溯、可调试 |
+| **反馈管道** | 事件队列 + 观察者模式 | 解耦、可扩展 |
+
+---
+
+## 六、三阶段衔接与协同工作
+
+### 6.1 阶段间交互接口
+
+```mermaid
+sequenceDiagram
+    participant O as Observe
+    participant T as Think
+    participant A as Act
+    participant FB as Feedback Loop
+
+    O->>T: PerceptionState
+    T->>T: 状态评估 → 决策推理 → 规划生成
+    T->>A: ActionPlan
+    A->>A: 动作生成 → 执行 → 结果验证
+    A->>FB: ActionResult
+    FB->>O: PerceptionUpdate
+    O->>T: 更新后的 PerceptionState
+    Note over O,T,A: 持续循环直到任务完成
+```
+
+### 6.2 数据流转路径
+
+```mermaid
+graph LR
+    subgraph "Observe → Think"
+        direction TB
+        O_Output[PerceptionState] --> T_Input[感知输入]
+    end
+
+    subgraph "Think → Act"
+        direction TB
+        T_Output[ActionPlan] --> A_Input[执行输入]
+    end
+
+    subgraph "Act → Observe"
+        direction TB
+        A_Output[ActionResult] --> O_NewInput[反馈输入]
+    end
+
+    O_Output --> T_Input
+    T_Output --> A_Input
+    A_Output --> O_NewInput
+
+    style O_Output fill:#4a90d9,color:#fff
+    style T_Output fill:#fa8c16,color:#fff
+    style A_Output fill:#50b83c,color:#fff
+```
+
+### 6.3 协同工作原理
+
+#### 6.3.1 迭代式改进循环
+
+```mermaid
+flowchart TD
+    subgraph "迭代循环"
+        direction TB
+        LoopStart[感知当前状态] -->|Observe| ThinkStart[思考并规划]
+        ThinkStart -->|Think| ActStart[执行动作]
+        ActStart -->|Act| LoopStart
+    end
+
+    subgraph "每次迭代"
+        direction TB
+        D1[感知更精确的信息] --> D2[更优的决策]
+        D2 --> D3[更精确的执行]
+        D3 --> D1
+    end
+
+    LoopStart --> D1
+
+    style LoopStart fill:#4a90d9,color:#fff
+    style ThinkStart fill:#fa8c16,color:#fff
+    style ActStart fill:#50b83c,color:#fff
+```
+
+#### 6.3.2 渐进式完善机制
+
+| 迭代轮次 | Observe | Think | Act | 目的 |
+|---------|---------|-------|-----|------|
+| **第1轮** | 采集初始信息 | 生成初步方案 | 执行初步操作 | 获取基础数据 |
+| **第2轮** | 感知执行结果 | 修正/优化方案 | 执行改进操作 | 逐步完善 |
+| **第3轮** | 感知详细信息 | 精细调整策略 | 执行精确操作 | 精细优化 |
+| **第N轮** | 感知最终状态 | 确认完成条件 | 结束/补充操作 | 完成任务 |
+
+### 6.4 接口契约定义
+
+#### Observe→Think 接口
+
+```python
+class ObserveThinkInterface:
+    """Observe 到 Think 的数据契约"""
+    
+    @dataclass
+    class PerceptionInput:
+        observation_id: str
+        timestamp: datetime
+        raw_observations: List[RawData]
+        processed_state: PerceptionState
+        confidence: float
+        uncertainty_flags: List[str]
+    
+    @staticmethod
+    def validate_input(input_data: PerceptionInput) -> ValidationResult:
+        """验证输入数据完整性"""
+        checks = [
+            bool(input_data.processed_state),
+            input_data.confidence >= 0.5,
+            len(input_data.raw_observations) > 0
+        ]
+        return ValidationResult(all(checks), 
+            missing_fields=[f"check_{i}" for i, c in enumerate(checks) if not c])
+```
+
+#### Think→Act 接口
+
+```python
+class ThinkActInterface:
+    """Think 到 Act 的数据契约"""
+    
+    @dataclass
+    class ActionPlanInput:
+        plan_id: str
+        goal: str
+        steps: List[PlanStep]
+        dependencies: DAG
+        resource_requirements: ResourceProfile
+        success_criteria: List[Criterion]
+    
+    @staticmethod
+    def validate_plan(plan: ActionPlanInput) -> ValidationResult:
+        """验证行动计划可执行性"""
+        checks = [
+            len(plan.steps) > 0,
+            all(step.tool_to_use in AVAILABLE_TOOLS for step in plan.steps),
+            plan.success_criteria is not None
+        ]
+        return ValidationResult(all(checks), [])
+```
+
+#### Act→Observe 接口
+
+```python
+class ActObserveInterface:
+    """Act 到 Observe 的数据契约"""
+    
+    @dataclass
+    class FeedbackOutput:
+        execution_id: str
+        status: str  # completed, partial, failed
+        output_data: Dict
+        state_changes_detected: List[Change]
+        need_reobservation: bool
+        suggested_next_action: Optional[str]
+    
+    @staticmethod
+    def generate_observation_input(feedback: FeedbackOutput) -> ObservationRequest:
+        """将反馈转换为新的观察请求"""
+        return ObservationRequest(
+            trigger_type="action_feedback",
+            source_id=feedback.execution_id,
+            data_to_observe=feedback.state_changes_detected,
+            priority="high" if feedback.status == "partial" else "normal",
+            context={
+                "previous_execution_id": feedback.execution_id,
+                "previous_status": feedback.status
+            }
+        )
+```
+
+---
+
+## 七、完整伪代码实现
+
+### 7.1 主循环框架
+
+```python
+class ObserveThinkActAgent:
+    """
+    Observe-Think-Act 核心循环实现
+    体现三阶段协同工作的完整流程
+    """
+    
+    def __init__(self, config: AgentConfig):
+        # 初始化各阶段组件
+        self.observe_phase = ObservePhase(config.perception)
+        self.think_phase = ThinkPhase(config.reasoning)
+        self.act_phase = ActPhase(config.execution)
+        
+        # 状态管理
+        self.current_state = AgentState.IDLE
+        self.observation_history = []
+        self.plan_history = []
+        self.execution_history = []
+        
+        # 迭代控制
+        self.max_iterations = config.max_iterations  # 默认10
+        self.iteration_count = 0
+    
+    async def run(self, initial_input: AgentInput) -> AgentOutput:
+        """
+        主循环：Observe → Think → Act → Feedback
+        """
+        self.current_state = AgentState.RUNNING
+        current_input = initial_input
+        
+        try:
+            while self.iteration_count < self.max_iterations:
+                # ============ Observe 阶段 ============
+                perception = await self._observe(current_input)
+                
+                # 检查：信息是否充足
+                if not self._has_sufficient_information(perception):
+                    # 需要更多信息，继续观察
+                    current_input = self._request_more_information(perception)
+                    continue
+                
+                # ============ Think 阶段 ============
+                decision = await self._think(perception)
+                
+                # 检查：是否需要人工介入
+                if decision.requires_human_approval:
+                    approval = await self._request_human_approval(decision)
+                    if not approval.approved:
+                        return AgentOutput(
+                            status="cancelled",
+                            reason="User rejected the action",
+                            history=self._build_history()
+                        )
+                
+                # 生成行动计划
+                action_plan = await self._plan(decision, perception)
+                
+                # ============ Act 阶段 ============
+                execution_result = await self._act(action_plan)
+                
+                # 记录历史
+                self.observation_history.append(perception)
+                self.plan_history.append(action_plan)
+                self.execution_history.append(execution_result)
+                self.iteration_count += 1
+                
+                # ============ 反馈检查 ============
+                if execution_result.status == "completed":
+                    # 任务完成
+                    return AgentOutput(
+                        status="completed",
+                        final_output=execution_result.final_output,
+                        iteration_count=self.iteration_count,
+                        history=self._build_history()
+                    )
+                elif execution_result.status == "partial_success":
+                    # 部分成功，使用反馈继续
+                    current_input = execution_result.feedback_for_next_iteration
+                    continue
+                elif execution_result.status == "need_more_info":
+                    # 需要更多信息
+                    current_input = execution_result.info_request
+                    continue
+                else:  # failed
+                    # 尝试使用替代方案
+                    if self._has_fallback(decision):
+                        current_input = self._get_fallback_input(decision, execution_result)
+                        continue
+                    else:
+                        return AgentOutput(
+                            status="failed",
+                            error=execution_result.error,
+                            history=self._build_history()
+                        )
+            
+            # 达到最大迭代次数
+            return AgentOutput(
+                status="max_iterations_reached",
+                partial_result=self._get_best_partial_result(),
+                iteration_count=self.iteration_count,
+                history=self._build_history()
+            )
+            
+        except Exception as e:
+            return AgentOutput(
+                status="error",
+                error=str(e),
+                history=self._build_history()
+            )
+        finally:
+            self.current_state = AgentState.IDLE
+    
+    async def _observe(self, input_data) -> PerceptionState:
+        """Observe 阶段实现"""
+        raw_data = await self.observe_phase.collect(input_data)
+        processed_data = await self.observe_phase.preprocess(raw_data)
+        perception_state = await self.observe_phase.build_state(processed_data)
+        return perception_state
+    
+    async def _think(self, perception_state: PerceptionState) -> Decision:
+        """Think 阶段实现"""
+        evaluation = await self.think_phase.evaluate(perception_state)
+        decision = await self.think_phase.reason(evaluation)
+        return decision
+    
+    async def _plan(self, decision: Decision, perception: PerceptionState) -> ActionPlan:
+        """规划生成"""
+        plan = await self.think_phase.plan(decision, perception)
+        return plan
+    
+    async def _act(self, plan: ActionPlan) -> ExecutionResult:
+        """Act 阶段实现"""
+        actions = await self.act_phase.generate_actions(plan)
+        result = await self.act_phase.execute(actions)
+        return result
+```
+
+---
+
+## 八、端到端案例演示
+
+### 8.1 案例：智能客服处理退换货请求
+
+#### 初始输入
+
+```
+用户输入: "我想退昨天买的那件衬衫，尺码不合适"
+```
+
+#### 迭代过程
+
+```mermaid
+sequenceDiagram
+    participant U as 用户
+    participant O as Observe
+    participant T as Think
+    participant A as Act
+    participant S as 商品系统
+
+    U->>O: "我想退昨天买的那件衬衫..."
+    
+    Note over O: 第1轮 Observe
+    O->>O: 解析用户输入<br/>提取实体: 衬衫、昨天<br/>意图: 退货
+    
+    Note over T: 第1轮 Think
+    O->>T: PerceptionState
+    T->>T: 评估: 需要订单号<br/>推理: 查询订单 → 检查退货政策 → 生成退货流程
+    T->>A: ActionPlan(查询订单)
+    
+    Note over A,S: 第1轮 Act
+    T->>A: 执行查询订单
+    A->>S: 查询"昨天的衬衫订单"
+    S-->>A: 返回订单详情<br/>订单号: ORD001<br/>商品: 蓝色衬衫 M码
+    
+    Note over O: 第2轮 Observe(反馈)
+    A->>O: 新感知: 订单已查询<br/>有退货资格
+    
+    Note over T: 第2轮 Think
+    O->>T: 更新后的感知状态
+    T->>T: 评估: 检查退货政策<br/>推理: 符合退货条件 → 生成退货流程
+    T->>A: ActionPlan(生成退货单)
+    
+    Note over A,S: 第2轮 Act
+    T->>A: 执行生成退货单
+    A->>S: 创建退货单 RET001
+    S-->>A: 退货单已创建<br/>状态: 等待商品寄回
+    
+    Note over O: 第3轮 Observe(反馈)
+    A->>O: 新感知: 退货单已创建<br/>需要用户确认
+    
+    Note over T: 第3轮 Think
+    O->>T: 感知状态更新
+    T->>T: 生成用户确认消息
+    T->>U: "已为您创建退货单RET001，请将衬衫寄回..."
+```
+
+#### 状态流转表
+
+| 轮次 | Observe 输出 | Think 决策 | Act 执行 | 反馈 |
+|------|-------------|-----------|---------|------|
+| **1** | 识别"退货衬衫"意图 | 需要查询订单 | 查询订单信息 | 获取订单号和详情 |
+| **2** | 订单已查询成功 | 检查退货政策 | 生成退货单 | 退货单创建完成 |
+| **3** | 退货单已创建 | 通知用户后续步骤 | 发送确认消息 | 任务完成 |
+
+---
+
+## 九、技术选型与对比分析
+
+### 9.1 三阶段技术选型汇总
+
+| 阶段 | 核心技术 | 辅助技术 | 选型依据 |
+|------|---------|---------|---------|
+| **Observe** | LLM + 规则引擎 | Kafka/Milvus | 多源数据融合、实时性 |
+| **Think** | LLM (CoT) + 状态机 | 向量数据库 | 推理能力、可解释性 |
+| **Act** | 插件化工具执行器 | 熔断器/重试器 | 扩展性、稳定性 |
+
+### 9.2 关键设计决策对比
+
+| 设计维度 | 方案A: 同步串行 | 方案B: 异步并行 | 方案C: 混合模式 |
+|---------|---------------|---------------|---------------|
+| **Observe** | 单源轮询 | 多源事件驱动 | 事件+轮询混合 |
+| **Think** | 单次LLM调用 | 多轮自反思 | 启发式+LLM混合 |
+| **Act** | 顺序执行 | 并行执行 | 按依赖关系混合 |
+| **响应速度** | 慢 | 快 | 最优 |
+| **实现复杂度** | 低 | 高 | 中等 |
+| **适用场景** | 简单任务 | 高并发场景 | 通用场景✓ |
+
+---
+
+## 十、总结与展望
+
+### 10.1 核心要点总结
+
+本文档从系统架构设计角度，详细阐述了 Agent "Observe → Think → Act" 核心工作流程：
+
+1. **Observe 阶段**：通过多种感知渠道采集数据，经过清洗和语义解析，构建结构化的感知状态，为思考阶段提供高质量输入
+
+2. **Think 阶段**：基于感知状态进行状态评估、决策推理和行动规划，生成包含依赖关系和执行顺序的详细行动计划
+
+3. **Act 阶段**：将行动计划转换为具体的工具调用，按策略执行并处理异常，生成执行结果并反馈给感知阶段
+
+4. **闭环机制**：Act 的执行结果反馈到 Observe，形成新的感知输入，驱动新一轮的思考和行动，实现迭代式改进
+
+### 10.2 与系列文档的关系
+
+本文档是 `3Agent 架构设计` 系列文档的核心补充：
+
+| 文档 | 视角 | 对应本文档内容 |
+|------|------|--------------|
+| [企业级Agent系统完整设计方案](file:///m:/note-book/agent/3Agent%20架构设计/1企业级Agent系统完整设计方案.md) | 系统整体 | 三阶段的组件构成 |
+| [Agent执行流程详解](file:///m:/note-book/agent/3Agent%20架构设计/2Agent执行流程详解.md) | 任务生命周期 | 三阶段的时间序列展开 |
+| **本文档** | 核心工作循环 | 三阶段的内在机制和协同方式 |
+
+### 10.3 演进方向
+
+| 方向 | 说明 |
+|------|------|
+| **更智能的感知** | 多模态融合感知、主动式信息获取 |
+| **更灵活的思考** | 自主规划学习、跨任务经验迁移 |
+| **更安全的行动** | 可解释的行动验证、安全边界自动检测 |
+| **更高效的循环** | 自适应迭代、提前终止条件优化 |
 
