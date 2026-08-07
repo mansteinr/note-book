@@ -1439,3 +1439,325 @@ pie title 响应延迟分布
 #### 8.3.2 优化措施
 ```python
 # 1. 流式响应
+class StreamingResponseHandler:
+    async def stream_response(self, request: AgentRequest):
+        """流式响应处理"""
+        async def event_generator():
+            # 并行执行
+            context_task = asyncio.create_task(
+                self.get_context_async(request.session_id)
+            )
+            rag_task = asyncio.create_task(
+                self.rag_service.retrieve_async(request.query)
+            )
+
+            context, rag_results = await asyncio.gather(
+                context_task, rag_task
+            )
+
+            # 组装Prompt
+            prompt = self.build_prompt(context, request.query, rag_results)
+
+            # 流式调用LLM
+            async for token in self.llm_client.stream_generate(prompt):
+                yield {
+                    "event": "token",
+                    "data": token,
+                    "timestamp": time.time()
+                }
+
+            yield {
+                "event": "complete",
+                "data": "",
+                "timestamp": time.time()
+            }
+
+        return StreamingResponse(event_generator())
+
+# 2. 预计算与预加载
+class PrecomputationService:
+    def __init__(self):
+        self.precomputed_responses = {}
+        self.update_schedule = {}
+
+    async def precompute(self, agent_id: str, knowledge_base_id: str):
+        """预计算高频问题的响应"""
+        # 1. 获取高频问题
+        high_freq_questions = await self.analytics.get_high_freq_questions(
+            agent_id, limit=100
+        )
+
+        # 2. 批量预计算
+        for question in high_freq_questions:
+            # 预计算RAG检索
+            retrieval = await self.rag_service.retrieve(
+                question, knowledge_base_id
+            )
+
+            # 预生成响应
+            response = await self.llm_service.generate(
+                self.build_prompt(question, retrieval)
+            )
+
+            # 存储预计算结果
+            key = f"precomputed:{agent_id}:{hash(question)}"
+            await self.redis.setex(key, 3600, response)
+
+        # 3. 设置定时更新
+        self.update_schedule[agent_id] = asyncio.create_task(
+            self.schedule_updates(agent_id, knowledge_base_id)
+        )
+```
+
+### 8.4 故障熔断与降级
+
+#### 8.4.1 熔断降级策略
+```mermaid
+graph TD
+    subgraph 熔断状态机
+        A[Closed<br/>正常状态] -->|错误率>50%| B[Open<br/>熔断状态]
+        B -->|等待30秒| C[Half-Open<br/>半开状态]
+        C -->|探测成功| A
+        C -->|探测失败| B
+    end
+
+    subgraph 降级策略
+        D[L1降级<br/>缓存响应] --> E[L2降级<br/>简化模型]
+        E --> F[L3降级<br/>友好提示]
+        F --> G[L4降级<br/>排队等待]
+    end
+```
+
+#### 8.4.2 实现代码
+```python
+class CircuitBreaker:
+    """熔断器实现"""
+
+    def __init__(self, failure_threshold=50, recovery_timeout=30):
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.state = "closed"  # closed, open, half-open
+        self.failure_count = 0
+        self.last_failure_time = None
+
+    async def execute(self, func, fallback=None):
+        """执行带熔断的操作"""
+        if self.state == "open":
+            # 检查是否到达恢复时间
+            if time.time() - self.last_failure_time > self.recovery_timeout:
+                self.state = "half-open"
+            else:
+                return await self.execute_fallback(fallback)
+
+        try:
+            result = await func()
+            self._on_success()
+            return result
+        except Exception as e:
+            self._on_failure()
+            if self.state == "open":
+                return await self.execute_fallback(fallback)
+            raise e
+
+    def _on_success(self):
+        """成功回调"""
+        self.failure_count = 0
+        if self.state == "half-open":
+            self.state = "closed"
+
+    def _on_failure(self):
+        """失败回调"""
+        self.failure_count += 1
+        self.last_failure_time = time.time()
+        if self.failure_count >= self.failure_threshold:
+            self.state = "open"
+
+    async def execute_fallback(self, fallback=None):
+        """执行降级策略"""
+        if fallback:
+            return await fallback()
+
+        # 默认降级
+        return {
+            "status": "degraded",
+            "message": "服务暂时不可用，请稍后重试",
+            "timestamp": time.time()
+        }
+
+
+class DegradationManager:
+    """降级管理器"""
+
+    def __init__(self):
+        self.degradation_levels = {
+            0: {"name": "正常", "actions": []},
+            1: {
+                "name": "缓存降级",
+                "actions": [
+                    "使用Redis缓存响应",
+                    "跳过RAG检索",
+                    "使用默认模板回复"
+                ]
+            },
+            2: {
+                "name": "模型降级",
+                "actions": [
+                    "切换到备用小模型",
+                    "减少上下文长度",
+                    "关闭多轮对话"
+                ]
+            },
+            3: {
+                "name": "部分功能降级",
+                "actions": [
+                    "关闭工具调用",
+                    "关闭图片生成",
+                    "关闭个性化推荐"
+                ]
+            },
+            4: {
+                "name": "完全降级",
+                "actions": [
+                    "返回预设回复",
+                    "提示用户稍后重试",
+                    "启用排队机制"
+                ]
+            }
+        }
+
+    def calculate_degradation_level(self, system_metrics: dict) -> int:
+        """计算降级级别"""
+        level = 0
+
+        # CPU/内存压力
+        if system_metrics.get("cpu_usage", 0) > 0.85:
+            level = max(level, 2)
+        if system_metrics.get("memory_usage", 0) > 0.9:
+            level = max(level, 2)
+
+        # 错误率
+        error_rate = system_metrics.get("error_rate", 0)
+        if error_rate > 0.3:
+            level = max(level, 4)
+        elif error_rate > 0.1:
+            level = max(level, 3)
+
+        # 响应时间
+        p99_latency = system_metrics.get("p99_latency", 0)
+        if p99_latency > 10000:
+            level = max(level, 3)
+        elif p99_latency > 5000:
+            level = max(level, 2)
+
+        # GPU状态
+        gpu_health = system_metrics.get("gpu_health", 1)
+        if gpu_health < 0.5:
+            level = max(level, 4)
+        elif gpu_health < 0.8:
+            level = max(level, 2)
+
+        return level
+
+    def get_degradation_strategy(self, level: int) -> dict:
+        """获取降级策略"""
+        return self.degradation_levels.get(level, self.degradation_levels[4])
+```
+
+---
+
+## 9. 总结与展望
+
+### 9.1 核心设计理念
+
+| 设计原则 | 具体体现 | 价值 |
+|----------|----------|------|
+| 无状态设计 | 服务实例无本地状态，数据全在共享存储 | 水平扩展能力 |
+| 多级缓存 | L1内存 + L2 Redis + L3 向量缓存 | 性能提升10x+ |
+| 异步优先 | 全链路异步处理，并行执行 | 吞吐量提升5x+ |
+| 弹性伸缩 | 基于K8s HPA + 自定义指标 | 应对流量峰值 |
+| 多活容灾 | 三地五中心 + 故障自动切换 | 99.99% 可用性 |
+
+### 9.2 关键技术指标
+
+```yaml
+# 百万级Agent平台核心指标
+platform_metrics:
+  capacity:
+    max_concurrent_sessions: 100000
+    qps: 50000
+    daily_active_users: 500000
+
+  performance:
+    average_response_time_ms: 500
+    p99_response_time_ms: 2000
+    first_token_latency_ms: 200
+
+  availability:
+    service_level: 99.99
+    rpo_seconds: 1
+    rto_minutes: 1
+
+  cost:
+    cost_per_1k_tokens: 0.01
+    cache_hit_rate: 0.85
+    model_utilization: 0.85
+
+  quality:
+    user_satisfaction_score: 4.5
+    task_completion_rate: 0.92
+    hallucination_rate: 0.03
+```
+
+### 9.3 未来演进方向
+
+#### 9.3.1 技术演进路线
+```mermaid
+gantt
+    title Agent平台技术演进
+    dateFormat YYYY-MM-DD
+    section 基础设施
+    云原生改造 :active, 2024-01-01, 180d
+    多云部署 :2024-07-01, 180d
+    边缘计算 :2025-01-01, 365d
+    section AI能力
+    本地小模型 :active, 2024-01-01, 120d
+    多模态支持 :2024-05-01, 180d
+    Agent自主学习 :2024-11-01, 365d
+    section 业务扩展
+    行业解决方案 :active, 2024-03-01, 180d
+    国际化支持 :2024-09-01, 180d
+    生态平台 :2025-03-01, 365d
+```
+
+#### 9.3.2 前沿技术探索
+1. **端侧部署**：将轻量级Agent部署到移动端，实现离线智能
+2. **联邦学习**：在保护隐私的前提下，利用用户数据优化模型
+3. **AutoML**：自动化模型选择和超参数优化
+4. **AIGC融合**：与生成式AI深度融合，创造更自然的交互体验
+5. **跨模态Agent**：支持文本、语音、图像、视频的多模态交互
+
+---
+
+## 附录
+
+### 关键技术栈汇总
+
+| 分类 | 技术 | 版本 | 用途 |
+|------|------|------|------|
+| 大模型 | Qwen-Llama2 | 7B/13B | 核心AI能力 |
+| 推理框架 | vLLM | 0.3.x | 高性能推理 |
+| 向量库 | Milvus | 2.3.x | 语义检索 |
+| 缓存 | Redis Cluster | 7.x | 多级缓存 |
+| 数据库 | MySQL + MongoDB | 8.0/7.0 | 数据存储 |
+| 容器 | Kubernetes | 1.28 | 编排调度 |
+| 监控 | Prometheus + Grafana | 2.48/10.x | 可观测性 |
+
+### 推荐阅读
+1. [vLLM 官方文档](https://docs.vllm.ai/)
+2. [Milvus 向量数据库](https://milvus.io/docs)
+3. [Kubernetes 最佳实践](https://kubernetes.io/docs/concepts/)
+4. [大规模分布式系统设计](https://aws.amazon.com/architecture/)
+
+---
+
+> **文档声明**：本文档为面试准备而编写，包含的架构设计和代码示例均为示意性内容，实际项目中需要根据具体需求进行调整和完善。
