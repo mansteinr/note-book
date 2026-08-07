@@ -1665,4 +1665,191 @@ agent_permission_system/
 │   │   ├── engine.py             # ABAC 求值引擎
 │   │   ├── operators.py          # ABAC 操作符实现
 │   │   └── expression.py         # 属性表达式解析
-│   └
+│   └── policy_store.py           # 策略存储 + 动态下发
+│
+├── guards/
+│   ├── planner_guard.py          # 规划层守卫
+│   ├── executor_guard.py         # 执行层守卫 (含装饰器)
+│   ├── tool_guard.py             # 工具层守卫 (参数+返回值)
+│   ├── data_guard.py             # 数据层守卫 (向量库+SQL)
+│   └── process_guard.py          # 流程引擎守卫
+│
+├── dynamic/
+│   ├── policy_manager.py         # 策略动态管理器
+│   ├── temp_grant_manager.py     # 临时授权管理
+│   └── event_handlers.py         # 事件订阅处理
+│
+├── audit/
+│   ├── audit_logger.py           # 审计日志记录器
+│   ├── audit_models.py           # 审计日志数据模型
+│   └── audit_reporter.py         # 审计报表生成
+│
+├── abnormal/
+│   ├── handler.py                # 异常处置引擎
+│   ├── risk_assessment.py        # 风险评分算法
+│   ├── rate_limiter.py           # 越权频率统计
+│   └── alert_sender.py           # 多通道告警 (IM/邮件/短信/电话)
+│
+├── masking/
+│   ├── engine.py                 # 脱敏引擎
+│   ├── rules.py                  # 内置脱敏规则 (身份证/手机号/薪资)
+│   └── filter_builder.py         # SQL/向量检索过滤条件构造
+│
+├── integration/
+│   ├── fastapi_middleware.py     # FastAPI 中间件 (L1 鉴权)
+│   ├── flask_middleware.py       # Flask 中间件
+│   ├── sqlalchemy_hook.py        # SQLAlchemy 行级权限 Hook
+│   └── langchain_tool_wrapper.py # LangChain 工具包装器
+│
+├── storage/
+│   ├── rbac_repository.py        # RBAC 数据仓储
+│   ├── abac_repository.py        # ABAC 策略仓储
+│   └── audit_repository.py       # 审计日志仓储
+│
+├── cache/
+│   ├── authz_cache.py            # 鉴权结果缓存
+│   └── cache_invalidator.py      # 缓存失效处理器
+│
+└── tests/
+    ├── test_rbac.py
+    ├── test_abac.py
+    ├── test_guards.py
+    ├── test_abnormal.py
+    └── test_integration.py
+```
+
+---
+
+## 十一、完整代码实现
+
+### 11.1 权限上下文管理（Thread-Local）
+
+```python
+import threading
+from contextlib import contextmanager
+
+_auth_context_local = threading.local()
+
+@dataclass
+class AuthContext:
+    """请求级权限上下文"""
+    subject_id: str
+    subject_type: str = "user"
+    subject_roles: list = field(default_factory=list)
+    subject_attrs: dict = field(default_factory=dict)
+    security_level: SecurityLevel = SecurityLevel.INTERNAL
+    
+    conversation_id: str = None
+    trace_id: str = None
+    client_ip: str = "127.0.0.1"
+    mfa_verified: bool = False
+
+def get_current_auth_context() -> AuthContext:
+    """获取当前线程的权限上下文（供各 Guard 读取）"""
+    ctx = getattr(_auth_context_local, "context", None)
+    if not ctx:
+        raise MissingAuthContextError("权限上下文未初始化，请在请求入口设置")
+    return ctx
+
+@contextmanager
+def auth_context_scope(ctx: AuthContext):
+    """权限上下文作用域（with 语句中自动设置/还原）"""
+    prev = getattr(_auth_context_local, "context", None)
+    _auth_context_local.context = ctx
+    try:
+        yield ctx
+    finally:
+        _auth_context_local.context = prev
+
+# FastAPI 示例: 请求入口中间件设置上下文
+@app.middleware("http")
+async def auth_context_middleware(request: Request, call_next):
+    token = request.headers.get("Authorization")
+    claims = jwt.decode(token)  # 解析 JWT
+    ctx = AuthContext(
+        subject_id=claims["sub"],
+        subject_roles=claims.get("roles", []),
+        subject_attrs={"dept_id": claims.get("dept_id")},
+        security_level=SecurityLevel(claims.get("sec_level", 1)),
+        client_ip=request.client.host,
+        trace_id=request.headers.get("X-Trace-ID", str(uuid4()))
+    )
+    with auth_context_scope(ctx):
+        response = await call_next(request)
+    return response
+```
+
+### 11.2 数据脱敏引擎
+
+```python
+import re
+import hashlib
+
+class DataMaskingEngine:
+    """返回值脱敏引擎"""
+    
+    def __init__(self):
+        self.builtin_rules = {
+            "phone": lambda v: re.sub(r'(\d{3})\d{4}(\d{4})', r'\1****\2', str(v)),
+            "id_card": lambda v: re.sub(r'(\d{6})\d{8}(\d{4})', r'\1********\2', str(v)),
+            "email": lambda v: re.sub(r'(?<=.).(?=[^@]*.@)', '*', str(v)),
+            "salary": lambda v: "***" if v else v,
+            "hash": lambda v: hashlib.sha256(str(v).encode()).hexdigest()[:16],
+        }
+
+    def apply_rules(self, data, rules: list[dict], resource_type: str = None):
+        """递归应用脱敏规则
+        
+        rules 格式: [{"field": "salary", "rule": "salary"}, {"field": "phone", "rule": "phone"}]
+        """
+        if not rules:
+            return data
+
+        if isinstance(data, dict):
+            return self._mask_dict(data, rules)
+        elif isinstance(data, list):
+            return [self.apply_rules(item, rules) for item in data]
+        elif hasattr(data, '__dict__'):  # ORM 模型 / Pydantic
+            masked = self._mask_dict(data.__dict__, rules)
+            for k, v in masked.items():
+                setattr(data, k, v)
+            return data
+        else:
+            return data
+
+    def _mask_dict(self, d: dict, rules: list[dict]) -> dict:
+        for rule in rules:
+            field = rule["field"]
+            rule_name = rule["rule"]
+            if field in d:
+                mask_fn = self.builtin_rules.get(rule_name, lambda x: "***")
+                d[field] = mask_fn(d[field])
+            # 支持嵌套字段: user.profile.phone
+            elif "." in field:
+                parts = field.split(".")
+                obj = d
+                for p in parts[:-1]:
+                    if isinstance(obj, dict) and p in obj:
+                        obj = obj[p]
+                    else:
+                        break
+                else:
+                    last = parts[-1]
+                    if isinstance(obj, dict) and last in obj:
+                        mask_fn = self.builtin_rules.get(rule_name, lambda x: "***")
+                        obj[last] = mask_fn(obj[last])
+        return d
+```
+
+### 11.3 权限装饰器（业务代码零侵入）
+
+```python
+def require_permission(resource_type: str,
+                       action: str = "read",
+                       resource_id_param: str = None,
+                       pass_authz_info: bool = False):
+    """
+    业务方法装饰器: 自动鉴权
+    
+    使用示例:
+        @require_permission("order", "read
