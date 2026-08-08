@@ -101,46 +101,60 @@
 
 ```mermaid
 flowchart TB
-    subgraph 输入端
-        SRC[源序列 Tokens] --> IE[Input Embedding<br/>+ Pos Enc]
+    SRC["源序列 Source Tokens"] --> IE["Input Embedding<br/>+ Positional Encoding"]
+    TGT["目标序列 Target Tokens"] --> OE["Output Embedding<br/>+ Positional Encoding"]
+
+    subgraph ENC["Encoder × N 层"]
+        direction TB
+        ENC_SELF["① Multi-Head<br/>Self-Attention"]
+        ENC_ADD1["Add &amp; Norm<br/>残差连接 + 层归一化"]
+        ENC_FFN["② Feed-Forward<br/>Network"]
+        ENC_ADD2["Add &amp; Norm<br/>残差连接 + 层归一化"]
+
+        ENC_SELF --> ENC_ADD1 --> ENC_FFN --> ENC_ADD2
     end
 
-    subgraph 输出端
-        TGT[目标序列 Tokens] --> OE[Output Embedding<br/>+ Pos Enc]
+    subgraph DEC["Decoder × N 层"]
+        direction TB
+        DEC_MASK["① Masked Multi-Head<br/>Self-Attention"]
+        DEC_ADD1["Add &amp; Norm"]
+        DEC_CROSS["② Cross-Attention<br/>Q ← Decoder 当前层<br/>K, V ← Encoder 输出"]
+        DEC_ADD2["Add &amp; Norm"]
+        DEC_FFN["③ Feed-Forward<br/>Network"]
+        DEC_ADD3["Add &amp; Norm"]
+
+        DEC_MASK --> DEC_ADD1 --> DEC_CROSS --> DEC_ADD2 --> DEC_FFN --> DEC_ADD3
     end
 
-    IE --> ENC_STACK[Encoder × N 层]
-    OE --> DEC_STACK[Decoder × N 层]
+    IE --> ENC_SELF
+    OE --> DEC_MASK
 
-    subgraph Encoder[" "]
-        ENC_SELF[Multi-Head<br/>Self-Attention]
-        ENC_FFN[Feed-Forward<br/>Network]
-        ENC_SELF --> ENC_FFN
-    end
+    ENC_ADD2 ==>|"提供 K, V"| DEC_CROSS
 
-    subgraph Decoder[" "]
-        DEC_MASK[Masked<br/>Multi-Head Self-Attn]
-        DEC_CROSS[Cross-Attention<br/>Q=Dec, KV=Enc]
-        DEC_FFN[Feed-Forward<br/>Network]
-        DEC_MASK --> DEC_CROSS --> DEC_FFN
-    end
+    DEC_ADD3 --> LINEAR["Linear 投影<br/>d_model → vocab_size"]
+    LINEAR --> SOFTMAX["Softmax 归一化"]
+    SOFTMAX --> PROB["输出概率分布<br/>→ 目标序列"]
 
-    ENC_STACK --> ENC_KV[Encoder 输出<br/>作为 K/V]
-    ENC_KV --> DEC_CROSS
-
-    DEC_STACK --> LINEAR[Linear 投影]
-    LINEAR --> SOFTMAX[Softmax]
-    SOFTMAX --> PROB[输出概率分布<br/>→ 目标序列]
-
-    style ENC_STACK fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
-    style DEC_STACK fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
+    style ENC fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style DEC fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
     style PROB fill:#d4edda,stroke:#155724,stroke-width:2px
+    style ENC_ADD1 fill:#f3e5f5,stroke:#7b1fa2
+    style ENC_ADD2 fill:#f3e5f5,stroke:#7b1fa2
+    style DEC_ADD1 fill:#f3e5f5,stroke:#7b1fa2
+    style DEC_ADD2 fill:#f3e5f5,stroke:#7b1fa2
+    style DEC_ADD3 fill:#f3e5f5,stroke:#7b1fa2
+    style DEC_CROSS fill:#fce4ec,stroke:#c2185b,stroke-width:2px
 ```
 
 **关键说明**：
-- Encoder 和 Decoder 各有 N 层（原论文 N=6）
-- Encoder 的输出作为 Decoder 中 Cross-Attention 的 K/V
-- Decoder 采用自回归方式逐 token 生成
+
+| 要点 | 说明 |
+|:-----|:-----|
+| **层数** | Encoder 和 Decoder 各有 N 层（原论文 N=6），每层结构相同 |
+| **Add &amp; Norm** | 每个子层后接「残差连接 + 层归一化」——残差将子层输入直通相加，LayerNorm 稳定训练 |
+| **K/V 来源** | Decoder 的 Cross-Attention 中，**Q 来自 Decoder 当前层**，**K 和 V 来自 Encoder 最后一层输出**，这是源序列与目标序列桥接的关键 |
+| **自回归生成** | Decoder 采用自回归方式逐 token 生成，遇 `<EOS>` 或达最大长度停止 |
+| **编号顺序** | Encoder 两个子层（①自注意力 → ②FFN）；Decoder 三个子层（①掩码自注意力 → ②交叉注意力 → ③FFN）|
 
 ### 1.3 三大主流变体
 
