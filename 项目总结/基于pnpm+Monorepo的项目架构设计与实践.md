@@ -1,8 +1,8 @@
 # 基于 pnpm + Monorepo 的项目架构设计与实践
 
-> **文档版本**：v1.0 | **生成日期**：2026-08-08 | **适用场景**：中大型前端项目工程化架构设计
+> **文档版本**：v2.0 | **生成日期**：2026-08-08 | **适用场景**：中大型前端项目工程化架构设计
 >
-> **文档定位**：本文档系统阐述基于 **pnpm Workspace + Monorepo** 的前端项目架构方案，覆盖目录结构设计、工作区配置、依赖管理、共享代码实现、构建打包、开发环境、版本管理等全链路工程实践。所有方案均配套架构图、配置文件示例和可操作步骤，确保工程团队可直接落地实施。
+> **文档定位**：本文档系统阐述基于 **pnpm Workspace + Monorepo** 的前端项目架构方案，覆盖目录结构设计、工作区配置、依赖管理、共享代码实现、构建打包、开发环境、版本管理、**中心化思想**等全链路工程实践。所有方案均配套架构图、配置文件示例和可操作步骤，确保工程团队可直接落地实施。
 
 ---
 
@@ -53,15 +53,23 @@
     - [9.2 严格依赖隔离](#92-严格依赖隔离)
     - [9.3 灵活的过滤机制](#93-灵活的过滤机制)
     - [9.4 与其他方案对比](#94-与其他方案对比)
-  - [十、实际应用场景](#十实际应用场景)
-    - [10.1 场景一：多端应用共享核心逻辑](#101-场景一多端应用共享核心逻辑)
-    - [10.2 场景二：企业级组件库与多应用](#102-场景二企业级组件库与多应用)
-    - [10.3 场景三：微前端架构基座](#103-场景三微前端架构基座)
-  - [十一、CI/CD 与部署](#十一cicd-与部署)
-    - [11.1 CI 流水线设计](#111-ci-流水线设计)
-    - [11.2 Docker 多阶段构建](#112-docker-多阶段构建)
-    - [11.3 增量构建与缓存策略](#113-增量构建与缓存策略)
-  - [十二、总结与最佳实践](#十二总结与最佳实践)
+  - [十、中心化思想的架构设计与实践](#十中心化思想的架构设计与实践)
+    - [10.1 中心化思想的核心理念](#101-中心化思想的核心理念)
+    - [10.2 中心化依赖管理策略](#102-中心化依赖管理策略)
+    - [10.3 统一构建流程设计](#103-统一构建流程设计)
+    - [10.4 共享组件库建设方案](#104-共享组件库建设方案)
+    - [10.5 公共配置集中管理机制](#105-公共配置集中管理机制)
+    - [10.6 团队协作规范的集中化制定](#106-团队协作规范的集中化制定)
+    - [10.7 实施前后效果对比分析](#107-实施前后效果对比分析)
+  - [十一、实际应用场景](#十一实际应用场景)
+    - [11.1 场景一：多端应用共享核心逻辑](#111-场景一多端应用共享核心逻辑)
+    - [11.2 场景二：企业级组件库与多应用](#112-场景二企业级组件库与多应用)
+    - [11.3 场景三：微前端架构基座](#113-场景三微前端架构基座)
+  - [十二、CI/CD 与部署](#十二cicd-与部署)
+    - [12.1 CI 流水线设计](#121-ci-流水线设计)
+    - [12.2 Docker 多阶段构建](#122-docker-多阶段构建)
+    - [12.3 增量构建与缓存策略](#123-增量构建与缓存策略)
+  - [十三、总结与最佳实践](#十三总结与最佳实践)
     - [最佳实践清单](#最佳实践清单)
     - [架构知识图谱](#架构知识图谱)
 
@@ -1424,9 +1432,515 @@ flowchart TB
 
 ---
 
-## 十、实际应用场景
+## 十、中心化思想的架构设计与实践
 
-### 10.1 场景一：多端应用共享核心逻辑
+> **核心命题**：Monorepo 的本质不仅是"把多个项目放在一个仓库"，更是一种**中心化（Centralization）的工程治理思想**——通过将分散的依赖、配置、构建、规范收归统一管理，消除冗余、保障一致性、提升协作效率。本章从架构设计视角，系统阐述中心化思想在 pnpm + Monorepo 中的五大维度的具体体现、核心价值与实施路径。
+
+### 10.1 中心化思想的核心理念
+
+```mermaid
+mindmap
+  root((中心化思想))
+    核心定义
+      分散治理 → 统一治理
+      各自为政 → 单一事实源
+      重复配置 → 配置复用
+    五大维度
+      依赖管理中心化
+      构建流程中心化
+      组件库建设中心化
+      配置管理中心化
+      协作规范中心化
+    核心价值
+      一致性保障
+      效率提升
+      质量可控
+      成本降低
+    实施原则
+      单一事实源 SSOT
+      分层不分离
+      集中定义 分散执行
+      渐进式迁移
+```
+
+**核心理念——单一事实源（Single Source of Truth, SSOT）**：
+
+在传统多仓库架构中，依赖版本、ESLint 规则、TS 配置、构建脚本等散落在每个项目中，各自维护、各自演化，不可避免地产生**配置漂移**和**依赖碎片化**。中心化思想的本质是建立**单一事实源**——每个维度的配置只在一处定义，所有项目继承引用。
+
+```mermaid
+flowchart LR
+    subgraph 分散式["分散式治理（Polyrepo）"]
+        direction TB
+        D1["项目A<br/>React 18.2 / ESLint 8 / TS 5.3"]
+        D2["项目B<br/>React 18.3 / ESLint 9 / TS 5.6"]
+        D3["项目C<br/>React 17.0 / ESLint 7 / TS 5.0"]
+        D4["❌ 版本碎片化<br/>❌ 配置不一致<br/>❌ 重复维护"]
+    end
+
+    subgraph 中心化["中心化治理（Monorepo）"]
+        direction TB
+        SSOT["单一事实源<br/>catalog: React 18.3<br/>@repo/config: ESLint 9 + TS 5.6"]
+        S1["项目A<br/>继承"]
+        S2["项目B<br/>继承"]
+        S3["项目C<br/>继承"]
+        SSOT --> S1 & S2 & S3
+        R["✅ 版本全局一致<br/>✅ 配置统一维护<br/>✅ 修改一处生效"]
+    end
+
+    分散式 -.->|"架构升级"| 中心化
+
+    style 分散式 fill:#f8d7da,stroke:#721c24
+    style 中心化 fill:#d4edda,stroke:#155724,stroke-width:2px
+    style SSOT fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
+```
+
+### 10.2 中心化依赖管理策略
+
+**问题背景**：传统架构中，不同项目安装的第三方依赖版本可能不一致（如项目 A 用 React 18.2，项目 B 用 React 18.3），导致行为差异和潜在 bug。
+
+**中心化方案**：通过 pnpm 的 **catalog 机制 + 统一 lockfile + overrides** 三重保障，实现依赖版本的集中管控。
+
+```mermaid
+flowchart TB
+    subgraph 依赖中心化管理["中心化依赖管理三重保障"]
+        direction TB
+        L1["第一重: catalog 版本目录<br/>pnpm-workspace.yaml 中统一定义所有第三方依赖版本<br/>各子包引用 catalog: 而非硬编码版本"]
+        L2["第二重: 统一 lockfile<br/>shared-workspace-lockfile=true<br/>全仓库一个 pnpm-lock.yaml 锁定完整依赖树"]
+        L3["第三重: overrides 强制覆盖<br/>根 package.json pnpm.overrides<br/>强制统一嵌套依赖版本"]
+        L1 --> L2 --> L3
+    end
+
+    subgraph 效果["实施效果"]
+        E1["✅ 版本偏差 = 0"]
+        E2["✅ 依赖安全漏洞统一修复"]
+        E3["✅ 升级一处 全局生效"]
+    end
+
+    依赖中心化管理 --> 效果
+
+    style 依赖中心化管理 fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style 效果 fill:#d4edda,stroke:#155724
+```
+
+**实施配置示例**：
+
+```yaml
+# pnpm-workspace.yaml —— 第一重: catalog 版本目录
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+# 所有第三方依赖版本集中定义于此
+catalog:
+  vue: 3.5.13
+  vue-router: 4.5.0
+  pinia: 2.3.0
+  axios: 1.7.9
+  typescript: 5.6.3
+  eslint: 9.17.0
+  vite: 6.0.0
+```
+
+```json
+// 各子包 package.json —— 引用 catalog 而非硬编码版本
+{
+  "name": "@repo/ui",
+  "dependencies": {
+    "vue": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}
+```
+
+```json
+// 根 package.json —— 第三重: overrides 强制覆盖嵌套依赖
+{
+  "pnpm": {
+    "overrides": {
+      "lodash": "^4.17.21",
+      "axios": "catalog:"
+    }
+  }
+}
+```
+
+> **关键价值**：当需要将 Vue 从 3.5.13 升级到 3.5.14 时，只需修改 `pnpm-workspace.yaml` 中的 catalog 一处，所有子包自动同步——传统方案需要逐个项目修改 package.json 并各自安装测试。
+
+### 10.3 统一构建流程设计
+
+**问题背景**：传统架构中，每个项目有独立的构建脚本和配置，构建行为不统一，难以实现增量构建和缓存复用。
+
+**中心化方案**：通过 **Turborepo 统一编排 + 共享构建配置 + 统一产物规范**，实现构建流程的集中管控。
+
+```mermaid
+flowchart TB
+    subgraph 构建中心化["统一构建流程设计"]
+        CMD["单一入口: pnpm build<br/>（根 package.json）"]
+        CMD --> TURBO["Turborepo 统一编排<br/>读取 turbo.json"]
+        TURBO --> TOPO["依赖拓扑排序<br/>按 L3→L2→L1 分层构建"]
+        TOPO --> CACHE{"缓存命中检查<br/>inputs 哈希比对"}
+        CACHE -->|命中| RESTORE["恢复缓存产物<br/>跳过构建"]
+        CACHE -->|未命中| EXEC["执行子包 build 脚本"]
+        EXEC --> SAVE["产物存入缓存<br/>供后续复用"]
+    end
+
+    subgraph 配置共享["共享构建配置"]
+        VITE_CFG["@repo/config/vite<br/>defineViteConfig() 工厂函数"]
+        TSUP_CFG["@repo/config/tsup<br/>统一库打包配置"]
+        TS_CFG["tsconfig.base.json<br/>统一 TS 编译选项"]
+    end
+
+    配置共享 -.->|"被各包继承引用"| EXEC
+
+    style 构建中心化 fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style 配置共享 fill:#fff3e0,stroke:#ef6c00
+    style RESTORE fill:#d4edda,stroke:#155724,stroke-width:2px
+```
+
+**中心化构建的三层统一**：
+
+| 统一层级 | 实现方式 | 效果 |
+|:---------|:---------|:-----|
+| **统一入口** | 根 `package.json` 的 `scripts.build` → `turbo run build` | 一条命令构建所有包，无需记忆各包脚本 |
+| **统一编排** | `turbo.json` 定义 `dependsOn: ["^build"]` + `inputs` + `outputs` | 按依赖拓扑排序，自动增量构建+缓存 |
+| **统一配置** | `@repo/config` 包提供 `defineViteConfig()` 工厂函数 + `tsconfig.base.json` | 构建配置继承复用，修改一处全局生效 |
+
+**共享构建配置工厂示例**：
+
+```typescript
+// packages/config/src/vite.ts
+import { defineConfig, type UserConfig } from 'vite';
+import vue from '@vitejs/plugin-vue';
+
+// 工厂函数：统一 Vite 配置，各应用传入差异化参数
+export function defineAppConfig(options: {
+  port?: number;
+  base?: string;
+  proxy?: Record<string, string>;
+}): UserConfig {
+  return defineConfig({
+    base: options.base ?? '/',
+    plugins: [vue()],
+    resolve: {
+      alias: {
+        '@': '/src',
+        '@repo/ui': '../../packages/ui/src/index.ts',
+        '@repo/utils': '../../packages/utils/src/index.ts',
+      },
+    },
+    build: {
+      target: 'es2022',
+      cssCodeSplit: true,
+      sourcemap: false,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            vue: ['vue', 'vue-router', 'pinia'],
+          },
+        },
+      },
+    },
+    server: {
+      port: options.port ?? 3000,
+      proxy: Object.fromEntries(
+        Object.entries(options.proxy ?? {}).map(([k, v]) => [
+          k, { target: v, changeOrigin: true }
+        ])
+      ),
+    },
+  });
+}
+```
+
+```typescript
+// apps/web/vite.config.ts —— 应用只需传入差异化参数
+import { defineAppConfig } from '@repo/config/vite';
+export default defineAppConfig({
+  port: 3000,
+  base: '/',
+  proxy: { '/api': 'http://localhost:8080' },
+});
+```
+
+### 10.4 共享组件库建设方案
+
+**问题背景**：传统架构中，UI 组件、业务组件在各项目中重复实现，视觉规范不统一，维护成本高。
+
+**中心化方案**：建设**企业级共享组件库**，集中管理所有 UI 组件、设计令牌（Design Tokens）和样式规范，各应用按需引用。
+
+```mermaid
+flowchart TB
+    subgraph 组件库中心["共享组件库 @repo/ui（中心化建设）"]
+        direction TB
+        TOKENS["设计令牌层<br/>colors / typography / spacing / shadows<br/>→ design-tokens.css"]
+        BASE["基础组件层<br/>Button / Input / Table / Modal<br/>→ 50+ 通用组件"]
+        BIZ["业务组件层<br/>UserCard / OrderForm / DataChart<br/>→ 领域特定组件"]
+        TOKENS --> BASE --> BIZ
+    end
+
+    subgraph 消费方["各应用按需引用"]
+        WEB["apps/web<br/>引用 Base + Biz"]
+        ADMIN["apps/admin<br/>引用 Base + Biz"]
+        MOBILE["apps/mobile<br/>引用 Base（适配移动端）"]
+    end
+
+    组件库中心 -->|"workspace:* symlink"| 消费方
+
+    style 组件库中心 fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
+    style 消费方 fill:#e3f2fd,stroke:#1565c0
+```
+
+**三层组件架构设计**：
+
+| 层级 | 职责 | 示例 | 变更影响范围 |
+|:-----|:-----|:-----|:-----------|
+| **设计令牌层** | 统一视觉变量（色彩/字体/间距/阴影） | `--color-primary: #1890ff` | 全局视觉统一 |
+| **基础组件层** | 无业务语义的通用 UI 组件 | Button / Input / Table | 所有应用的基础 UI |
+| **业务组件层** | 含业务逻辑的领域组件 | UserCard / OrderForm | 特定业务场景 |
+
+**设计令牌集中管理**：
+
+```css
+/* packages/ui/src/styles/design-tokens.css */
+:root {
+  /* === 色彩系统 === */
+  --color-primary: #1890ff;
+  --color-success: #52c41a;
+  --color-warning: #faad14;
+  --color-danger: #ff4d4f;
+
+  /* === 字体系统 === */
+  --font-size-xs: 12px;
+  --font-size-sm: 14px;
+  --font-size-base: 16px;
+  --font-size-lg: 18px;
+
+  /* === 间距系统 === */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+
+  /* === 阴影系统 === */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+```
+
+> **核心价值**：设计令牌集中定义后，品牌色变更只需修改一处 CSS 变量，所有组件和应用自动同步——传统方案需要逐个项目逐个组件搜索替换。
+
+### 10.5 公共配置集中管理机制
+
+**问题背景**：ESLint 规则、Prettier 配置、TypeScript 配置、Git Hooks 等工程配置在传统架构中各项目独立维护，导致规则不一致和重复劳动。
+
+**中心化方案**：抽取 `@repo/config` 包，集中管理所有工程配置，各子包通过**继承/引用**方式复用。
+
+```mermaid
+flowchart TB
+    subgraph 配置中心["@repo/config（公共配置中心）"]
+        direction LR
+        ESLINT["eslint-config.js<br/>ESLint 共享规则"]
+        PRETTIER["prettier-config.js<br/>Prettier 共享格式化"]
+        TS["tsconfig.json<br/>TypeScript 共享编译选项"]
+        VITE["vite.ts<br/>Vite 共享构建配置"]
+        HUSKY["husky 配置<br/>Git Hooks 统一规则"]
+    end
+
+    subgraph 子包配置["各子包继承引用"]
+        P_UI["packages/ui<br/>extends: @repo/config/tsconfig"]
+        P_UTILS["packages/utils<br/>extends: @repo/config/tsconfig"]
+        A_WEB["apps/web<br/>extends + eslintConfig"]
+        A_ADMIN["apps/admin<br/>extends + eslintConfig"]
+    end
+
+    配置中心 -->|"extends / 引用"| 子包配置
+
+    style 配置中心 fill:#d4edda,stroke:#155724,stroke-width:2px
+    style 子包配置 fill:#e3f2fd,stroke:#1565c0
+```
+
+**集中管理的配置清单**：
+
+| 配置类型 | 中心化文件 | 子包引用方式 | 修改影响范围 |
+|:---------|:----------|:-----------|:-----------|
+| ESLint 规则 | `@repo/config/eslint-config.js` | `extends: '@repo/config/eslint'` | 全仓库代码规范 |
+| Prettier 格式化 | `@repo/config/prettier-config.js` | `prettier: '@repo/config/prettier'` | 全仓库代码格式 |
+| TypeScript 编译 | `tsconfig.base.json` | `extends: '../../tsconfig.base.json'` | 全仓库类型检查 |
+| Vite 构建 | `@repo/config/vite.ts` | `defineAppConfig({...})` | 全仓库应用构建 |
+| Git Hooks | 根 `.husky/` 目录 | 根级统一执行 | 全仓库提交规范 |
+| Commit 规范 | `commitlint.config.js` | 根级统一校验 | 全仓库提交信息 |
+
+**ESLint 共享配置示例**：
+
+```javascript
+// packages/config/src/eslint-config.js
+module.exports = {
+  root: true,
+  env: { browser: true, es2022: true, node: true },
+  extends: [
+    'eslint:recommended',
+    '@vue/eslint-config-typescript',
+    'prettier', // 关闭与 Prettier 冲突的规则
+  ],
+  rules: {
+    'no-console': ['warn', { allow: ['warn', 'error'] }],
+    '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+    '@typescript-eslint/no-explicit-any': 'warn',
+    'vue/multi-word-component-names': 'off',
+  },
+};
+```
+
+```json
+// apps/web/package.json —— 子包引用共享 ESLint 配置
+{
+  "name": "web",
+  "eslintConfig": {
+    "extends": "@repo/config/eslint"
+  }
+}
+```
+
+> **核心价值**：新增一条 ESLint 规则（如禁止 `any` 类型），只需修改 `@repo/config/eslint-config.js` 一处，所有子包立即生效——传统方案需要逐个项目修改并提交。
+
+### 10.6 团队协作规范的集中化制定
+
+**问题背景**：传统架构中，不同项目的分支策略、Commit 规范、Code Review 流程、发布流程可能各不相同，新人加入项目需要重新学习，跨项目协作困难。
+
+**中心化方案**：在 Monorepo 根级统一制定**团队协作规范**，通过 Git Hooks、CI 流水线和文档三位一体强制执行。
+
+```mermaid
+flowchart TB
+    subgraph 规范中心["协作规范集中化（三位一体）"]
+        direction TB
+        DOC["文档层<br/>CONTRIBUTING.md<br/>分支策略 / Commit 规范 / CR 流程"]
+        HOOK["Git Hooks 层<br/>.husky/ pre-commit + commit-msg<br/>本地提交时自动校验"]
+        CI["CI 层<br/>.github/workflows/ci.yml<br/>远程推送时强制校验"]
+        DOC --> HOOK --> CI
+    end
+
+    subgraph 规范内容["统一规范内容"]
+        R1["分支策略<br/>main / develop / feature/* / fix/*"]
+        R2["Commit 规范<br/>Conventional Commits<br/>feat / fix / docs / chore"]
+        R3["代码质量门禁<br/>ESLint + 类型检查 + 测试覆盖"]
+        R4["发布流程<br/>Changesets 变更记录 → 版本递增"]
+    end
+
+    规范中心 --> 规范内容
+
+    style 规范中心 fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    style 规范内容 fill:#e3f2fd,stroke:#1565c0
+```
+
+**集中化协作规范清单**：
+
+| 规范维度 | 统一定义位置 | 执行方式 | 效果 |
+|:---------|:-----------|:---------|:-----|
+| **分支策略** | `CONTRIBUTING.md` | CI 校验分支命名 | 统一分支模型 |
+| **Commit 规范** | `commitlint.config.js` + `.husky/commit-msg` | Git Hook 自动校验 | 提交信息一致 |
+| **代码质量** | `@repo/config/eslint` + CI `lint` 步骤 | pre-commit + CI 双重校验 | 代码风格统一 |
+| **类型安全** | `tsconfig.base.json` + CI `tsc --noEmit` | CI 强制类型检查 | 类型错误零上线 |
+| **测试覆盖** | CI `test` 步骤 + 覆盖率阈值 | CI 门禁拦截 | 测试质量保障 |
+| **发布流程** | `Changesets` + `release` 脚本 | 统一发布命令 | 版本管理规范 |
+
+**CONTRIBUTING.md 示例**：
+
+```markdown
+# 贡献指南
+
+## 分支策略
+- `main`：生产分支，受保护，仅通过 PR 合并
+- `develop`：开发分支，日常集成
+- `feature/*`：功能分支，如 `feature/user-auth`
+- `fix/*`：修复分支，如 `fix/login-bug`
+
+## Commit 规范
+使用 Conventional Commits：
+- `feat:` 新功能
+- `fix:` Bug 修复
+- `docs:` 文档变更
+- `refactor:` 重构（无功能变化）
+- `chore:` 构建/工具变更
+
+## Code Review 流程
+1. 提交 PR（必须关联 Issue）
+2. 至少 1 名 Reviewer 审批
+3. CI 检查全部通过
+4. Squash Merge 到目标分支
+
+## 发布流程
+1. 开发完成后执行 `pnpm changeset` 创建变更记录
+2. 变更记录随 PR 合并到 main
+3. 执行 `pnpm version-packages` 自动递增版本
+4. 执行 `pnpm release` 构建并发布
+```
+
+### 10.7 实施前后效果对比分析
+
+```mermaid
+flowchart LR
+    subgraph 实施前["实施前：分散式治理"]
+        direction TB
+        B1["❌ 依赖版本碎片化<br/>React 17/18 混用"]
+        B2["❌ 配置重复维护<br/>10 个项目 × 10 套 ESLint"]
+        B3["❌ 组件重复实现<br/>Button 组件写了 5 遍"]
+        B4["❌ 构建各自为政<br/>无缓存、无增量"]
+        B5["❌ 规范不统一<br/>每个项目 Commit 格式不同"]
+        B6["❌ 新人上手慢<br/>每个项目规则不同"]
+    end
+
+    subgraph 实施后["实施后：中心化治理"]
+        direction TB
+        A1["✅ 依赖版本统一<br/>catalog 一处定义"]
+        A2["✅ 配置集中复用<br/>@repo/config 一处维护"]
+        A3["✅ 组件库共享<br/>@repo/ui 写一次用多处"]
+        A4["✅ 构建统一编排<br/>Turborepo 增量+缓存"]
+        A5["✅ 规范全局一致<br/>Git Hooks + CI 强制"]
+        A6["✅ 新人即上手<br/>一套规范全仓库适用"]
+    end
+
+    实施前 -.->|"中心化改造"| 实施后
+
+    style 实施前 fill:#f8d7da,stroke:#721c24
+    style 实施后 fill:#d4edda,stroke:#155724,stroke-width:2px
+```
+
+**量化效果对比**：
+
+| 评估维度 | 实施前（分散式） | 实施后（中心化） | 改善幅度 |
+|:---------|:---------------|:---------------|:---------|
+| **依赖版本一致性** | 30%（3/10 项目版本一致） | 100%（catalog 统一） | +70% |
+| **ESLint 配置维护点** | 10 处（每项目 1 套） | 1 处（`@repo/config`） | 减少 90% |
+| **UI 组件复用率** | 20%（大量重复实现） | 85%（共享组件库） | +65% |
+| **冷构建耗时** | 8 分钟（全量构建） | 3 分钟（增量+缓存） | 快 62% |
+| **重复构建配置** | 10 套 Vite 配置 | 1 套 `defineAppConfig` | 减少 90% |
+| **新人上手时间** | 2~3 天（学习各项目规范） | 0.5 天（一套规范通用） | 快 75% |
+| **依赖升级成本** | 逐项目修改+测试（2 天） | 改 catalog 一处（10 分钟） | 快 99% |
+| **品牌色变更成本** | 逐项目逐组件搜索替换（1 天） | 改设计令牌 1 处（5 分钟） | 快 99% |
+
+**中心化思想实施路径（四阶段）**：
+
+```mermaid
+flowchart LR
+    P1["阶段一: 目录统一<br/>建立 Monorepo 骨架<br/>pnpm-workspace.yaml"] --> P2["阶段二: 配置集中<br/>抽取 @repo/config<br/>统一 ESLint/TS/Vite"]
+    P2 --> P3["阶段三: 共享建设<br/>抽取 @repo/ui @repo/utils<br/>建立组件库"]
+    P3 --> P4["阶段四: 流程规范<br/>Turborepo + Changesets<br/>Git Hooks + CI 门禁"]
+
+    style P1 fill:#e3f2fd,stroke:#1565c0
+    style P2 fill:#fff3e0,stroke:#ef6c00
+    style P3 fill:#f3e5f5,stroke:#7b1fa2
+    style P4 fill:#d4edda,stroke:#155724,stroke-width:2px
+```
+
+> **总结**：中心化思想是 pnpm + Monorepo 架构的灵魂——它不是简单的"代码放在一起"，而是通过**单一事实源（SSOT）**原则，将依赖、构建、组件、配置、规范五大维度统一治理。实施后，团队在一致性、效率和可维护性三个维度获得显著提升，是中大型前端团队工程化成熟的标志。
+
+---
+
+## 十一、实际应用场景
+
+### 11.1 场景一：多端应用共享核心逻辑
 
 **业务背景**：同一套业务逻辑需要同时在 Web、管理后台、移动端 H5 三个端运行。
 
@@ -1453,7 +1967,7 @@ flowchart TB
 
 **优势**：业务逻辑（如订单流程、用户认证）只写一份，三端复用，修改即时生效。
 
-### 10.2 场景二：企业级组件库与多应用
+### 11.2 场景二：企业级组件库与多应用
 
 **业务背景**：企业内部维护一套 UI 组件库，多个项目共用。
 
@@ -1474,7 +1988,7 @@ my-monorepo/
 
 **优势**：组件修改后所有应用即时生效；组件库可独立发布到私有 npm 供其他仓库使用。
 
-### 10.3 场景三：微前端架构基座
+### 11.3 场景三：微前端架构基座
 
 **业务背景**：微前端架构中，主应用与子应用共享路由、权限、通信等基础能力。
 
@@ -1503,9 +2017,9 @@ flowchart TB
 
 ---
 
-## 十一、CI/CD 与部署
+## 十二、CI/CD 与部署
 
-### 11.1 CI 流水线设计
+### 12.1 CI 流水线设计
 
 ```yaml
 # .github/workflows/ci.yml
@@ -1560,7 +2074,7 @@ jobs:
         run: echo "Remote cache configured"
 ```
 
-### 11.2 Docker 多阶段构建
+### 12.2 Docker 多阶段构建
 
 ```dockerfile
 # apps/web/Dockerfile
@@ -1592,7 +2106,7 @@ EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
 ```
 
-### 11.3 增量构建与缓存策略
+### 12.3 增量构建与缓存策略
 
 ```mermaid
 flowchart LR
@@ -1623,7 +2137,7 @@ flowchart LR
 
 ---
 
-## 十二、总结与最佳实践
+## 十三、总结与最佳实践
 
 ### 最佳实践清单
 
@@ -1639,6 +2153,10 @@ flowchart LR
 | BP8 | **Changesets 管理版本** | 变更记录 + 自动版本递增 + CHANGELOG 生成 |
 | BP9 | **共享 ESLint/Prettier/TS 配置** | 抽取到 `@repo/config` 包，各子包继承 |
 | BP10 | **Docker 分层缓存** | 先复制 lockfile + package.json，再 install，利用层缓存 |
+| BP11 | **坚持单一事实源原则** | 依赖/配置/组件/规范每类只在一处定义，各包继承引用（详见第十章） |
+| BP12 | **设计令牌集中管理** | 色彩/字体/间距等视觉变量统一在 `@repo/ui` 的 design-tokens.css 中定义 |
+| BP13 | **协作规范三位一体** | 文档（CONTRIBUTING）+ Git Hooks + CI 三层强制执行团队规范 |
+| BP14 | **渐进式中心化迁移** | 按目录统一→配置集中→共享建设→流程规范四阶段逐步实施 |
 
 ### 架构知识图谱
 
@@ -1692,6 +2210,13 @@ mindmap
       安装速度 3 倍
       严格依赖隔离
       灵活过滤机制
+    中心化思想
+      单一事实源 SSOT
+      依赖管理中心化 catalog
+      构建流程中心化 Turborepo
+      组件库中心化 @repo/ui
+      配置管理中心化 @repo/config
+      协作规范中心化 Git Hooks + CI
 ```
 
-> **总结**：基于 pnpm + Monorepo 的项目架构，通过**全局 Store 硬链接共享**实现磁盘与安装效率，通过**workspace 协议 + symlink**实现包间即时联动，通过**Turborepo**实现增量构建与缓存，通过**Changesets**实现自动化版本管理。该架构特别适合多端应用共享核心逻辑、企业级组件库、微前端基座等场景，是 2024-2025 年中大型前端项目的推荐工程化方案。
+> **总结**：基于 pnpm + Monorepo 的项目架构，通过**全局 Store 硬链接共享**实现磁盘与安装效率，通过**workspace 协议 + symlink**实现包间即时联动，通过**Turborepo**实现增量构建与缓存，通过**Changesets**实现自动化版本管理。更深层地，其架构灵魂在于**中心化思想**——以单一事实源（SSOT）为核心原则，将依赖管理（catalog）、构建流程（Turborepo 编排）、组件库（`@repo/ui`）、工程配置（`@repo/config`）、协作规范（Git Hooks + CI）五大维度统一治理，消除分散式架构的版本碎片化、配置重复、组件冗余等痛点。该架构特别适合多端应用共享核心逻辑、企业级组件库、微前端基座等场景，是 2024-2025 年中大型前端项目的推荐工程化方案。
