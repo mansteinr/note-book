@@ -3112,3 +3112,1971 @@ try {
 ```mermaid
 sequenceDiagram
     participant C1 as 客户端 1
+    participant R1 as Redis 1
+    participant R2 as Redis 2
+    participant R3 as Redis 3
+    participant C2 as 客户端 2
+
+    C1->>R1: 加锁成功（TTL=10s）
+    C1->>R2: 加锁成功
+    C1->>R3: 加锁成功
+    Note over C1: 取到多数锁，加锁成功
+
+    Note over C1: ⚠️ 此时客户端 1 发生长时间 GC Stop-The-World
+    Note over C1: GC 持续 15s，期间锁全部过期
+
+    R1-->>R2: 锁过期
+    R2-->>R3: 锁过期
+
+    C2->>R1: 加锁成功（TTL=10s）
+    C2->>R2: 加锁成功
+    C2->>R3: 加锁成功
+    Note over C2: 取到多数锁，加锁成功
+
+    Note over C1,C2: 此时两个客户端都认为自己持有锁！
+    C1->>R1: 写入数据（以为自己还有锁）
+    C2->>R1: 写入数据（以为自己还有锁）
+    Note over R1: 数据被并发写入，锁失效
+```
+
+**质疑二：时钟漂移导致锁提前过期**
+
+Redlock 算法依赖各节点时钟一致。如果某节点时钟跳变（NTP 同步、VM 迁移、闰秒），可能导致锁提前过期或延迟过期，破坏安全性。
+
+**2. antirez 的反驳**
+
+| 反驳点 | 内容 |
+|:------|:-----|
+| **GC 问题非 Redlock 独有** | 任何有 TTL 的锁都有这个问题，包括 Zookeeper（session timeout） |
+| **时钟漂移可控制** | 通过限制各节点时钟差异、使用单调时钟可缓解 |
+| **fencing token 兜底** | 配合单调递增的 token，即使锁失效也能在资源侧拦截旧 token 的写入 |
+
+**3. 工程结论**
+
+| 场景 | 推荐方案 |
+|:----|:--------|
+| **效率型锁**（避免重复计算，偶尔失效可接受） | Redisson 单节点锁 + 看门狗，够用 |
+| **正确性型锁**（金融、扣款，绝对不能错） | Zookeeper / etcd（基于一致性算法，fencing token 内建） |
+| **极端高可用要求** | Redlock + fencing token（但实现复杂） |
+
+**加分项**：
+- 能讲清楚 Redlock 的"多数派"思想（至少 N/2+1 个节点加锁成功）
+- 能指出 Zookeeper 的锁是通过"临时节点 + Watch"实现的，客户端宕机后 session 失效自动释放，相比 Redis 的 TTL 更优雅
+- 能提到 etcd 的 lease 机制本质类似 ZK 的 session
+
+---
+
+### 6.7 🟡 Redisson 实现分布式锁的完整代码
+
+**答：**
+
+**完整可落地的 Redisson 分布式锁示例**：
+
+```java
+// 1. 引入依赖
+// <dependency>
+//     <groupId>org.redisson</groupId>
+//     <artifactId>redisson-spring-boot-starter</artifactId>
+//     <version>3.23.4</version>
+// </dependency>
+
+@Configuration
+public class RedissonConfig {
+
+    @Bean(destroyMethod = "shutdown")
+    public RedissonClient redissonClient() {
+        Config config = new Config();
+        config.useSingleServer()
+              .setAddress("redis://127.0.0.1:6379")
+              .setDatabase(0)
+              .setConnectionPoolSize(64)
+              .setConnectionMinimumIdleSize(10);
+        return Redisson.create(config);
+    }
+}
+```
+
+```java
+@Service
+public class OrderService {
+
+    @Autowired
+    private RedissonClient redissonClient;
+
+    @Autowired
+    private OrderMapper orderMapper;
+
+    /**
+     * 下单加锁 - 推荐写法
+     */
+    public Order createOrder(String userId, String productId) {
+        String lockKey = "lock:order:" + userId + ":" + productId;
+        RLock lock = redissonClient.getLock(lockKey);
+
+        try {
+            // tryLock: 等待 10s，锁自动释放 30s（看门狗会续期，业务未完成不会过期）
+            boolean locked = lock.tryLock(10, 30, TimeUnit.SECONDS);
+            if (!locked) {
+                throw new BusinessException("操作过于频繁，请稍后再试");
+            }
+
+            // 二次检查（防止重复下单）
+            if (orderMapper.exists(userId, productId)) {
+                throw new BusinessException("已下单，请勿重复提交");
+            }
+
+            // 执行业务
+            Order order = buildOrder(userId, productId);
+            orderMapper.insert(order);
+            return order;
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BusinessException("加锁中断");
+        } finally {
+            // 释放锁（必须判断是否持有 + 是否是当前线程持有）
+            if (lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
+        }
+    }
+
+    /**
+     * 注解式分布式锁（AOP 封装）
+     */
+    @DistributedLock(key = "'lock:order:' + #userId", waitTime = 5, leaseTime = 30)
+    public Order createOrderWithAnnotation(String userId) {
+        return buildOrder(userId, "default");
+    }
+}
+```
+
+```java
+/**
+ * 自定义注解 + AOP 实现声明式分布式锁
+ */
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface DistributedLock {
+    String key();                   // SpEL 表达式
+    long waitTime() default 3;      // 等待时间（秒）
+    long leaseTime() default -1;    // -1 表示启用看门狗自动续期
+}
+```
+
+```java
+@Aspect
+@Component
+public class DistributedLockAspect {
+
+    @Autowired
+    private RedissonClient redissonClient;
+
+    @Around("@annotation(distributedLock)")
+    public Object around(ProceedingJoinPoint pjp, DistributedLock distributedLock) throws Throwable {
+        // 解析 SpEL 表达式获取 key
+        String lockKey = parseKey(distributedLock.key(), pjp);
+
+        RLock lock = redissonClient.getLock(lockKey);
+        boolean locked = false;
+        try {
+            locked = lock.tryLock(
+                distributedLock.waitTime(),
+                distributedLock.leaseTime(),
+                TimeUnit.SECONDS
+            );
+            if (!locked) {
+                throw new BusinessException("获取锁失败: " + lockKey);
+            }
+            return pjp.proceed();
+        } finally {
+            if (locked && lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
+        }
+    }
+
+    private String parseKey(String keyExpr, ProceedingJoinPoint pjp) throws NoSuchMethodException {
+        MethodSignature signature = (MethodSignature) pjp.getSignature();
+        Method method = pjp.getTarget().getClass().getMethod(signature.getName(), signature.getParameterTypes());
+        EvaluationContext context = new MethodBasedEvaluationContext(
+            pjp.getTarget(), method, pjp.getArgs(), new DefaultParameterNameDiscoverer()
+        );
+        return new SpelExpressionParser().parseExpression(keyExpr).getValue(context, String.class);
+    }
+}
+```
+
+**加分项**：
+- 能讲清楚 `tryLock(waitTime, leaseTime, unit)` 的两个时间含义
+- 能指出 `leaseTime = -1` 时启用看门狗（默认 30s 续期）
+- 能解释为什么 `unlock` 前要判断 `isHeldByCurrentThread()`（防止锁已过期被别人拿走后误释放）
+- 能提到 Redisson 还支持公平锁 `getFairLock`、读写锁 `getReadWriteLock`、联锁 `getMultiLock`
+
+---
+
+## 七、性能优化与问题排查
+
+### 7.1 🟡 Redis 慢查询怎么排查？
+
+**答：**
+
+**1. 开启慢查询日志**
+
+```bash
+# redis.conf 配置
+slowlog-log-slower-than 10000    # 单位微秒，10000 = 10ms
+slowlog-max-len 128              # 最多保留 128 条慢查询
+```
+
+```bash
+# 动态修改（无需重启）
+CONFIG SET slowlog-log-slower-than 5000    # 5ms
+CONFIG SET slowlog-max-len 256
+
+# 查看慢查询
+SLOWLOG GET 10       # 获取最近 10 条
+SLOWLOG LEN          # 查看慢查询条数
+SLOWLOG RESET        # 清空慢查询
+```
+
+**2. 慢查询输出格式**
+
+```bash
+127.0.0.1:6379> SLOWLOG GET 3
+1) 1) (integer) 14                # 唯一 ID
+   2) (integer) 1620000000        # 时间戳
+   3) (integer) 25000             # 耗时（微秒）= 25ms
+   4) 1) "KEYS"                   # 命令
+      2) "user:*"                 # 参数
+   5) "127.0.0.1:53218"           # 客户端
+   6) ""                          # 客户端名称
+```
+
+**3. 常见慢查询原因与解决**
+
+| 原因 | 示例 | 解决 |
+|:----|:----|:----|
+| **O(N) 命令** | `KEYS *`、`SMEMBERS` 大集合 | 用 `SCAN`、`SSCAN` 替代 |
+| **大 Key 操作** | `HGETALL` 万字段 Hash | 拆分大 Key，用 `HSCAN` |
+| **SORT 操作** | `SORT mylist BY weight_*` | 在业务层排序，或用 ZSet |
+| **删除大 Key** | `DEL` 10 万元素的 List | 用 `UNLINK` 异步删除 |
+| **持久化阻塞** | fork 子进程慢、AOF fsync | 优化磁盘 IO，降低 fsync 频率 |
+| **网络问题** | 客户端跨机房、带宽打满 | 同机房部署、压缩大 value |
+
+**4. 其他排查工具**
+
+```bash
+# 1. 实时监控命令执行
+MONITOR                        # 打印所有命令（生产慎用，影响性能）
+
+# 2. 查看 Redis 内部延迟
+LATENCY LATEST                 # 最近发生的延迟事件
+LATENCY HISTORY event-name     # 查看历史
+LATENCY GRAPH event-name       # 图形化展示
+
+# 3. INFO 命令查看整体状态
+INFO stats                     # 命令执行统计
+INFO memory                    # 内存使用
+INFO persistence               # 持久化状态
+
+# 4. 查看客户端连接
+CLIENT LIST                    # 列出所有连接
+CLIENT KILL ID <id>            # 杀掉某个连接
+```
+
+**加分项**：
+- 能提到 `INFO commandstats` 可以看每个命令的执行次数和耗时占比
+- 能提到 redis-cli 自带的 `--latency`、`--bigkeys`、`--hotkeys` 工具
+- 能用 `LATENCY DOCTOR` 让 Redis 自动分析延迟原因并给出建议
+
+---
+
+### 7.2 🔴 为什么生产环境禁止用 KEYS 命令？用什么替代？
+
+**答：**
+
+**1. KEYS 为什么危险**
+
+`KEYS pattern` 是 O(N) 命令，N 是整个 Redis 中所有 key 的数量。执行时**会阻塞主线程**，期间所有其他命令都要排队等待。
+
+```mermaid
+flowchart LR
+    A[KEYS user:*] -->|阻塞主线程| B[遍历所有 1000 万 Key]
+    B --> C[耗时 1-10 秒]
+    C --> D[期间所有命令排队]
+    D --> E[应用超时<br/>连接池打满<br/>服务雪崩]
+
+    style A fill:#f5222d,color:#fff
+    style E fill:#f5222d,color:#fff
+```
+
+**2. 实际事故案例**
+
+某公司生产环境有 500 万 key，开发在脚本里写了 `KEYS session:*` 做 session 统计，结果每次执行耗时 3 秒，导致 3 秒内所有请求超时，引发雪崩。
+
+**3. 替代方案**
+
+| 替代命令 | 特点 | 适用场景 |
+|:--------|:-----|:--------|
+| **SCAN** | 游标分批遍历，不阻塞 | 遍历所有 key |
+| **HSCAN** | 遍历 Hash 字段 | 大 Hash |
+| **SSCAN** | 遍历 Set 元素 | 大 Set |
+| **ZSCAN** | 遍历 ZSet 元素 | 大 ZSet |
+
+**4. SCAN 用法**
+
+```bash
+# SCAN cursor [MATCH pattern] [COUNT count] [TYPE type]
+SCAN 0 MATCH user:* COUNT 100    # 从 0 开始，匹配 user:*，每次返回约 100 个
+
+# 返回：
+# 1) "17280"                     # 下一次的游标
+# 2) 1) "user:1001"
+#    2) "user:1002"
+#    ...
+
+SCAN 17280 MATCH user:* COUNT 100   # 用返回的游标继续
+# 直到游标返回 0，遍历完成
+```
+
+**5. Java 代码实现**
+
+```java
+public List<String> scanKeys(Jedis jedis, String pattern) {
+    List<String> keys = new ArrayList<>();
+    String cursor = "0";
+    ScanParams params = new ScanParams().match(pattern).count(100);
+
+    do {
+        ScanResult<String> result = jedis.scan(cursor, params);
+        keys.addAll(result.getResult());
+        cursor = result.getCursor();
+    } while (!"0".equals(cursor));
+
+    return keys;
+}
+```
+
+**6. SCAN 的注意事项**
+
+| 注意点 | 说明 |
+|:------|:-----|
+| **弱一致性** | 遍历期间如果有 key 增删，可能返回重复或遗漏 |
+| **COUNT 是提示** | 实际返回数量可能多于或少于 COUNT |
+| **游标 0 表示结束** | 不要假设游标递增，它是内部哈希槽位 |
+| **生产建议** | 在低峰期执行，控制 COUNT 大小（100-1000） |
+
+**加分项**：
+- 能解释 SCAN 底层是**高位优先遍历**（reverse binary iteration），保证遍历完整个哈希表且能容忍扩容缩容
+- 能指出如果只是要查业务 key，应该在业务层维护一个 Set 记录所有 key，而不是 SCAN
+- 能提到 Redis 6.0+ 的 `STRALGO LCP` 等命令
+
+---
+
+### 7.3 🔴 什么是大 Key？怎么排查？怎么解决？
+
+**答：**
+
+**1. 大 Key 的定义**
+
+| 类型 | 大 Key 标准 |
+|:----|:----------|
+| String | value > 10KB（有些团队定 1MB） |
+| Hash/List/Set/ZSet | 元素数量 > 5000，或总大小 > 10MB |
+| 集合型 + 单元素大 | List 元素单条 > 10KB |
+
+**2. 大 Key 的危害**
+
+| 危害 | 说明 |
+|:----|:----|
+| **阻塞主线程** | 操作大 Key 耗时长（如 `HGETALL` 万字段 Hash 耗时 100ms+） |
+| **网络阻塞** | 传输大 value 占用带宽，影响其他请求 |
+| **内存不均** | Cluster 模式下导致某个分片内存远超其他 |
+| **删除阻塞** | `DEL` 大 Key 同步删除会阻塞（Redis 4.0+ 用 `UNLINK` 异步） |
+| **持久化阻塞** | fork 子进程时大 Key 增加复制开销 |
+| **主从同步延迟** | 全量同步时大 Key 传输慢 |
+
+**3. 排查方法**
+
+```bash
+# 方法 1: redis-cli 自带工具（推荐）
+redis-cli --bigkeys                    # 扫描各类型最大的 key
+redis-cli --bigkeys -i 0.1             # 间隔 0.1s，避免阻塞
+
+# 方法 2: memory usage 命令（Redis 4.0+）
+MEMORY USAGE key                       # 查看单个 key 占用内存（字节）
+MEMORY STATS                           # 查看内存分配统计
+
+# 方法 3: SCAN + DEBUG OBJECT（不推荐，DEBUG 阻塞）
+SCAN 0 MATCH * COUNT 1000
+DEBUG OBJECT key                       # 查看序列化后大小
+
+# 方法 4: RDB 文件离线分析
+redis-rdb-tools                        # Python 工具，分析 dump.rdb
+rdb -c memory dump.rdb > memory.csv    # 导出所有 key 内存占用
+```
+
+```java
+// Java 在线扫描大 Key
+public void scanBigKeys(Jedis jedis) {
+    String cursor = "0";
+    ScanParams params = new ScanParams().count(100);
+
+    do {
+        ScanResult<String> result = jedis.scan(cursor, params);
+        for (String key : result.getResult()) {
+            String type = jedis.type(key);
+            Long size = getKeySize(jedis, key, type);
+            if (size != null && size > 5000) {
+                System.out.println("大 Key: " + key + " type=" + type + " size=" + size);
+            }
+        }
+        cursor = result.getCursor();
+    } while (!"0".equals(cursor));
+}
+
+private Long getKeySize(Jedis jedis, String key, String type) {
+    switch (type) {
+        case "string": return (long) jedis.strlen(key);
+        case "list":   return jedis.llen(key);
+        case "hash":   return jedis.hlen(key);
+        case "set":    return jedis.scard(key);
+        case "zset":   return jedis.zcard(key);
+        default:       return null;
+    }
+}
+```
+
+**4. 解决方案**
+
+| 方案 | 实现 | 适用 |
+|:----|:----|:----|
+| **拆分** | 大 Hash 按字段哈希拆成多个小 Hash | 业务可拆分 |
+| **压缩** | value 用 gzip/snappy 压缩后再存 | String 大 value |
+| **删除** | `UNLINK` 异步删除 | 已无用的历史大 Key |
+| **迁移** | 大 Key 迁移到其他存储（如 MongoDB） | 不适合 Redis 的数据 |
+| **过期** | 加 TTL 让其自动过期 | 临时性大 Key |
+
+```java
+// 拆分大 Hash 示例：把 10 万字段的 user:hash 拆成 100 个分片
+public String getShardKey(String userId) {
+    int shard = Math.abs(userId.hashCode() % 100);
+    return "user:hash:" + shard;
+}
+
+public void hset(String userId, String field, String value) {
+    jedis.hset(getShardKey(userId), field, value);
+}
+
+// 异步删除大 Key（Redis 4.0+）
+jedis.unlink("big:key:1001");    // 等价于 DEL 但不阻塞
+```
+
+**5. 大 Key 删除的渐进式方案（Redis < 4.0）**
+
+```java
+// 渐进式删除大 Hash（兼容老版本）
+public void deleteBigHash(Jedis jedis, String key, int batch) {
+    String cursor = "0";
+    ScanParams params = new ScanParams().count(batch);
+    do {
+        ScanResult<Map.Entry<String, String>> result = jedis.hscan(key, cursor, params);
+        for (Map.Entry<String, String> entry : result.getResult()) {
+            jedis.hdel(key, entry.getKey());
+        }
+        cursor = result.getCursor();
+    } while (!"0".equals(cursor));
+    jedis.del(key);
+}
+```
+
+**加分项**：
+- 能讲清楚 Redis 4.0 引入的 `lazyfree` 机制（异步删除）
+- 能提到 `LAZYFREE` 的配置项：`lazyfree-lazy-eviction`、`lazyfree-lazy-expire`、`lazyfree-lazy-server-del`
+- 能指出大 Key 排查应该**在从节点执行**，避免影响主节点
+
+---
+
+### 7.4 🔴 什么是热 Key？怎么排查？怎么解决？
+
+**答：**
+
+**1. 热 Key 的定义**
+
+**热 Key** 是指某个 key 被访问频率远高于其他 key，导致**单个 Redis 节点 CPU/带宽成为瓶颈**。典型场景：热门商品、爆款新闻、明星八卦、首页推荐。
+
+**2. 热 Key 的危害**
+
+| 危害 | 说明 |
+|:----|:----|
+| **单节点 CPU 瓶颈** | 单 key QPS 数万+，集中在某个分片 |
+| **带宽打满** | 大 value + 高 QPS 占满网卡 |
+| **缓存击穿** | 热 Key 过期瞬间，海量请求穿透到 DB |
+| **Cluster 数据倾斜** | 单分片过载，其他分片闲置 |
+
+**3. 排查方法**
+
+```bash
+# 方法 1: redis-cli --hotkeys（需开启 LFU 淘汰策略）
+CONFIG SET maxmemory-policy allkeys-lfu
+redis-cli --hotkeys
+
+# 方法 2: MONITOR 命令（生产慎用，仅短时排查）
+MONITOR | grep -oE '"[a-z]+:[a-z0-9]+"' | sort | uniq -c | sort -nr | head
+
+# 方法 3: INFO commandstats 看命令频次
+INFO commandstats
+# cmdstat_get:calls=1000000,usec=50000,usec_per_call=0.05
+```
+
+```java
+// 方法 4: 客户端拦截统计（生产推荐）
+@Component
+public class HotKeyDetector {
+
+    private static final int THRESHOLD = 1000;   // 10s 内 1000 次算热 key
+    private final LoadingCache<String, LongAdder> counter = CacheBuilder.newBuilder()
+            .expireAfterWrite(10, TimeUnit.SECONDS)
+            .build(new CacheLoader<String, LongAdder>() {
+                @Override
+                public LongAdder load(String key) { return new LongAdder(); }
+            });
+
+    public void access(String key) {
+        counter.getUnchecked(key).increment();
+    }
+
+    @Scheduled(fixedRate = 10000)
+    public void detect() {
+        counter.asMap().forEach((key, adder) -> {
+            if (adder.sum() > THRESHOLD) {
+                log.warn("检测到热 Key: {} QPS={}", key, adder.sum() / 10);
+                // 触发本地缓存预热
+            }
+        });
+    }
+}
+```
+
+**4. 解决方案**
+
+| 方案 | 实现 | 适用 |
+|:----|:----|:----|
+| **本地缓存** | 用 Caffeine/Guava 在 JVM 内缓存热 Key | 读多写少，能容忍秒级延迟 |
+| **多副本读** | 同一数据写多个 key（hot_v1/hot_v2），随机读 | 简单有效 |
+| **拆分** | 把热 Key 拆成多份分散到不同分片 | Cluster 场景 |
+| **限流** | 对热 Key 访问限流，保护后端 | 应急方案 |
+| **预热** | 提前加载，TTL 设长 + 异步刷新 | 可预知热点 |
+
+```java
+// 方案 1: 本地缓存（Caffeine）+ Redis 二级缓存
+public class TwoLevelCache {
+
+    private final Cache<String, String> localCache = Caffeine.newBuilder()
+            .maximumSize(10000)
+            .expireAfterWrite(2, TimeUnit.SECONDS)    // 本地缓存 2s
+            .build();
+
+    private final Jedis jedis;
+
+    public String get(String key) {
+        // L1: 本地缓存
+        String value = localCache.getIfPresent(key);
+        if (value != null) return value;
+
+        // L2: Redis
+        value = jedis.get(key);
+        if (value != null) {
+            localCache.put(key, value);
+        }
+        return value;
+    }
+}
+```
+
+```java
+// 方案 2: 多副本读
+public class HotKeyReader {
+
+    private final Jedis jedis;
+    private final Random random = new Random();
+    private static final int REPLICAS = 5;
+
+    public String get(String key) {
+        // 随机选一个副本读，分散到不同分片
+        int idx = random.nextInt(REPLICAS);
+        return jedis.get(key + "_v" + idx);
+    }
+
+    public void set(String key, String value) {
+        // 写时同步写所有副本
+        for (int i = 0; i < REPLICAS; i++) {
+            jedis.setex(key + "_v" + i, 3600, value);
+        }
+    }
+}
+```
+
+**加分项**：
+- 能提到京东的 hotkey 框架（统一热 Key 探测 + 客户端本地缓存）
+- 能指出热 Key 探测要在**客户端做**，而不是在 Redis 服务端做（服务端无状态）
+- 能讲清楚为什么本地缓存 TTL 不能太长（数据一致性）也不能太短（达不到缓存效果）
+
+---
+
+### 7.5 🟡 Pipeline 是什么？为什么能大幅提升性能？
+
+**答：**
+
+**1. Pipeline 原理**
+
+普通命令：每次发一个命令，要等 Redis 返回结果才能发下一个。N 个命令 = N 次 RTT。
+
+Pipeline：一次性发送多个命令，Redis 依次执行后一次性返回所有结果。N 个命令 = 1 次 RTT。
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant R as Redis
+
+    Note over C,R: 普通模式（3 个命令 = 3 RTT）
+    C->>R: CMD1
+    R-->>C: RESULT1
+    C->>R: CMD2
+    R-->>C: RESULT2
+    C->>R: CMD3
+    R-->>C: RESULT3
+
+    Note over C,R: Pipeline 模式（3 个命令 = 1 RTT）
+    C->>R: CMD1 + CMD2 + CMD3
+    R-->>C: RESULT1 + RESULT2 + RESULT3
+```
+
+**2. 性能对比**
+
+| 方式 | 1 万次 SET 耗时 | 原因 |
+|:----|:--------------|:----|
+| 单条命令 | 10-15 秒 | 每次都 1ms RTT |
+| Pipeline（批量 1000） | 0.1-0.3 秒 | RTT 减少 100 倍 |
+| 事务 MULTI | 0.2-0.5 秒 | 也有批量，但有额外开销 |
+
+**3. Java 代码示例**
+
+```java
+// Jedis Pipeline
+public void pipelineExample(Jedis jedis) {
+    Pipeline pipe = jedis.pipelined();
+    for (int i = 0; i < 1000; i++) {
+        pipe.set("key:" + i, "value:" + i);
+    }
+    pipe.sync();    // 提交并等待结果
+
+    // 或异步获取结果
+    Pipeline pipe2 = jedis.pipelined();
+    for (int i = 0; i < 1000; i++) {
+        pipe2.get("key:" + i);
+    }
+    List<Object> results = pipe2.syncAndReturnAll();
+}
+```
+
+```java
+// Spring Data Redis Pipeline
+public void pipelineExample(RedisTemplate<String, String> redis) {
+    redis.executePipelined((RedisCallback<Object>) connection -> {
+        StringRedisConnection conn = (StringRedisConnection) connection;
+        for (int i = 0; i < 1000; i++) {
+            conn.set("key:" + i, "value:" + i);
+        }
+        return null;
+    });
+}
+```
+
+**4. 注意事项**
+
+| 注意点 | 说明 |
+|:------|:-----|
+| **非原子** | Pipeline 只是批量发送，命令间可能插入其他客户端的命令 |
+| **内存占用** | 客户端要缓存所有响应，单次 Pipeline 不宜过大（建议 500-1000 条） |
+| **超时风险** | 单次 Pipeline 执行时间长，要调大客户端超时 |
+| **Cluster 兼容** | Pipeline 命令必须路由到同一节点，Cluster 模式要用 `{{hashtag}}` |
+
+**加分项**：
+- 能讲清楚 Pipeline 与事务的区别（Pipeline 非原子，事务原子但不支持回滚）
+- 能指出 Pipeline 本质是**客户端缓冲**，Redis 服务端不需要特殊支持
+- 能提到 Cluster 模式下 Redisson 的 `RBatch` 自动处理分片
+
+---
+
+### 7.6 🔴 Pipeline 和事务MULTI有什么区别？
+
+**答：**
+
+| 对比维度 | Pipeline | MULTI/EXEC 事务 |
+|:--------|:---------|:---------------|
+| **目的** | 减少 RTT，提升吞吐 | 保证命令原子执行 |
+| **原子性** | ❌ 非原子，命令间可插入其他客户端命令 | ✅ 原子（执行期间不被打断） |
+| **回滚** | ❌ 不支持 | ❌ 不支持（Redis 事务无回滚） |
+| **Watch** | ❌ 不支持乐观锁 | ✅ 支持 `WATCH` 乐观锁 |
+| **网络往返** | 1 次 RTT | 1 次 RTT（但比 Pipeline 多开销） |
+| **服务端处理** | 顺序执行，可能被打断 | 进入队列，EXEC 时顺序执行，不被打断 |
+| **典型场景** | 批量写入/读取 | 原子操作（如转账） |
+
+**事务示例（带 WATCH 乐观锁）**：
+
+```bash
+# 监视 balance:1001，如果在 EXEC 前被修改，事务失败
+WATCH balance:1001
+MULTI
+DECRBY balance:1001 100
+INCRBY balance:1002 100
+EXEC
+# 返回:
+# 1) (integer) 900
+# 2) (integer) 1100
+# 如果期间 balance:1001 被改了，EXEC 返回 nil
+```
+
+```java
+// Java 事务示例
+public void transfer(String from, String to, int amount) {
+    jedis.watch("balance:" + from);
+    String balance = jedis.get("balance:" + from);
+    if (Integer.parseInt(balance) < amount) {
+        jedis.unwatch();
+        throw new BusinessException("余额不足");
+    }
+    Transaction tx = jedis.multi();
+    tx.decrBy("balance:" + from, amount);
+    tx.incrBy("balance:" + to, amount);
+    List<Object> result = tx.exec();
+    if (result == null || result.isEmpty()) {
+        throw new BusinessException("并发修改，请重试");
+    }
+}
+```
+
+**为什么 Redis 事务不支持回滚？**
+
+antirez 的设计哲学：Redis 命令错误通常是编程错误（语法错、类型错），不应该在生产出现；支持回滚会增加复杂度且影响性能。如果需要回滚，用 Lua 脚本。
+
+**加分项**：
+- 能讲清楚 `WATCH` 的实现：基于 `MODIFIED` 标记，被监视的 key 任何修改都会让事务失败
+- 能指出 Lua 脚本是**更推荐的原子方案**（事务的替代品）
+- 能解释 `DISCARD` 命令（放弃事务，清空队列）
+
+---
+
+### 7.7 🟡 Redis 的内存碎片是什么？怎么清理？
+
+**答：**
+
+**1. 什么是内存碎片**
+
+Redis 通过 jemalloc（默认）分配内存。当频繁修改/删除 key 时，会产生不连续的内存块，这些块无法被复用，就是"碎片"。
+
+```mermaid
+flowchart TB
+    subgraph 分配器视角
+        A[已使用: 1GB<br/>实际数据] 
+        B[碎片: 500MB<br/>无法复用的小块]
+        C[空闲: 500MB<br/>可分配]
+    end
+    
+    subgraph 现象
+        D["INFO memory:<br/>used_memory = 1GB<br/>used_memory_rss = 1.5GB<br/>碎片率 = 1.5"]
+    end
+    
+    A & B --> D
+
+    style B fill:#fa8c16,color:#fff
+```
+
+**2. 碎片率指标**
+
+```bash
+INFO memory
+# used_memory = 1073741824          # Redis 分配的数据内存（1GB）
+# used_memory_rss = 1610612736      # 操作系统视角的内存（1.5GB）
+# mem_fragmentation_ratio = 1.50    # 碎片率 = rss / used
+```
+
+| 碎片率 | 含义 | 处理 |
+|:------|:-----|:----|
+| **< 1.0** | 内存超用（swap），危险 | 立即扩容内存 |
+| **1.0 - 1.5** | 正常 | 无需处理 |
+| **1.5 - 2.0** | 碎片较多 | 关注，可清理 |
+| **> 2.0** | 碎片严重 | 必须清理 |
+
+**3. 清理方法**
+
+```bash
+# 方法 1: 自动清理（Redis 4.0-RC1+）
+CONFIG SET activedefrag yes                  # 开启自动碎片清理
+CONFIG SET active-defrag-ignore-bytes 100mb   # 碎片超过 100MB 才触发
+CONFIG SET active-defrag-threshold-lower 10   # 碎片率超 10% 触发
+CONFIG SET active-defrag-threshold-upper 100  # 碎片率超 100% 全力清理
+CONFIG SET active-defrag-cycle-min 1          # 最小 CPU 占比 1%
+CONFIG SET active-defrag-cycle-max 25         # 最大 CPU 占比 25%
+
+# 方法 2: 手动触发（Redis 4.0+）
+MEMORY PURGE                                  # 让分配器释放空闲内存
+
+# 方法 3: 重启 Redis（最彻底但影响服务）
+# 主从切换后重启旧节点，内存重新分配
+```
+
+**4. 预防碎片**
+
+| 措施 | 说明 |
+|:----|:----|
+| **避免大 Key 频繁修改** | 大 List 频繁 LPUSH/RPOP 会产生碎片 |
+| **合理设置过期** | 让无用 key 自动过期，而不是手动删 |
+| **用 Hash 代替多个 String** | 一个 Hash 的字段共享内存分配 |
+| **选择合适的分配器** | jemalloc（默认）比 libc 更优秀 |
+
+**加分项**：
+- 能讲清楚 `activedefrag` 的原理：Redis 主线程在空闲时**渐进式**地把数据从碎片块搬到连续块，每次只搬少量，不阻塞
+- 能提到 `MEMORY MALLOC-STATS` 查看 jemalloc 详细统计
+- 能解释为什么 `mem_fragmentation_ratio < 1` 比 > 2 更危险（说明用了 swap，磁盘 IO 会拖垮 Redis）
+
+---
+
+### 7.8 🔴 生产环境 Redis 突然变慢，怎么排查？
+
+**答：**
+
+**排查思路（从最常见到最罕见）**：
+
+```mermaid
+flowchart TB
+    A[Redis 变慢] --> B{慢查询多吗?}
+    B -->|是| C[查 SLOWLOG<br/>定位 O(N) 命令/大 Key]
+    B -->|否| D{内存碎片率高吗?}
+    D -->|是| E[开启 activedefrag]
+    D -->|否| F{持久化阻塞吗?}
+    F -->|是| G[看 fork 耗时/AOF fsync]
+    F -->|否| H{网络问题吗?}
+    H -->|是| I[查带宽/跨机房/连接数]
+    H -->|否| J{主从同步异常?}
+    J -->|是| K[全量同步? BIGKEY?]
+    J -->|否| L[系统层面: CPU/IO/Swap]
+
+    style C fill:#f5222d,color:#fff
+    style G fill:#fa8c16,color:#fff
+    style L fill:#fa8c16,color:#fff
+```
+
+**1. 慢查询排查（最常见）**
+
+```bash
+SLOWLOG GET 20                # 查最近 20 条慢查询
+INFO commandstats             # 看哪个命令耗时高
+LATENCY LATEST                # 看最近的延迟事件
+```
+
+常见原因：`KEYS *`、`HGETALL` 大 Hash、`SORT`、`FLUSHALL`。
+
+**2. 持久化阻塞**
+
+```bash
+INFO persistence
+# rdb_bgsave_in_progress: 0/1
+# rdb_last_bgsave_time_sec: 5      # 上次 bgsave 耗时
+# rdb_last_bgsave_status: ok
+# aof_pending_fsync: 0
+# aof_delayed_fsync: 0             # AOF fsync 阻塞次数
+```
+
+| 问题 | 现象 | 解决 |
+|:----|:----|:----|
+| **fork 慢** | bgsave 期间延迟飙升 | 降低 `hz`、用 `thp` always、控制实例内存 |
+| **AOF fsync 阻塞** | 主线程等待磁盘 IO | 换 SSD、`appendfsync everysec` |
+| **AOF 重写** | 重写期间 fork 慢 | 配置 `auto-aof-rewrite-percentage` 合理 |
+
+```bash
+# 查看 fork 耗时
+LATENCY DOCTOR
+# fork time: 230ms（> 100ms 算慢）
+
+# 解决：关闭 THP（Transparent Huge Pages）
+echo never > /sys/kernel/mm/transparent_hugepage/enabled
+```
+
+**3. 内存与碎片**
+
+```bash
+INFO memory
+# used_memory, used_memory_rss, mem_fragmentation_ratio
+```
+
+碎片率 > 1.5 开启 `activedefrag`；内存接近上限检查淘汰策略。
+
+**4. 网络与连接**
+
+```bash
+INFO clients
+# connected_clients: 1000        # 当前连接数
+# blocked_clients: 0             # 阻塞命令数（BLPOP 等）
+
+CLIENT LIST                     # 查看所有客户端
+# 注意看 idle 时间长、age 大的连接
+
+# 网络流量
+INFO stats
+# total_net_input_bytes
+# total_net_output_bytes
+# instantaneous_input_kbps
+# instantaneous_output_kbps
+```
+
+| 问题 | 现象 | 解决 |
+|:----|:----|:----|
+| **连接数过多** | connected_clients 持续增长 | 检查客户端连接池配置 |
+| **带宽打满** | output_kbps 接近网卡上限 | 限流、压缩 value、分片 |
+| **跨机房访问** | 延迟高 | 同机房部署、读写分离 |
+
+**5. 主从同步异常**
+
+```bash
+INFO replication
+# role: master
+# connected_slaves: 2
+# slave0: ip=...,state=online,offset=123456,lag=0
+```
+
+| 问题 | 现象 | 解决 |
+|:----|:----|:----|
+| **全量同步** | slave offset 重置、lag 大 | 排查主从断连原因，避免大 Key |
+| **同步延迟** | slave lag 持续增大 | 网络/主节点负载问题 |
+| **主从风暴** | 频繁全量同步 | 调整 `repl-backlog-size`、`client-output-buffer-limit` |
+
+**6. 系统层面**
+
+```bash
+# Linux 工具
+top -p $(pidof redis-server)    # CPU、内存
+iostat -x 1                     # 磁盘 IO
+vmstat 1                        # swap、context switch
+strace -p $(pidof redis-server) -c -e trace=write  # 系统调用
+
+# 检查 swap
+cat /proc/$(pidof redis-server)/status | grep VmSwap
+# VmSwap: 0 kB（必须为 0，否则磁盘 IO 拖垮）
+```
+
+| 问题 | 现象 | 解决 |
+|:----|:----|:----|
+| **Swap 被使用** | 延迟飙升几十倍 | `vm.swappiness=1`，确保 `maxmemory` |
+| **CPU 被抢占** | 其他进程占用 CPU | 绑核、`renice` |
+| **NUMA 问题** | 跨 NUMA 节点访问内存慢 | `numactl --cpunodebind=0 --membind=0` |
+| **网卡中断不均** | 单核处理网络中断 | RPS/RFS 多核分发 |
+
+**7. Redis 自身诊断**
+
+```bash
+LATENCY DOCTOR       # 自动诊断并给建议
+DEBUG SLEEP 0        # 测试延迟基线
+DEBUG OBJECT key     # 查看单个 key 内部结构
+OBJECT ENCODING key  # 查看 key 的编码（ziplist/listpack/hashtable）
+```
+
+**加分项**：
+- 能系统性地按"应用层 → Redis 层 → 系统层"分层排查
+- 能提到 `LATENCY DOCTOR` 的自动化建议
+- 能指出 Redis 变慢的**最常见原因**是慢查询和持久化阻塞（占 80%）
+- 能讲清楚 fork 慢的原因：`copy-on-write` 期间如果内存大、写操作多，会触发大量页面复制
+
+---
+
+## 八、复杂场景设计
+
+### 8.1 🔴 设计一个限流系统，支持 QPS 和滑动窗口
+
+**答：**
+
+**1. 固定窗口限流（INCR + EXPIRE）**
+
+```java
+public boolean rateLimit(Jedis jedis, String key, int limit, int windowSec) {
+    long count = jedis.incr(key);
+    if (count == 1) {
+        jedis.expire(key, windowSec);    // 第一次访问设过期
+    }
+    return count <= limit;
+}
+```
+
+**问题**：临界点突刺。比如限 100 QPS，0.99s 来 100 个 + 1.01s 来 100 个 = 1 秒内 200 个。
+
+**2. 滑动窗口限流（ZSet 实现）**
+
+```java
+public boolean slidingWindowRateLimit(Jedis jedis, String key, int limit, int windowSec) {
+    long now = System.currentTimeMillis();
+    long windowStart = now - windowSec * 1000L;
+
+    // Lua 脚本保证原子性
+    String lua =
+        "redis.call('ZREMRANGEBYSCORE', KEYS[1], 0, ARGV[1]) " +     // 1. 移除窗口外的旧记录
+        + "local current = redis.call('ZCARD', KEYS[1]) "             // 2. 统计当前窗口请求数
+        + "if current < tonumber(ARGV[3]) then "                       // 3. 未超限则添加
+        + "  redis.call('ZADD', KEYS[1], ARGV[2], ARGV[2]) "
+        + "  redis.call('EXPIRE', KEYS[1], ARGV[4]) "
+        + "  return 1 "
+        + "else "
+        + "  return 0 "
+        + "end";
+
+    Object result = jedis.eval(lua,
+        Collections.singletonList(key),
+        Arrays.asList(
+            String.valueOf(windowStart),
+            String.valueOf(now),
+            String.valueOf(limit),
+            String.valueOf(windowSec)
+        )
+    );
+    return Long.parseLong(result.toString()) == 1;
+}
+```
+
+```mermaid
+flowchart LR
+    subgraph 滑动窗口 1 秒
+        A[t-1.0s] --- B[t-0.7s] --- C[t-0.3s] --- D[t 当前]
+        A:::old
+        B:::valid
+        C:::valid
+        D:::valid
+    end
+    
+    classDef old fill:#d9d9d9
+    classDef valid fill:#52c41a,color:#fff
+```
+
+**3. 令牌桶限流（Redisson 实现，推荐）**
+
+```java
+public boolean tokenBucketRateLimit(RedissonClient redisson, String key, long rate, long capacity) {
+    RRateLimiter limiter = redisson.getRateLimiter(key);
+    // rate: 每秒生成令牌数；capacity: 桶容量
+    limiter.trySetRate(RateType.OVERALL, rate, capacity, RateIntervalUnit.SECONDS);
+    return limiter.tryAcquire(1);
+}
+```
+
+**4. 三种算法对比**
+
+| 算法 | 优点 | 缺点 | 适用 |
+|:----|:----|:----|:----|
+| **固定窗口** | 实现简单 | 临界突刺 | 精度要求低 |
+| **滑动窗口** | 精度高 | 内存占用大（ZSet） | API 限流 |
+| **令牌桶** | 支持突发流量 | 实现复杂 | 网关限流 |
+| **漏桶** | 平滑输出 | 无法应对突发 | 流量整形 |
+
+**加分项**：
+- 能讲清楚滑动窗口的 ZSet 实现：member 是请求 ID（时间戳），score 也是时间戳
+- 能提到 Lua 脚本是**原子执行**的关键（否则 ZREMRANGEBYSCORE 和 ZADD 之间有并发间隙）
+- 能指出分布式限流要考虑**全局协调**，单 Redis 节点是瓶颈
+
+---
+
+### 8.2 🔴 设计一个延迟任务系统
+
+**答：**
+
+**1. 方案一：ZSet（最常用）**
+
+把任务作为 member，执行时间作为 score 存入 ZSet，定时扫描到期任务。
+
+```java
+// 添加延迟任务
+public void addDelayTask(Jedis jedis, String taskId, long executeAt) {
+    jedis.zadd("delay:tasks", executeAt, taskId);
+}
+
+// 消费延迟任务（定时调度）
+public List<String> pollDelayTasks(Jedis jedis, long currentTime) {
+    // Lua 脚本：取出到期任务并删除
+    String lua =
+        "local tasks = redis.call('ZRANGEBYSCORE', KEYS[1], 0, ARGV[1]) " +
+        "if #tasks > 0 then " +
+        "  redis.call('ZREMRANGEBYSCORE', KEYS[1], 0, ARGV[1]) " +
+        "end " +
+        "return tasks";
+
+    Object result = jedis.eval(lua,
+        Collections.singletonList("delay:tasks"),
+        Collections.singletonList(String.valueOf(currentTime))
+    );
+    return (List<String>) result;
+}
+```
+
+```mermaid
+flowchart LR
+    A[业务侧] -->|添加任务<br/>score=执行时间| Z[ZSet delay:tasks]
+    S[调度器] -->|每秒扫描<br/>ZRangeByScore 0 now| Z
+    Z -->|返回到期任务| S
+    S -->|执行任务| B[业务处理]
+    S -->|任务失败| R[重试队列]
+```
+
+**2. 方案二：Redis Stream（Redis 5.0+）**
+
+```bash
+# 添加延迟消息（自动分配 ID）
+XADD delay_stream * task "send_email" execute_at 1620000000
+
+# 消费者组 + 待处理消息
+XGROUP CREATE delay_stream delay_group 0
+XREADGROUP GROUP delay_group consumer1 COUNT 10 BLOCK 1000 STREAMS delay_stream >
+```
+
+**3. 方案三：键过期事件通知（keyspace notifications）**
+
+```bash
+# 开启键过期通知
+CONFIG SET notify-keyspace-events Ex
+
+# 订阅
+SUBSCRIBE __keyevent@0__:expired
+```
+
+```java
+// 设置带 TTL 的任务 key
+jedis.setex("delay:task:1001", 60, "send_email");
+
+// 监听过期事件（不推荐，见下文）
+jedis.subscribe(new JedisPubSub() {
+    @Override
+    public void onMessage(String channel, String message) {
+        System.out.println("任务过期: " + message);
+    }
+}, "__keyevent@0__:expired");
+```
+
+**4. 三种方案对比**
+
+| 方案 | 优点 | 缺点 | 适用 |
+|:----|:----|:----|:----|
+| **ZSet** | 简单、可控、可靠 | 单点、扫描有延迟 | 中小规模 |
+| **Stream** | 可靠、可消费组、持久化 | API 复杂、延迟需额外处理 | 生产推荐 |
+| **过期通知** | 实现简单 | **不可靠**（过期事件可能丢失） | 不推荐生产 |
+
+**5. 生产级延迟系统设计**
+
+```mermaid
+flowchart TB
+    A[业务接口] --> B[写入延迟任务<br/>ZSet + DB 持久化]
+    B --> C[调度器集群<br/>分片扫描]
+    C --> D{取到期任务}
+    D -->|有| E[执行任务]
+    D -->|无| F[等待下次扫描]
+    E -->|成功| G[删除任务<br/>标记完成]
+    E -->|失败| H{重试次数 < 3?}
+    H -->|是| I[重新入队<br/>延迟递增]
+    H -->|否| J[死信队列<br/>人工处理]
+    
+    K[故障恢复] -.->|重启时从 DB 恢复| C
+
+    style B fill:#52c41a,color:#fff
+    style J fill:#f5222d,color:#fff
+```
+
+**加分项**：
+- 能指出**ZSet 方案的最大问题**：单 ZSet 容量有限，需要按业务分片（如 `delay:tasks:order`、`delay:tasks:email`）
+- 能讲清楚过期通知**为什么不可靠**：Redis 不保证过期事件一定触发（如重启、内存淘汰时丢失）
+- 能提到 RocketMQ / Kafka 的延迟消息是更工业级的方案
+
+---
+
+### 8.3 🔴 设计一个秒杀系统的库存扣减方案
+
+**答：**
+
+**1. 整体架构**
+
+```mermaid
+flowchart TB
+    U[用户] -->|秒杀请求| CDN[CDN/WAF 防刷]
+    CDN --> GW[API 网关<br/>限流 + 鉴权]
+    GW --> APP[应用层<br/>本地校验]
+    APP -->|1. 预扣库存| R[Redis<br/>Lua 原子扣减]
+    APP -->|2. 异步下单| MQ[消息队列]
+    MQ --> ORDER[订单服务]
+    ORDER -->|3. 真正扣减| DB[MySQL]
+    ORDER -->|4. 回写库存| R
+    
+    R -.->|预热| DB
+
+    style R fill:#f5222d,color:#fff
+    style MQ fill:#fa8c16,color:#fff
+```
+
+**2. Redis 预扣库存（Lua 脚本）**
+
+```java
+public boolean deductStock(Jedis jedis, String productId, String userId) {
+    String lua =
+        // 1. 检查用户是否已下单（防重复）
+        "if redis.call('SISMEMBER', KEYS[2], ARGV[1]) == 1 then " +
+        "  return -1 " +                                          // 已下单
+        "end " +
+        // 2. 检查库存
+        "local stock = tonumber(redis.call('GET', KEYS[1])) " +
+        "if stock == nil or stock <= 0 then " +
+        "  return 0 " +                                           // 库存不足
+        "end " +
+        // 3. 扣减库存
+        "redis.call('DECR', KEYS[1]) " +
+        // 4. 记录用户已下单
+        "redis.call('SADD', KEYS[2], ARGV[1]) " +
+        "return 1";                                                // 成功
+
+    Object result = jedis.eval(lua,
+        Arrays.asList("stock:" + productId, "orders:" + productId),
+        Collections.singletonList(userId)
+    );
+    int code = Integer.parseInt(result.toString());
+    if (code == -1) throw new BusinessException("请勿重复下单");
+    if (code == 0) throw new BusinessException("已售罄");
+    return true;
+}
+```
+
+**3. 库存预热**
+
+```java
+// 活动开始前，把库存加载到 Redis
+public void preheatStock(String productId, int stock) {
+    jedis.set("stock:" + productId, String.valueOf(stock));
+    jedis.del("orders:" + productId);    // 清空已下单记录
+}
+```
+
+**4. 异步下单**
+
+```java
+public void createOrderAsync(String productId, String userId) {
+    // 预扣成功后，发送 MQ 异步创建订单
+    OrderMessage msg = new OrderMessage(productId, userId, System.currentTimeMillis());
+    rocketMQTemplate.asyncSend("order:create", msg, new SendCallback() {
+        @Override
+        public void onSuccess(SendResult result) { /* 订单创建中 */ }
+        @Override
+        public void onException(Throwable e) {
+            // 发送失败，回滚 Redis 库存
+            jedis.incr("stock:" + productId);
+            jedis.srem("orders:" + productId, userId);
+        }
+    });
+}
+
+// 订单消费者
+@RocketMQMessageListener(topic = "order:create")
+public class OrderConsumer implements RocketMQListener<OrderMessage> {
+    @Override
+    public void onMessage(OrderMessage msg) {
+        try {
+            // 真正写订单
+            orderService.createOrder(msg);
+        } catch (Exception e) {
+            // 下单失败，回滚库存
+            jedis.incr("stock:" + productId);
+            jedis.srem("orders:" + productId, userId);
+        }
+    }
+}
+```
+
+**5. 防超卖的关键设计**
+
+| 措施 | 说明 |
+|:----|:----|
+| **Lua 脚本原子扣减** | 检查 + 扣减 + 记录一步到位 |
+| **Redis 单线程** | 命令串行执行，无并发问题 |
+| **Set 防重复** | 用户下单后加入 Set，防止重复扣减 |
+| **MQ 解耦** | 异步下单，避免 DB 成为瓶颈 |
+| **回滚机制** | 下单失败时回滚 Redis 库存 |
+
+**6. 库存对账**
+
+```java
+// 定时对账，保证 Redis 与 DB 一致
+@Scheduled(cron = "0 */5 * * * ?")
+public void checkStock() {
+    for (String productId : activeProducts) {
+        int redisStock = Integer.parseInt(jedis.get("stock:" + productId));
+        int dbStock = orderMapper.countRemaining(productId);
+        if (redisStock != dbStock) {
+            log.warn("库存不一致: {} redis={} db={}", productId, redisStock, dbStock);
+            // 以 DB 为准修正
+            jedis.set("stock:" + productId, String.valueOf(dbStock));
+        }
+    }
+}
+```
+
+**加分项**：
+- 能讲清楚"预扣库存"思想：Redis 扣减是预扣，DB 才是真正的库存
+- 能提到**热点库存分桶**：把 1000 库存拆成 10 份存在 `stock:1001:0` ~ `stock:1001:9`，分散热点
+- 能指出秒杀的真正瓶颈是**网络带宽和应用层**，不是 Redis（Redis 单机 10 万 QPS 足够）
+- 能提到限流（令牌桶）和防刷（IP 限制、验证码）是秒杀的前置防线
+
+---
+
+### 8.4 🔴 设计一个分布式 ID 生成器
+
+**答：**
+
+**1. 方案一：INCR 自增（简单但单点）**
+
+```java
+public long generateId(Jedis jedis, String bizType) {
+    return jedis.incr("id:gen:" + bizType);
+}
+```
+
+**优点**：简单、单调递增、易读。
+**缺点**：单点瓶颈、依赖 Redis 可用性、ID 可预测（安全风险）。
+
+**2. 方案二：INCR + 日期前缀（业务友好）**
+
+```java
+public String generateOrderId(Jedis jedis) {
+    String date = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+    Long seq = jedis.incr("id:order:" + date);
+    jedis.expireAt("id:order:" + date, Date.from(LocalDate.now().plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant()));
+    return date + String.format("%08d", seq);    // 20260809 + 00000001
+}
+```
+
+**3. 方案三：号段模式（推荐）**
+
+每次从 Redis 取一批 ID（如 1000 个），应用层内存分配，减少 Redis 访问。
+
+```java
+@Component
+public class SegmentIdGenerator {
+
+    @Autowired
+    private Jedis jedis;
+
+    private final AtomicLong current = new AtomicLong(0);
+    private final AtomicLong max = new AtomicLong(0);
+    private static final int STEP = 1000;
+
+    public long nextId() {
+        // 本地号段未用完，直接分配
+        if (current.get() < max.get()) {
+            return current.getAndIncrement();
+        }
+        // 申请下一批
+        synchronized (this) {
+            if (current.get() >= max.get()) {
+                long start = jedis.incrBy("id:segment", STEP) - STEP + 1;
+                current.set(start);
+                max.set(start + STEP);
+            }
+            return current.getAndIncrement();
+        }
+    }
+}
+```
+
+```mermaid
+flowchart LR
+    A[业务调用] -->|1. 取本地号段| B{current < max?}
+    B -->|是| C[返回 ID<br/>current++]
+    B -->|否| D[2. 向 Redis 申请 1000 个]
+    D --> E[3. 更新本地 current/max]
+    E --> C
+```
+
+**4. 方案四：Snowflake 雪花算法（无依赖）**
+
+```java
+public class SnowflakeIdGenerator {
+    private static final long EPOCH = 1609459200000L;    // 2021-01-01
+    private static final long WORKER_BITS = 5L;
+    private static final long DATACENTER_BITS = 5L;
+    private static final long SEQUENCE_BITS = 12L;
+
+    private final long workerId;
+    private final long datacenterId;
+    private long sequence = 0;
+    private long lastTimestamp = -1L;
+
+    public synchronized long nextId() {
+        long timestamp = System.currentTimeMillis();
+        if (timestamp < lastTimestamp) {
+            throw new IllegalStateException("时钟回拨");
+        }
+        if (timestamp == lastTimestamp) {
+            sequence = (sequence + 1) & ~(-1L << SEQUENCE_BITS);
+            if (sequence == 0) {
+                timestamp = tilNextMillis(lastTimestamp);
+            }
+        } else {
+            sequence = 0;
+        }
+        lastTimestamp = timestamp;
+        return ((timestamp - EPOCH) << (WORKER_BITS + DATACENTER_BITS + SEQUENCE_BITS))
+             | (datacenterId << (WORKER_BITS + SEQUENCE_BITS))
+             | (workerId << SEQUENCE_BITS)
+             | sequence;
+    }
+}
+```
+
+**5. 方案对比**
+
+| 方案 | 性能 | 依赖 | 趋势 | 适用 |
+|:----|:----|:----|:----|:----|
+| INCR | 中（10 万 QPS） | Redis | 递增 | 小规模 |
+| INCR+日期 | 中 | Redis | 可读 | 订单号 |
+| **号段模式** | **高（百万 QPS）** | Redis（弱依赖） | 趋势递增 | **推荐** |
+| Snowflake | 极高 | 无 | 无规律 | 分布式 |
+
+**加分项**：
+- 能提到美团 Leaf、百度 UidGenerator 是开源的分布式 ID 方案
+- 能讲清楚号段模式的"双 buffer"优化：当前号段用到 20% 时，异步加载下一批
+- 能指出 Snowflake 的时钟回拨问题及处理（等待、报错、借用前一位）
+
+---
+
+### 8.5 🔴 如何用 Redis Stream 实现可靠消息队列？
+
+**答：**
+
+**1. Redis Stream 简介**
+
+Stream 是 Redis 5.0 引入的**持久化消息队列**，借鉴了 Kafka 的设计思想，支持消费组、消息确认、消息回溯。
+
+| 特性 | List（旧方案） | Stream（新方案） |
+|:----|:--------------|:----------------|
+| 持久化 | ✅ | ✅ |
+| 消费组 | ❌ | ✅ |
+| 消息确认 | ❌（BRPOP 即消费） | ✅（XACK） |
+| 消息回溯 | ❌ | ✅（按 ID 查询） |
+| 阻塞读取 | BRPOP | XREAD BLOCK |
+| 死信处理 | ❌ | ✅（XPENDING/XCLAIM） |
+
+**2. 基础命令**
+
+```bash
+# 生产消息（* 表示自动生成 ID）
+XADD orders * userId 1001 productId 2001 amount 99.5
+# 返回: "1620000000000-0"（时间戳-序号）
+
+# 消费组
+XGROUP CREATE orders order_group 0       # 创建消费组，从头开始
+XGROUP CREATE orders order_group $       # 从最新开始
+
+# 消费消息
+XREADGROUP GROUP order_group consumer1 COUNT 10 BLOCK 5000 STREAMS orders >
+# > 表示未消费过的消息
+
+# 确认消息
+XACK orders order_group 1620000000000-0
+
+# 查看待处理消息
+XPENDING orders order_group
+# 1) (integer) 3                    # 待确认数量
+# 2) "1620000000000-0"              # 最早 ID
+# 3) "1620000000002-0"              # 最晚 ID
+# 4) 1) 1) "consumer1"
+#       2) "2"
+#    2) 1) "consumer2"
+#       2) "1"
+
+# 转移消息给其他消费者（处理死信）
+XCLAIM orders order_group consumer2 5000 1620000000000-0
+# 把超过 5000ms 未确认的消息转给 consumer2
+```
+
+**3. 消费流程**
+
+```mermaid
+sequenceDiagram
+    participant P as Producer
+    participant S as Stream
+    participant C as Consumer
+    participant PEL as Pending List
+
+    P->>S: XADD message
+    S->>C: XREADGROUP > (投递)
+    S->>PEL: 加入待确认列表
+    C->>C: 处理消息
+    alt 处理成功
+        C->>S: XACK
+        S->>PEL: 删除
+    else 处理失败/宕机
+        PEL-->>C: 重启后重新投递
+    end
+```
+
+**4. Java 代码实现**
+
+```java
+// 生产者
+@Service
+public class OrderStreamProducer {
+
+    @Autowired
+    private Jedis jedis;
+
+    public String sendOrderMessage(Order order) {
+        Map<String, String> fields = new HashMap<>();
+        fields.put("orderId", order.getId());
+        fields.put("userId", order.getUserId());
+        fields.put("amount", order.getAmount().toString());
+        return jedis.xadd("orders", StreamEntryID.NEW_ENTRY, fields);
+    }
+}
+
+// 消费者
+@Component
+public class OrderStreamConsumer {
+
+    @Autowired
+    private Jedis jedis;
+
+    private static final String STREAM = "orders";
+    private static final String GROUP = "order_group";
+    private static final String CONSUMER = "consumer-1";
+
+    @PostConstruct
+    public void init() {
+        try {
+            jedis.xgroupCreate(STREAM, GROUP, new StreamEntryID(), false);
+        } catch (Exception e) {
+            // 消费组已存在
+        }
+    }
+
+    @Scheduled(fixedDelay = 1000)
+    public void consume() {
+        // 1. 读取新消息
+        List<Map.Entry<String, List<StreamEntry>>> result = jedis.xreadGroup(
+            GROUP, CONSUMER, 10, 1000, false, STREAM, ">"
+        );
+
+        for (Map.Entry<String, List<StreamEntry>> entry : result) {
+            for (StreamEntry msg : entry.getValue()) {
+                try {
+                    processOrder(msg.getFields());
+                    jedis.xack(STREAM, GROUP, msg.getID());    // 确认
+                } catch (Exception e) {
+                    log.error("处理失败: {}", msg.getID(), e);
+                    // 不 ACK，待会重试
+                }
+            }
+        }
+
+        // 2. 处理死信（超时未确认的消息）
+        handleDeadLetters();
+    }
+
+    private void handleDeadLetters() {
+        // 查询待处理消息
+        StreamPendingSummary pending = jedis.xpending(STREAM, GROUP);
+        if (pending.getTotal() == 0) return;
+
+        // 转移超过 60s 未确认的消息给当前消费者重试
+        List<StreamEntry> claimed = jedis.xclaim(
+            STREAM, GROUP, CONSUMER, 60000, 10, new StreamEntryID("0-0")
+        );
+        for (StreamEntry msg : claimed) {
+            log.warn("重试死信: {}", msg.getID());
+            try {
+                processOrder(msg.getFields());
+                jedis.xack(STREAM, GROUP, msg.getID());
+            } catch (Exception e) {
+                log.error("重试失败: {}", msg.getID(), e);
+                // 重试 N 次后转死信队列
+            }
+        }
+    }
+}
+```
+
+**5. 可靠性保证**
+
+| 机制 | 说明 |
+|:----|:----|
+| **持久化** | Stream 默认持久化到 AOF/RDB |
+| **消费组** | 多消费者分摊消息，提升吞吐 |
+| **PEL 列表** | 已投递未确认的消息保留在 Pending List |
+| **XACK 确认** | 业务处理成功才确认，否则重投 |
+| **XCLAIM 转移** | 处理超时的消息转给其他消费者 |
+| **消息回溯** | 通过 ID 可以重新消费历史消息 |
+| **MAXLEN 截断** | `XADD MAXLEN 10000` 限制 Stream 长度 |
+
+**加分项**：
+- 能讲清楚 Stream 的 `PEL`（Pending Entry List）机制：消息投递后进入 PEL，XACK 后才移除
+- 能指出 `XADD MAXLEN ~ 10000` 的 `~` 表示近似截断（性能更好）
+- 能提到 Stream 相比 Kafka 的局限：不支持分区（用 key 路由）、单机性能上限、无消费者组重平衡
+- 能讲清楚 `XREADGROUP` 的 `>` 和 `0` 区别：`>` 是新消息，`0` 是从 PEL 重新读取
+
+---
+
+## 九、综合应用实战
+
+### 9.1 🔴 一次完整的生产事故：缓存击穿导致数据库雪崩
+
+**答：**
+
+**事故背景**：某电商大促期间，首页推荐商品缓存突然失效，导致 MySQL QPS 从 5000 飙到 50000，连接池打满，服务整体不可用 5 分钟。
+
+**1. 事故时间线**
+
+```mermaid
+gantt
+    title 事故时间线
+    dateFormat HH:mm:ss
+    section 缓存
+    热点商品缓存写入        :done, a1, 10:00:00, 1h
+    缓存 TTL 到期           :crit, milestone, a2, 11:00:00
+    section 数据库
+    MySQL QPS 5000          :done, b1, 10:00:00, 1h
+    QPS 飙升到 50000        :crit, b2, 11:00:00, 10s
+    连接池打满              :crit, b3, after b2, 20s
+    section 应用
+    接口超时                :crit, c1, 11:00:30, 30s
+    服务雪崩                :crit, c2, 11:01:00, 4m
+    紧急扩容 + 限流          :active, c3, 11:05:00, 10m
+    恢复                    :c4, 11:15:00
+```
+
+**2. 根因分析**
+
+```text
+直接原因：热点商品缓存同时过期（用了固定 TTL = 1 小时）
+间接原因：
+  1. 没有互斥锁保护，缓存 miss 后所有请求穿透到 DB
+  2. 没有限流，QPS 瞬间打满 DB
+  3. 缓存预热只做了冷启动，未考虑 TTL 续期
+```
+
+**3. 应急处理**
+
+```bash
+# 1. 紧急限流（网关层降级）
+# Nginx 限流：每秒只放 1000 请求
+limit_req_zone $binary_remote_addr zone=api:10m rate=1000r/s;
+
+# 2. 手动写回缓存（运维）
+redis-cli SET product:recommend:home '<json>' EX 3600
+
+# 3. DB 扩容（临时加从库）
+# 4. 应用层熔断（Sentinel）
+```
+
+**4. 长期改进**
+
+```java
+// 改进 1: 互斥锁防止击穿
+public Product getProductWithMutex(String productId) {
+    String key = "product:" + productId;
+    String value = redis.get(key);
+
+    if (value == null) {
+        // 互斥锁，只让一个请求查 DB
+        String lockKey = "lock:product:" + productId;
+        if (redis.setnx(lockKey, "1", 10, TimeUnit.SECONDS)) {
+            try {
+                value = redis.get(key);    // 双重检查
+                if (value == null) {
+                    Product product = productMapper.selectById(productId);
+                    value = JSON.toJSONString(product);
+                    // 随机 TTL 防雪崩
+                    int ttl = 3600 + ThreadLocalRandom.current().nextInt(600);
+                    redis.set(key, value, ttl, TimeUnit.SECONDS);
+                }
+            } finally {
+                redis.delete(lockKey);
+            }
+        } else {
+            // 等待 50ms 后重试
+            Thread.sleep(50);
+            return getProductWithMutex(productId);
+        }
+    }
+    return JSON.parseObject(value, Product.class);
+}
+```
+
+```java
+// 改进 2: 逻辑过期（不设 TTL，业务层判断）
+public Product getProductWithLogicalExpire(String productId) {
+    String key = "product:" + productId;
+    String value = redis.get(key);
+    if (value == null) return null;    // 理论上不会，预热过
+
+    ProductCache cache = JSON.parseObject(value, ProductCache.class);
+    if (cache.getExpireAt() > System.currentTimeMillis()) {
+        return cache.getProduct();    // 未过期，直接返回
+    }
+
+    // 已过期，异步刷新
+    if (redis.setnx("lock:refresh:" + productId, "1", 30, TimeUnit.SECONDS)) {
+        CompletableFuture.runAsync(() -> {
+            try {
+                Product fresh = productMapper.selectById(productId);
+                redis.set(key, buildCache(fresh, 3600), -1, TimeUnit.SECONDS);
+            } finally {
+                redis.delete("lock:refresh:" + productId);
+            }
+        });
+    }
+    return cache.getProduct();    // 返回旧值（兜底）
+}
+```
+
+**改进 3**：TTL 加随机扰动、热点永久缓存、限流熔断。
+
+**5. 经验总结**
+
+| 教训 | 改进 |
+|:----|:----|
+| 热点缓存统一 TTL | TTL 加随机值（±10%） |
+| 无互斥锁 | 加互斥锁或逻辑过期 |
+| 无限流 | 网关 + 应用双层限流 |
+| 缓存预热一次 | 定时刷新 + 主动更新 |
+| 应急慢 | 演练 + 自动化预案 |
+
+**加分项**：
+- 能画出完整的事故时间线
+- 能讲清楚互斥锁方案和逻辑过期方案的**取舍**（前者牺牲性能换一致，后者牺牲一致换性能）
+- 能提到 Sentinel / Hystrix 的熔断降级是兜底防线
+
+---
+
+### 9.2 🔴 一次完整的生产事故：大 Key 导致主从同步延迟
+
+**答：**
+
+**事故背景**：社交平台用户发送大视频封面图，单个 key 存了 5MB 的 Base64 数据，导致主从同步延迟从毫秒级飙升到 30 秒，从库读到的都是旧数据。
+
+**1. 故障现象**
+
+```text
+监控告警：
+  - 主从延迟从 < 1ms 飙升到 30s
+  - 从库 CPU 使用率 95%（解析 RDB）
+  - 客户端报错：读到旧数据
+  - 主库带宽占用 800Mbps（正常 50Mbps）
+```
+
+**2. 根因分析**
+
+```text
+1. 业务侧把 5MB 的图片 Base64 存到 Redis（user:1001:avatar）
+2. 用户频繁更换头像，每次都覆盖 5MB 的 key
+3. 主从同步时，大 key 传输慢，占满复制缓冲区
+4. 从库 fork 后要加载大 key，内存拷贝耗时长
+5. 单个大 key 阻塞主从同步线程
+```
+
+**3. 排查过程**
+
+```bash
+# 1. 查主从同步状态
+INFO replication
+# master_repl_offset: 1000000
+# slave0: offset=970000, lag=30    # 从库 offset 落后 3 万
+
+# 2. 查大 Key
+redis-cli --bigkeys
+# [00.00%] Biggest string found 'user:1001:avatar' has 5242880 bytes
+
+# 3. 查复制缓冲区
+CONFIG GET client-output-buffer-limit
+# client-output-buffer-limit "slave 256mb 64mb 60"
+```
+
+**4. 解决方案**
+
+```java
+// 方案 1: 大 Value 改存 OSS，Redis 只存 URL
+public void updateAvatar(String userId, MultipartFile file) {
+    // 旧：把 Base64 存 Redis（错误）
+    // String base64 = Base64.encode(file.getBytes());
+    // jedis.set("user:" + userId + ":avatar", base64);
+
+    // 新：上传 OSS，Redis 只存 URL（正确）
+    String url = ossClient.upload(file);
+    jedis.set("user:" + userId + ":avatar", url);
+}
+```
+
+```bash
+# 方案 2: 异步删除大 Key（应急）
+UNLINK user:1001:avatar
+
+# 方案 3: 调整复制缓冲区
+CONFIG SET client-output-buffer-limit "slave 512mb 128mb 120"
+CONFIG SET repl-backlog-size 256mb
+```
+
+**5. 长期改进**
+
+| 改进 | 说明 |
+|:----|:----|
+| **大 Key 监控** | 定期 `--bigkeys` 扫描，超 10KB 告警 |
+| **客户端校验** | SET 时校验 value 大小，超 1MB 拒绝 |
+| **架构规范** | 大文件走对象存储，Redis 只存元数据 |
+| **复制优化** | 合理设置 `repl-backlog-size`、`client-output-buffer-limit` |
+| **从库容灾** | 从库延迟超阈值时降级到主库读 |
+
+```java
+// 客户端拦截大 Value
+@Component
+public class RedisWriteInterceptor {
+
+    private static final int MAX_VALUE_SIZE = 1024 * 1024;    // 1MB
+
+    public void set(String key, String value) {
+        if (value.length() > MAX_VALUE_SIZE) {
+            throw new BusinessException("Value 过大: " + value.length() + " bytes");
+        }
+        jedis.set(key, value);
+    }
+}
+```
+
+**6. 经验总结**
+
+| 教训 | 改进 |
+|:----|:----|
+| Redis 当对象存储 | 大文件走 OSS，Redis 只存元数据 |
+| 无大 Key 监控 | 定期扫描 + 实时告警 |
+| 复制缓冲区太小 | 根据业务调整 buffer |
+| 主从延迟无感知 | 监控 slave lag，超阈值告警 |
+
+**加分项**：
+- 能讲清楚大 Key 影响主从同步的**底层原理**：单命令传输阻塞 + fork 内存拷贝慢
+- 能提到 `repl-backlog-size` 的作用：环形缓冲区，过小会导致全量同步
+- 能指出 `client-output-buffer-limit` 的三个值：`hard soft soft-seconds`
+
+---
+
+### 9.3 🔴 Redis 高频面试速查表
+
+**答：**
+
+**1. 核心概念速查**
+
+| 问题 | 一句话答案 |
+|:----|:----------|
+| Redis 为什么快？ | 内存 + 单线程 + IO 多路复用 + 高效数据结构 |
+| 单线程为什么快？ | 无锁竞争、无上下文切换、瓶颈在内存而非 CPU |
+| 6.0 多线程改了什么？ | IO 读写多线程，命令执行仍单线程 |
+| Redis vs Memcached？ | 数据结构丰富、持久化、高可用、原子操作 |
+| 为什么不直接更新缓存？ | 删除更省资源，避免并发更新导致不一致 |
+
+**2. 数据结构速查**
+
+| 结构 | 底层实现 | 典型场景 |
+|:----|:--------|:--------|
+| String | SDS | 缓存对象、计数器 |
+| Hash | ziplist/listpack/hashtable | 对象字段级缓存 |
+| List | quicklist | 消息队列、最新动态 |
+| Set | intset/hashtable | 去重、共同好友 |
+| ZSet | listpack/skiplist+hashtable | 排行榜、延迟队列 |
+| Bitmap | String | 签到、活跃统计 |
+| HyperLogLog | 稀疏/密集 | UV 去重 |
+| Geo | ZSet | 附近的人 |
+| Stream | radix tree | 消息队列 |
+
+**3. 持久化速查**
+
+| 方式 | 丢失风险 | 恢复速度 | 适用 |
+|:----|:--------|:--------|:----|
+| RDB | 最近一次快照后 | 快 | 容忍几分钟丢失 |
+| AOF everysec | 最多 1 秒 | 慢 | 数据安全要求高 |
+| 混合 | 1 秒 + RDB 增量 | 中 | **生产推荐** |
+
+**4. 高可用速查**
+
+| 方案 | 故障转移 | 分片 | 适用 |
+|:----|:-------|:----|:----|
+| 主从 | 手动 | ❌ | 读扩展 |
+| 哨兵 | 自动 | ❌ | 中小规模 |
+| Cluster | 自动 | ✅ | 大规模 |
+
+**5. 缓存策略速查**
+
+| 问题 | 现象 | 解决 |
+|:----|:----|:----|
+| 穿透 | 查不存在的 key | 布隆过滤器 + 空值缓存 |
+| 击穿 | 热 key 过期 | 互斥锁 + 逻辑过期 |
+| 雪崩 | 大量 key 同时过期 | 随机 TTL + 多级缓存 |
+| 一致性 | 缓存与 DB 不一致 | Cache Aside + 双删延迟 |
+
+**6. 分布式锁速查**
+
+| 方案 | 原子性 | 自动续期 | 适用 |
+|:----|:------|:--------|:----|
+| SETNX+EXPIRE | ❌ | ❌ | 不推荐 |
+| SET NX EX | ✅ | ❌ | 简单场景 |
+| Redisson | ✅ | ✅（看门狗） | **生产推荐** |
+| Redlock | ✅（多节点） | ✅ | 极端高可用 |
+
+**7. 性能优化速查**
+
+| 优化点 | 手段 |
+|:------|:----|
+| 减少 RTT | Pipeline、批量 |
+| 避免阻塞 | 不用 KEYS、大 Key 用 UNLINK |
+| 内存优化 | 合理编码、压缩 value |
+| 慢查询 | SLOWLOG + SCAN 替代 |
+| 连接池 | 复用连接、控制连接数 |
+
+**8. 常见陷阱速查**
+
+| 陷阱 | 后果 | 正确做法 |
+|:----|:----|:--------|
+| KEYS * | 阻塞主线程 | 用 SCAN |
+| 大 Key DEL | 阻塞主线程 | 用 UNLINK |
+| 分布式锁无超时 | 死锁 | SET NX EX |
+| 缓存统一 TTL | 雪崩 | TTL 加随机 |
+| 先删缓存再更新 DB | 不一致 | Cache Aside |
+| 把 Redis 当 DB | 数据丢失 | 持久化 + 高可用 |
+
+**9. 高频手撕题**
+
+| 题目 | 核心点 |
+|:----|:------|
+| 实现分布式锁 | SET NX EX + Lua 释放 + 看门狗 |
+| 实现排行榜 | ZSet + ZADD/ZREVRANGE |
+| 实现限流器 | ZSet 滑动窗口 / 令牌桶 |
+| 实现延迟队列 | ZSet / Stream |
+| 实现秒杀 | Lua 原子扣减 + MQ 异步下单 |
+| 实现 UV 统计 | HyperLogLog / Bitmap |
+
+**10. 加分话术**
+
+| 场景 | 加分回答 |
+|:----|:--------|
+| 被问"Redis 快" | 补充：瓶颈在内存带宽，6.0 IO 多线程提升 1-2 倍 |
+| 被问"分布式锁" | 补充：Martin Kleppmann vs antirez 之争，fencing token |
+| 被问"缓存一致性" | 补充：最终一致是工程现实，强一致要用 2PC |
+| 被问"Cluster" | 补充：Gossip 协议、16384 槽、CRC16 路由 |
+| 被问"持久化" | 补充：fork COW、混合持久化、AOF 重写 |
+
+---
+
+> **文档总结**：本文档覆盖 Redis 面试的**核心数据结构、持久化、高可用、缓存策略、分布式锁、性能优化、复杂场景设计**等关键知识点，包含 **50+ 道面试题**，每道题均提供**问题描述、参考答案、原理解释、代码示例、加分项**五个部分。建议读者按章节顺序学习，中级题目打好基础，高级题目拓展深度，结合代码示例动手实践，方能在面试中游刃有余。
+>
+> **延伸阅读**：
+> - [Redis 技术完全指南](../Redis技术完全指南_核心原理数据结构高可用Java集成分布式应用性能优化.md) — 系统学习 Redis 原理
+> - [Java 多线程与并发基础详解](./Java多线程与并发基础详解.md) — 分布式锁的并发基础
+> - [Java 集合框架详解](./Java集合框架详解.md) — 与 Redis 数据结构对比
+> - [Spring Boot 面试题汇总](./SpringBoot面试题汇总.md) — Spring 集成 Redis 实战
+> - [Spring-Boot 全面详解](../spring-boot/Spring-Boot全面详解_核心概念架构自动配置场景应用测试部署.md) — Spring Boot 集成基础
