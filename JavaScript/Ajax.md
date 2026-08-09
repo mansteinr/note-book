@@ -5,9 +5,27 @@
 ## 目录
 
 1. [Ajax 概述](#1-ajax-概述)
+   - 1.1 [什么是 Ajax](#11-什么是-ajax)
+   - 1.2 [Ajax 的工作原理](#12-ajax-的工作原理)
+   - 1.3 [Ajax 的优缺点](#13-ajax-的优缺点)
+   - 1.4 [与传统 Web 开发模式的区别](#14-与传统-web-开发模式的区别)
 2. [核心技术详解](#2-核心技术详解)
+   - 2.1 [XMLHttpRequest 对象](#21-xmlhttprequest-对象)
+   - 2.2 [状态码详解](#22-状态码详解)
+   - 2.3 [跨域解决方案](#23-跨域解决方案)
+   - 2.4 [异步编程模式](#24-异步编程模式)
 3. [常见面试题及参考答案](#3-常见面试题及参考答案)
+   - [基础概念题（Q1-Q5）](#基础概念题)
+   - [原理分析题（Q6-Q9）](#原理分析题)
+   - [代码实现题（Q10-Q12）](#代码实现题)
+   - [实际应用场景题（Q13-Q15）](#实际应用场景题)
+   - [进阶面试题（Q16-Q18）](#进阶面试题)
 4. [最佳实践与注意事项](#4-最佳实践与注意事项)
+   - 4.1 [错误处理](#41-错误处理)
+   - 4.2 [性能优化](#42-性能优化)
+   - 4.3 [安全考量](#43-安全考量)
+   - 4.4 [兼容性处理](#44-兼容性处理)
+   - 4.5 [开发调试技巧](#45-开发调试技巧)
 
 ---
 
@@ -84,9 +102,8 @@ function ajaxRequest(url, callback) {
 | **SEO 不友好** | 搜索引擎爬虫可能无法抓取动态加载的内容 |
 | **浏览器历史** | 破坏浏览器前进/后退按钮的正常行为（可通过 History API 解决） |
 | **跨域限制** | 受同源策略限制，跨域请求需要额外处理 |
-| **调试困难** | 异步流程复杂时，调试难度增加 |
-| **兼容性问题** | 老旧浏览器（IE5/6）对 XHR 的支持不统一 |
-| **安全性** | 增加了攻击面，如 XSS、CSRF 等 |
+| **调试困难** | 异步流程复杂时，调试难度增加（可借助 DevTools Network 面板） |
+| **安全性** | 增加了攻击面，如 XSS、CSRF 等（需配合 CSRF Token、CSP 等防护） |
 
 ### 1.4 与传统 Web 开发模式的区别
 
@@ -124,15 +141,14 @@ Ajax模式：
 #### 2.1.1 创建 XHR 对象
 
 ```javascript
-// 标准方式（现代浏览器）
+// 标准方式（所有现代浏览器）
 const xhr = new XMLHttpRequest();
 
-// 兼容 IE5/IE6
+// 兼容 IE5/IE6（仅遗留系统维护需要，IE 已于 2022 年停止支持）
 let xhr;
 if (window.XMLHttpRequest) {
     xhr = new XMLHttpRequest();
 } else {
-    // IE5/IE6 使用 ActiveXObject
     xhr = new ActiveXObject('Microsoft.XMLHTTP');
 }
 ```
@@ -504,7 +520,24 @@ xhr.send();
 // 注意：此时服务端 Access-Control-Allow-Origin 不能设为 *，必须指定具体域名
 ```
 
+**`SameSite` Cookie 属性（关键约束）：**
+
+Chrome 80+ 默认 `SameSite=Lax`，跨域 Ajax 请求**不会携带 Cookie**。若需跨域携带 Cookie，服务端必须显式设置 `SameSite=None; Secure`：
+
+| SameSite 值 | 行为 | 跨域 Ajax 是否携带 |
+|-------------|------|:----------------:|
+| `Strict` | 仅同源发送 | ❌ |
+| `Lax`（默认） | 顶层导航时发送，Ajax 不发送 | ❌ |
+| `None` | 跨域发送（需配合 `Secure`） | ✅ |
+
+```http
+# 跨域携带 Cookie 必须这样设置：
+Set-Cookie: sessionId=abc123; SameSite=None; Secure; HttpOnly
+```
+
 #### 2.3.3 JSONP（JSON with Padding）
+
+> **⚠️ 历史方案**：JSONP 在现代开发中已基本淘汰，仅用于维护遗留系统或对接不支持 CORS 的旧 API。新项目应使用 CORS 或代理服务器方案。
 
 JSONP 利用 `<script>` 标签不受同源策略限制的特性，通过动态创建 `<script>` 标签实现跨域数据获取。
 
@@ -525,24 +558,31 @@ function jsonp(url, callbackName) {
         // 生成唯一的回调函数名
         const callback = callbackName || 'jsonp_' + Date.now() + Math.random().toString(36).slice(2);
 
+        // 先创建 script 标签（需在回调中引用，因此提前声明）
+        const script = document.createElement('script');
+
         // 将回调函数挂载到全局
         window[callback] = function(data) {
             resolve(data);
-            // 清理
-            delete window[callback];
-            document.head.removeChild(script);
+            cleanup();
         };
 
-        // 创建 script 标签
-        const script = document.createElement('script');
+        // 清理函数：移除 script 标签 + 删除全局回调
+        function cleanup() {
+            delete window[callback];
+            if (script.parentNode) {
+                document.head.removeChild(script);
+            }
+        }
+
+        // 配置 script 标签
         script.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + callback;
         script.onerror = () => {
             reject(new Error('JSONP 请求失败'));
-            delete window[callback];
-            document.head.removeChild(script);
+            cleanup();
         };
 
-        // 添加到页面
+        // 添加到页面，发起请求
         document.head.appendChild(script);
     });
 }
@@ -566,12 +606,25 @@ jsonp('https://api.example.com/data')
 
 **1. 代理服务器（Proxy）**
 
-通过同源的代理服务器转发请求到目标服务器，浏览器只与同源代理交互。
+通过同源的代理服务器转发请求到目标服务器，浏览器只与同源代理交互。这是**开发环境和生产环境最常用的跨域方案**，前端零改动。
 
-```
-开发环境（Webpack DevServer）：
+**开发环境（Vite / Webpack DevServer）：**
+
 ```javascript
-// webpack.config.js
+// vite.config.ts (Vite) — 推荐方案
+export default {
+  server: {
+    proxy: {
+      '/api': {
+        target: 'https://api.example.com',
+        changeOrigin: true,                    // 修改请求头中的 Origin 为目标地址
+        rewrite: (path) => path.replace(/^\/api/, '')  // 去掉 /api 前缀
+      }
+    }
+  }
+};
+
+// webpack.config.js (Webpack DevServer)
 module.exports = {
     devServer: {
         proxy: {
@@ -585,8 +638,8 @@ module.exports = {
 };
 ```
 
-```
-生产环境（Nginx）：
+**生产环境（Nginx 反向代理）：**
+
 ```nginx
 server {
     listen 80;
@@ -596,6 +649,7 @@ server {
         proxy_pass https://api.example.com/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
 }
 ```
@@ -637,26 +691,28 @@ ws.onmessage = function(event) {
 };
 ```
 
-**4. document.domain（同主域场景）**
+**4. document.domain（已废弃）**
 
-当两个页面主域相同而子域不同时，可以通过设置 `document.domain` 来实现跨域通信。
+> **⚠️ 已废弃**：`document.domain` 在 **Chrome 109+** 中默认被禁用。现代项目应使用 `postMessage` 替代。仅当维护遗留系统且无法修改代码时，可通过服务端设置 `Origin-Agent-Cluster: ?0` 响应头临时恢复。
+
+当两个页面主域相同而子域不同时，曾可通过设置 `document.domain` 来实现跨域通信。
 
 ```javascript
-// 仅适用于相同主域的情况
-// a.example.com 和 b.example.com 都可以设置：
+// ❌ 已废弃，不要在新项目中使用
+// 仅适用于相同主域的情况（a.example.com 和 b.example.com）
 document.domain = 'example.com';
 ```
 
 **跨域方案对比总结：**
 
-| 方案 | 适用场景 | 请求方法 | 双向通信 | 兼容性 |
-|------|----------|----------|----------|--------|
-| CORS | 通用跨域方案 | 全部 | 否 | IE10+ |
-| JSONP | 老浏览器兼容 | 仅 GET | 否 | 全部 |
-| 代理服务器 | 前后端分离项目 | 全部 | 否 | 全部 |
-| postMessage | 窗口间通信 | 不适用 | 是 | IE8+ |
-| WebSocket | 实时通信 | 全部 | 是 | IE10+ |
-| document.domain | 同主域子域间 | 不适用 | 否 | 全部 |
+| 方案 | 适用场景 | 请求方法 | 双向通信 | 现代状态 |
+|------|----------|----------|----------|----------|
+| CORS | 通用跨域方案 | 全部 | 否 | ✅ 标准方案 |
+| 代理服务器 | 前后端分离项目 | 全部 | 否 | ✅ 标准方案 |
+| postMessage | 窗口间通信 | 不适用 | 是 | ✅ 标准方案 |
+| WebSocket | 实时通信 | 全部 | 是 | ✅ 标准方案 |
+| JSONP | 老浏览器兼容 | 仅 GET | 否 | ⚠️ 已淘汰 |
+| document.domain | 同主域子域间 | 不适用 | 否 | ❌ 已废弃 |
 
 ### 2.4 异步编程模式
 
@@ -830,19 +886,41 @@ async function loadPageData() {
     }
 }
 
-// 带超时的 async/await 请求
+// Promise.allSettled — 所有请求完成（无论成功或失败），适合批量请求容错
+const results = await Promise.allSettled([
+    ajax('/api/user'),
+    ajax('/api/config'),
+    ajax('/api/menu')
+]);
+// results: [{ status: 'fulfilled', value: ... }, { status: 'rejected', reason: ... }, ...]
+const successResults = results
+    .filter(r => r.status === 'fulfilled')
+    .map(r => r.value);
+
+// Promise.any — 返回第一个成功的请求结果，适合多镜像竞速
+const fastestData = await Promise.any([
+    ajax('/api/mirror1/data'),
+    ajax('/api/mirror2/data')
+]);
+
+// 带超时的 async/await 请求（现代写法，使用 AbortSignal.timeout）
 async function ajaxWithTimeout(url, timeout = 5000) {
-    const controller = new AbortController();
-
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
-
     try {
-        const response = await fetch(url, { signal: controller.signal });
+        const response = await fetch(url, { signal: AbortSignal.timeout(timeout) });
         return await response.json();
-    } finally {
-        clearTimeout(timeoutId);
+    } catch (err) {
+        if (err.name === 'TimeoutError') throw new Error('请求超时');
+        throw err;
     }
 }
+
+// navigator.sendBeacon — 页面卸载时发送数据（不阻塞卸载，适合埋点上报）
+window.addEventListener('pagehide', () => {
+    navigator.sendBeacon('/api/analytics', JSON.stringify({
+        page: location.pathname,
+        duration: Date.now() - pageStartTime
+    }));
+});
 ```
 
 **三种异步模式对比：**
@@ -911,8 +989,7 @@ Ajax 不是单一技术，而是多种技术的组合：
 - SEO 不友好（搜索引擎不易抓取动态内容）
 - 破坏浏览器前进/后退机制（需 History API 补救）
 - 跨域请求受同源策略限制
-- 增加安全风险（XSS、CSRF 等）
-- 老旧浏览器兼容性问题
+- 增加安全风险（XSS、CSRF 等，需配合 CSRF Token、CSP 等防护）
 
 **评分要点：**
 - 优缺点各列出至少 3 条（每条 1 分）
@@ -1610,38 +1687,62 @@ listContainer.addEventListener('scroll', function() {
 
 | 对比维度 | Ajax (XMLHttpRequest) | Fetch API |
 |----------|----------------------|-----------|
-| 规范 | 较老的技术规范 | ES6 新标准，基于 Promise |
+| 规范 | 较老的技术规范 | 现代标准，基于 Promise |
 | Promise | 需手动封装 | 原生支持 Promise |
 | 语法简洁性 | 较繁琐 | 更简洁、链式调用 |
-| Cookie 携带 | 默认携带 | 默认不携带，需设置 `credentials` |
-| 请求取消 | `xhr.abort()` | `AbortController` |
-| 进度监听 | 支持 `onprogress` / `upload.onprogress` | 不支持（需 ReadableStream） |
-| 超时设置 | `xhr.timeout` | 需手动实现（AbortController + setTimeout） |
-| 错误处理 | `onerror` 事件 | 仅网络错误 reject，HTTP 错误需手动判断 |
+| Cookie 携带 | 默认携带同源 Cookie | 默认不携带，需设置 `credentials: 'include'` |
+| 请求取消 | `xhr.abort()` | `AbortController.abort()` |
+| 进度监听 | 原生支持 `onprogress` / `upload.onprogress` | 通过 `response.body`（ReadableStream）支持下载进度；上传进度仍需 XHR |
+| 超时设置 | `xhr.timeout`（原生） | `AbortSignal.timeout(ms)`（原生）或 `AbortController + setTimeout` |
+| 错误处理 | `onerror` 事件 | 仅网络错误 reject，HTTP 4xx/5xx 不 reject，需手动判断 `response.ok` |
 | 响应流 | 不支持 | 支持 `response.body` 流式读取 |
-| 浏览器兼容 | 全部支持 | IE 不支持，需 polyfill |
+| 浏览器兼容 | 所有浏览器 | 所有现代浏览器（IE 不支持，需 polyfill） |
 
 **代码对比：**
 
 ```javascript
-// Ajax 方式
+// ===== Ajax (XMLHttpRequest) 方式 =====
 const xhr = new XMLHttpRequest();
 xhr.open('GET', '/api/data');
+xhr.timeout = 5000;  // 原生超时设置
 xhr.onload = () => console.log(xhr.responseText);
-xhr.onerror = () => console.error('Error');
+xhr.onerror = () => console.error('网络错误');
+xhr.ontimeout = () => console.error('请求超时');
 xhr.send();
 
-// Fetch 方式
+// ===== Fetch 方式（现代推荐） =====
+// 基本用法
 fetch('/api/data')
-    .then(res => res.json())
+    .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);  // 需手动判断
+        return res.json();
+    })
     .then(data => console.log(data))
     .catch(err => console.error('Error:', err));
+
+// Fetch + 超时（AbortSignal.timeout，现代浏览器原生支持）
+fetch('/api/data', { signal: AbortSignal.timeout(5000) })
+    .then(res => res.json())
+    .catch(err => {
+        if (err.name === 'TimeoutError') console.error('请求超时');
+        else if (err.name === 'AbortError') console.error('请求已取消');
+        else console.error('请求失败:', err);
+    });
+
+// Fetch + 携带 Cookie
+fetch('/api/data', { credentials: 'include' })
+    .then(res => res.json());
 ```
+
+**选型建议：**
+- 新项目优先使用 **Fetch API**（语法简洁、原生 Promise、支持流式读取）
+- 需要**上传进度监听**时仍使用 **XHR**（Fetch 上传进度支持有限）
+- 需要**请求/响应拦截器、自动 JSON 转换、超时重试**等高级功能时，使用 **Axios** 库（基于 XHR 封装，功能最完善）
 
 **评分要点：**
 - 至少对比 5 个维度（每个 1 分）
 - 能写出代码对比示例（2 分）
-- 能说明各自的适用场景（3 分）
+- 能说明各自的适用场景及选型建议（3 分）
 
 ---
 
@@ -2043,30 +2144,32 @@ function createRequestInterceptor() {
 
 ### 4.4 兼容性处理
 
+> **现代浏览器兼容性说明**：IE 已于 2022 年正式停止支持。所有现代浏览器（Chrome、Firefox、Safari、Edge）均原生支持 `XMLHttpRequest`、`Fetch API`、`AbortController`、`AbortSignal.timeout()` 等全部 Ajax 相关 API。以下兼容代码仅用于维护遗留系统。
+
 ```javascript
-// 创建 XHR 的兼容写法
+// 现代环境直接使用，无需兼容处理
+const xhr = new XMLHttpRequest();
+// 或
+const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+
+// ========== 仅遗留系统维护需要 ==========
+// 创建 XHR 的兼容写法（支持 IE6+）
 function createXHR() {
     if (typeof XMLHttpRequest !== 'undefined') {
         return new XMLHttpRequest();
     } else if (typeof ActiveXObject !== 'undefined') {
-        // IE6 及以下
-        const versions = [
-            'MSXML2.XMLHttp.6.0',
-            'MSXML2.XMLHttp.3.0',
-            'MSXML2.XMLHttp'
-        ];
+        // IE5/IE6 使用 ActiveXObject
+        const versions = ['MSXML2.XMLHttp.6.0', 'MSXML2.XMLHttp.3.0', 'MSXML2.XMLHttp'];
         for (const version of versions) {
             try {
                 return new ActiveXObject(version);
-            } catch (e) {
-                // 继续尝试下一个版本
-            }
+            } catch (e) { /* 继续尝试下一个版本 */ }
         }
     }
     throw new Error('浏览器不支持 Ajax');
 }
 
-// 跨浏览器事件绑定
+// 跨浏览器事件绑定（支持 IE8+）
 function addEvent(element, type, handler) {
     if (element.addEventListener) {
         element.addEventListener(type, handler, false);
@@ -2119,7 +2222,12 @@ if (process.env.NODE_ENV === 'development') {
 ---
 
 > **参考资料：**
-> - MDN Web Docs - XMLHttpRequest
-> - MDN Web Docs - CORS
-> - 《JavaScript 高级程序设计》（第 4 版）
+> - [MDN Web Docs - XMLHttpRequest](https://developer.mozilla.org/zh-CN/docs/Web/API/XMLHttpRequest)
+> - [MDN Web Docs - Fetch API](https://developer.mozilla.org/zh-CN/docs/Web/API/Fetch_API)
+> - [MDN Web Docs - CORS](https://developer.mozilla.org/zh-CN/docs/Web/HTTP/CORS)
+> - [MDN Web Docs - AbortController](https://developer.mozilla.org/zh-CN/docs/Web/API/AbortController)
+> - [MDN Web Docs - navigator.sendBeacon](https://developer.mozilla.org/zh-CN/docs/Web/API/Navigator/sendBeacon)
+> - [MDN Web Docs - SameSite Cookie](https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Headers/Set-Cookie/SameSite)
+> - 《JavaScript 高级程序设计》（第 4 版）— Nicholas C. Zakas
 > - RFC 6454 - The Web Origin Concept
+> - RFC 9110 - HTTP Semantics
