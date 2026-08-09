@@ -325,25 +325,25 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    subgraph Mark["阶段 1：标记（Mark）"
-        R["Root 根对象"]
-        R --> A["对象 A ✓"]
-        A --> B["对象 B ✓"]
-        A --> C["对象 C ✓"]
-        R --> D["对象 D ✓"]
-        E["对象 E ✗<br/>不可达"]
-        F["对象 F ✗<br/>不可达"]
+    subgraph mark_phase [阶段1 标记 Mark]
+        R[Root 根对象]
+        R --> A[对象 A 已标记]
+        A --> B[对象 B 已标记]
+        A --> C[对象 C 已标记]
+        R --> D[对象 D 已标记]
+        E[对象 E 不可达]
+        F[对象 F 不可达]
     end
-    
-    subgraph Sweep["阶段 2：清除（Sweep）"]
-        G["遍历堆内存所有对象"]
-        G --> H["✓ 标记的对象 → 保留"]
-        G --> I["✗ 未标记的对象 → 回收"]
-        I --> J["对象 E、F 被回收"]
+
+    subgraph sweep_phase [阶段2 清除 Sweep]
+        G[遍历堆内存所有对象]
+        G --> H[标记的对象 保留]
+        G --> I[未标记的对象 回收]
+        I --> J[对象 E F 被回收]
     end
-    
-    Mark --> Sweep
-    
+
+    mark_phase --> sweep_phase
+
     style H fill:#52c41a,color:#fff
     style I fill:#ff4d4f,color:#fff
 ```
