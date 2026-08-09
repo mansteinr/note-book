@@ -152,14 +152,14 @@ let func = function() {};           // 堆内存
 
 ```mermaid
 flowchart TB
-    subgraph Stack["栈（Stack）"]
+    subgraph Stack [栈（Stack）]
         direction TB
         S1["num: 42"]
         S2["str: 'hello'"]
         S3["obj: ──────────┐"]
     end
     
-    subgraph Heap["堆（Heap）"]
+    subgraph Heap [堆（Heap）]
         direction TB
         H1["{name: 'Alice'}"]
         H2["[1, 2, 3]"]
@@ -219,7 +219,7 @@ createTemp();
 flowchart TB
     ROOT["GC Roots"]
     
-    subgraph Browser["浏览器环境"]
+    subgraph Browser [浏览器环境]
         B1["全局对象<br/>window / globalThis"]
         B2["当前执行上下文中的局部变量"]
         B3["当前调用栈中的所有参数"]
@@ -227,7 +227,7 @@ flowchart TB
         B5["被引用的闭包变量"]
     end
     
-    subgraph Node["Node.js 环境"]
+    subgraph Node [Node.js 环境]
         N1["global 对象"]
         N2["当前执行上下文中的局部变量"]
         N3["模块引用"]
@@ -400,11 +400,11 @@ createCycle();
 
 ```mermaid
 flowchart LR
-    subgraph Before["回收前"]
+    subgraph Before [回收前]
         B1["[A][B][C][D][E][F][G]"]
     end
     
-    subgraph After["回收 C、E 后"]
+    subgraph After [回收 C、E 后]
         A1["[A][B]"]
         A2["[D]"]
         A3["[F][G]"]
@@ -430,12 +430,12 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    subgraph Before["整理前"]
+    subgraph Before [整理前]
         direction LR
-        B1["A ✓"] --- B2["B ✗"] --- B3["C ✓"] --- B4["D ✗"] --- B5["E ✓"] --- B6["F ✗"] --- B7["G ✓"]
+        B1["A 存活"] --- B2["B 回收"] --- B3["C 存活"] --- B4["D 回收"] --- B5["E 存活"] --- B6["F 回收"] --- B7["G 存活"]
     end
     
-    subgraph After["整理后（存活对象向一端移动）"]
+    subgraph After [整理后（存活对象向一端移动）]
         direction LR
         A1["A"] --- A2["C"] --- A3["E"] --- A4["G"] --- A5["空闲空间"]
     end
@@ -470,17 +470,17 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    subgraph Normal["正常使用时"]
+    subgraph Normal [正常使用时]
         F1["From 空间<br/>[A][B][C][D]"]
         T1["To 空间<br/>（空闲）"]
     end
     
-    subgraph Copy["GC 时（复制存活对象）"]
-        F2["From 空间<br/>A ✓ B ✗ C ✓ D ✗"]
+    subgraph Copy [GC 时（复制存活对象）]
+        F2["From 空间<br/>A 存 B 回 C 存 D 回"]
         T2["To 空间<br/>[A][C] ← 复制"]
     end
     
-    subgraph Swap["清空 From 并交换"]
+    subgraph Swap [清空 From 并交换]
         F3["From 空间<br/>（空闲）"]
         T3["To 空间<br/>[A][C]"]
     end
@@ -513,15 +513,15 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    subgraph Heap["堆内存（Heap）"]
-        subgraph Young["新生代（Young Gen）"]
+    subgraph Heap [堆内存（Heap）]
+        subgraph Young [新生代（Young Gen）]
             Y1["小空间"]
             Y2["存活时间短"]
             Y3["回收频率高"]
             Y4["用复制算法"]
         end
         
-        subgraph Old["老生代（Old Gen）"]
+        subgraph Old [老生代（Old Gen）]
             O1["大空间"]
             O2["存活时间长"]
             O3["回收频率低"]
@@ -549,12 +549,12 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    subgraph Traditional["传统标记（一次性完成，长停顿）"]
+    subgraph Traditional [传统标记（一次性完成，长停顿）]
         T1["JS 执行"] --> T2["======== 标记（长停顿）========"]
         T2 --> T3["JS 执行"]
     end
     
-    subgraph Incremental["增量标记（拆分为小步骤）"]
+    subgraph Incremental [增量标记（拆分为小步骤）]
         I1["JS"] --> I2["标记1"]
         I2 --> I3["JS"]
         I3 --> I4["标记2"]
@@ -597,14 +597,14 @@ V8 是 Chrome 和 Node.js 使用的 JavaScript 引擎，其 GC 实现是最具�
 
 ```mermaid
 flowchart TB
-    subgraph V8Heap["V8 堆内存"]
-        subgraph Young["新生代（Young Generation）"]
+    subgraph V8Heap [V8 堆内存]
+        subgraph Young [新生代（Young Generation）]
             Y1["From Space"]
             Y2["To Space"]
             Y3["1~8MB（64位系统）<br/>存活时间短的对象"]
         end
         
-        subgraph Old["老生代（Old Generation）"]
+        subgraph Old [老生代（Old Generation）]
             O1["老生代指针空间<br/>Old Pointer Space"]
             O2["老生代数据空间<br/>Old Data Space"]
             O3["代码空间<br/>Code Space"]
@@ -830,11 +830,11 @@ JavaScriptCore（JSC）是 Apple 开发的引擎，用于 Safari 浏览器。
 
 ```mermaid
 flowchart LR
-    subgraph Normal["正常情况"]
+    subgraph Normal [正常情况]
         N1["分配内存"] --> N2["使用"] --> N3["释放"] --> N4["内存回归可用池"]
     end
     
-    subgraph Leak["内存泄漏"]
+    subgraph Leak [内存泄漏]
         L1["分配内存"] --> L2["使用"] --> L3["忘记释放/仍有引用"] --> L4["内存无法回收"]
         L4 --> L5["反复操作"]
         L5 --> L6["可用内存越来越少"]
