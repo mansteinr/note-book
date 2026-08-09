@@ -42,10 +42,7 @@
     - [5.5 全停顿与优化策略](#55-全停顿与优化策略)
     - [5.6 V8 GC 完整流程图](#56-v8-gc-完整流程图)
     - [5.7 Orinoco 与并发 GC](#57-orinoco-与并发-gc)
-  - [六、其他 JavaScript 引擎的 GC 实现](#六其他-javascript-引擎的-gc-实现)
-    - [6.1 SpiderMonkey（Firefox）](#61-spidermonkeyfirefox)
-    - [6.2 JavaScriptCore（Safari）](#62-javascriptcoresafari)
-    - [6.3 引擎差异对比](#63-引擎差异对比)
+    - [5.8 引擎差异对比](#58-引擎差异对比)
   - [七、内存泄漏](#七内存泄漏)
     - [7.1 什么是内存泄漏](#71-什么是内存泄漏)
     - [7.2 常见内存泄漏场景](#72-常见内存泄漏场景)
@@ -808,44 +805,8 @@ V8 团队从 2015 年开始推进 **Orinoco GC 项目**，逐步引入并发和�
 
 ---
 
-## 六、其他 JavaScript 引擎的 GC 实现
 
-### 6.1 SpiderMonkey（Firefox）
-
-SpiderMonkey 是 Mozilla 开发的 JavaScript 引擎，用于 Firefox 浏览器。
-
-**GC 特点**：
-
-- 使用分代收集策略（类似 V8）
-- 新生代称为 **Nursery**，使用复制算法
-- 老生代使用**标记-清除**（Mark-Sweep）
-- 强调**并发 GC**，减少主线程停顿
-- 支持增量 GC
-
-**与 V8 的主要差异**：
-
-- Nursery 大小和结构略有不同
-- 更早采用并发标记
-- 内存碎片整理策略不同
-
-### 6.2 JavaScriptCore（Safari）
-
-JavaScriptCore（JSC）是 Apple 开发的引擎，用于 Safari 浏览器。
-
-**GC 特点**：
-
-- 使用 **Riptide GC**（多代收集器）
-- 分为 Eden、Old、Large Object 等多个区域
-- 强调多线程并发收集
-- 使用写屏障（Write Barrier）维护跨代引用
-
-**与 V8 的主要差异**：
-
-- 分代更多（不止两代）
-- 更激进地使用并发收集
-- 内存布局策略不同
-
-### 6.3 引擎差异对比
+### 5.8 引擎差异对比
 
 | 维度 | V8（Chrome/Node.js） | SpiderMonkey（Firefox） | JavaScriptCore（Safari） |
 |------|---------------------|------------------------|------------------------|
