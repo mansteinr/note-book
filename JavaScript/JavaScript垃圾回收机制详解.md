@@ -302,10 +302,10 @@ createCycle();  // 内存泄漏！
 
 ```mermaid
 flowchart LR
-    A["对象 a<br/>引用计数 = 1"] -->|ref| B["对象 b<br/>引用计数 = 1"]
+    A["对象 a<br />引用计数 = 1"] -->|ref| B["对象 b<br />引用计数 = 1"]
     B -->|ref| A
     
-    NOTE["外部无任何变量引用 a 或 b<br/>但引用计数都为 1（互相引用）<br/>→ 永远无法回收 → 内存泄漏"]
+    NOTE["外部无任何变量引用 a 或 b\n但引用计数都为 1（互相引用）\n→ 永远无法回收 → 内存泄漏"]
     
     style A fill:#ff4d4f,color:#fff
     style B fill:#ff4d4f,color:#fff
