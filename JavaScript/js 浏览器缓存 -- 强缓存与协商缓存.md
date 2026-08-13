@@ -131,12 +131,12 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    A[1. 注册 Service Worker] --> B[2. 监听 install 事件<br/>缓存所需文件]
-    B --> C[3. 下次访问时<br/>拦截请求查询缓存]
+    A[1. 注册 Service Worker] --> B[2. 监听 install 事件<br>缓存所需文件]
+    B --> C[3. 下次访问时<br>拦截请求查询缓存]
     C --> D{缓存命中?}
     D -->|是| E[直接返回缓存]
     D -->|否| F[调用 fetch 获取数据]
-    
+
     style E fill:#52c41a,color:#fff
     style F fill:#faad14,color:#fff
 ```
