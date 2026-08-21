@@ -3,7 +3,7 @@
 > 本文档系统阐述前端性能优化的核心方法论，涵盖 Chrome DevTools Performance 面板使用教程与 Web 核心性能指标（LCP / CLS / INP）的深度解析。
 
 ---
-
+https://www.cnblogs.com/keshizhidao/articles/20049125#1
 ## 目录
 
 - [第一部分：Chrome DevTools Performance 标签页完整使用指南](#第一部分chrome-devtools-performance-标签页完整使用指南)
