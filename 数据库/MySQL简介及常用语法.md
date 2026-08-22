@@ -75,7 +75,9 @@ MySQL 是一个**关系型数据库管理系统**（RDBMS），由瑞典 MySQL A
 ### 2.1 数据库操作
 
 #### 2.1.1 创建与删除数据库
+数据库不建议字符集为utf8，建议使用utf8mb4。 因为utf8mb4支持emoji表情，而utf8不支持。另外，utf8mb4的排序规则为utf8mb4_unicode_ci，而utf8的排序规则为utf8_general_ci，会导致排序问题。另外utf8支持3字节字符，而utf8mb4支持4字节字符，完整 Unicode，包括 Emoji。
 
+MySQL 中的 utf8 最多支持 3 个字节，并不能存储完整的 Unicode 字符，例如 Emoji 等 4 字节字符；而 utf8mb4 最多支持 4 个字节，可以兼容 utf8 的所有字符，并支持完整 Unicode。因此现在新建 MySQL 数据库通常推荐统一使用 utf8mb4，避免未来因为 Emoji、生僻字或特殊字符导致数据插入失败。
 ```sql
 -- 创建数据库（指定字符集）
 CREATE DATABASE IF NOT EXISTS mydb
