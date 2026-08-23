@@ -42,7 +42,7 @@ https://www.cnblogs.com/keshizhidao/articles/20049125#1
 <!-- 截图：Performance面板整体界面 -->
 > 📷 截图参考：`assets/performance-01-panel-overview.png` — Performance 面板整体界面
 
-### 1.2 面板区域划分
+### 1.2 性能指标关注点
 
 Performance 面板自上而下由以下区域组成：
 
