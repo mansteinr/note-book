@@ -1,13 +1,6 @@
-# 高级 Java：OOM 定位步骤与面试题深度解析
-
-> 本文档从 OOM 基本概念、JVM 内存模型、8 种 OOM 类型、标准定位步骤、工具使用详解、真实案例分析、常见场景解决方案，到面试高频题，系统覆盖 Java OutOfMemoryError 的全链路排查知识，适合高级 Java 工程师面试与生产实战。
-
----
 
 ## 目录
 
-- [高级 Java：OOM 定位步骤与面试题深度解析](#高级-javaoom-定位步骤与面试题深度解析)
-  - [目录](#目录)
 - [一、OOM 概述](#一oom-概述)
   - [1.1 什么是 OOM](#11-什么是-oom)
   - [1.2 OOM 与 StackOverflowError 的区别](#12-oom-与-stackoverflowerror-的区别)
@@ -3126,5 +3119,17 @@ P4：所有应用默认开 Heap Dump on OOM，路径统一挂载共享盘（1 �
 ```
 
 ---
+如果线上 Java 服务发生 OOM，你如何定位？
 
-**至此，高级 Java OOM 定位与面试题深度解析文档完整结束。** 文档涵盖概念原理 → 标准定位步骤 → 工具详解 → 真实案例 → 常见场景代码分析 → 参数调优 → 17 道经典面试题 → 最佳实践 Checklist → **新增「十一、OOM 应急响应 SOP」**（摘流/保现场/Dump抓取/MAT调优/四大分析技法/泄漏膨胀判定/流程图），从理论到生产实战覆盖全面，特别适配高级 Java 工程师线上事故处理与面试复盘场景。
+首先我不会直接增加 Xmx，而是先根据异常日志确认具体的 OOM 类型，比如 Java Heap、Metaspace、Direct Memory 或 Native Thread，因为不同类型的排查方向不同。
+
+如果是 Java Heap OOM，我首先会通过 jinfo 或 jcmd 查看 JVM 参数，然后使用 jstat -gcutil 观察 Old Gen 的变化以及 Full GC 后内存是否能够正常下降。
+
+如果发现 Old Gen 持续上涨，Full GC 后也无法明显下降，我会怀疑存在内存泄漏。接下来通过 jcmd GC.heap_dump 获取 Heap Dump。
+
+然后使用 MAT 分析 Heap Dump，重点查看 Leak Suspects、Histogram 和 Dominator Tree，找到 Retained Heap 最大的对象。
+
+最后通过 Path to GC Roots 分析对象的引用链，定位为什么对象无法被 GC，例如 static Map、ThreadLocal、缓存、无界队列或者 Listener。
+
+修复后会重新进行压测，并持续观察 Old Gen、Full GC 次数和进程 RSS，确认内存不会持续增长。
+
