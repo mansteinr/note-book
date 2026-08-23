@@ -1,0 +1,44 @@
+###### base64编码原理
+
+要求把3个8位字节（3x8=24）转化为4个6位的字节（4x6=24），之后在6位的前面补两个0，形成8位一个字节的形式。 如果剩下的字符不足3个字节，用0填充，输出字符使用’=’，因此编码后输出的文本末尾可能会出现1或2个’=’
+
+###### 通过base64编码原理计算图片的文件流大小
+
+例如图片base64如下：
+
+```
+var imagebase64 = 'data:image/png;base64,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'
+```
+
+1.需要计算文件流大小，首先把头部的data:image/png;base64,（注意有逗号）去掉。
+
+```
+var str = imagebase64.replace('data:image/png;base64,', '')
+```
+
+2.找到等号，把等号也去掉
+```
+var equalIndex = str.indexOf('=');
+
+if(str.indexOf('=')>0) {
+    str=str.substring(0, equalIndex);
+}
+```
+
+3.原来的字符流大小，单位为字节
+
+```
+var strLength=str.length;
+```
+
+4.计算后得到的文件流大小，单位为字节
+
+理解一下base64的编码方式，是把3个8字节编码成4个6字节，到这一步字节数是不变的
+但它还要在6个字节添加两个高位组成4个8字节，base64有多少个8字节，就比原来多2倍的多少个8字节, 也就是base64长度要比原码长度多了（base64长度/8）*2个字节，换算过来就是要减掉
+
+```
+var fileLength=parseInt(strLength-(strLength/8)*2);
+
+```
+
+5.输出文件流大小
