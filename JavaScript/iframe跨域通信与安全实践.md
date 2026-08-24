@@ -1,9 +1,5 @@
 # iframe 跨域通信与安全实践
 
-> 本文档系统阐述 iframe 嵌入技术及父子页面间安全通信的完整方案，涵盖 postMessage API、CORS、代理服务器、document.domain 等多种跨域通信方法，深入分析各方法的适用场景、安全性、浏览器兼容性及最佳实践。
-
----
-
 ## 目录
 
 - [一、引言](#一引言)
@@ -711,46 +707,6 @@ function validatePayload(type, payload) {
   return validator ? validator(payload) : false;
 }
 ```
-
-### 4.5 postMessage 浏览器兼容性
-
-| 浏览器 | 支持版本 | 备注 |
-|--------|---------|------|
-| Chrome | 4+ | 完整支持 |
-| Firefox | 3.5+ | 完整支持 |
-| Safari | 4+ | 完整支持 |
-| Edge | 所有版本 | 完整支持 |
-| Internet Explorer | IE8+ | IE8/IE9 仅支持字符串，且仅支持 iframe 通信 |
-
-**IE8/IE9 兼容代码：**
-
-```javascript
-/**
- * 兼容 IE8/IE9 的 postMessage 封装
- */
-function postMessageCompat(targetWindow, data, targetOrigin) {
-  // IE8/IE9 仅支持字符串
-  if (typeof data === 'object') {
-    data = JSON.stringify(data);
-  }
-  targetWindow.postMessage(data, targetOrigin);
-}
-
-window.addEventListener('message', (event) => {
-  let data = event.data;
-  // IE8/IE9 返回字符串，现代浏览器返回对象
-  if (typeof data === 'string') {
-    try {
-      data = JSON.parse(data);
-    } catch (e) {
-      // 保持字符串格式
-    }
-  }
-  // 处理 data...
-});
-```
-
----
 
 ## 五、document.domain 深度分析
 
