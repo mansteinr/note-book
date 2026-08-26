@@ -15,9 +15,50 @@
 11. [性能优化策略](#性能优化策略)
 12. [源码分析与设计思想](#源码分析与设计思想)
 
----
+***
 
-## Vue3响应式原理及实现过程
+## Vue3响应式原理及实现过程vue2.x中，绑定事件每次触发都要重新生成全新的function去更新，cacheHandlers 是Vue3中提供的事件缓存对象，当 cacheHandlers 开启，会自动生成一个内联函数，同时生成一个静态节点。当事件再次触发时，只需从缓存中调用即可，无需再次更新。
+
+默认情况下onClick会被视为动态绑定，所以每次都会追踪它的变化，但是同一个函数没必要追踪变化，直接缓存起来复用即可。
+
+例如：下面我们同样是通过Vue 3 Template Explorer，来看一下事件监听器缓存的作用：
+
+```
+<div>
+    <div @click="todo">做点有趣的事</div>
+</div>
+
+```
+
+该段 html 经过编译后变成我们下面的结构(未开启事件监听缓存)：
+
+```
+export function render(...) {
+    return (_openBlock(),_createBlock('div', null, [
+            _createVNode('div',{ onClick: _ctx.todo}, '做点有趣的事', 8 /* PROPS */,
+                ['onClick']),
+        ])
+    )
+}
+
+```
+
+当开启事件监听器缓存后：
+
+```
+export function render(...) {
+    return (_openBlock(),_createBlock('div', null, [
+            _createVNode('div',{
+                    onClick:    //开启监听后
+                        _cache[1] || (_cache[1] = (...args) =>_ctx.todo(...args)),
+                },'做点有趣的事'),
+        ])
+    )
+}
+
+```
+
+可以对比开启事件监听缓存前后的代码，转换之后的代码, 大家可能还看不懂, 但是不要紧，我们只需要观察有没有静态标记即可，在Vue3的diff算法中, 只有有静态标记的才会进行比较, 才会进行追踪。
 
 ### 选择题
 
@@ -101,7 +142,7 @@ D. 使用toRefs保持连接
 
 **答案：B**
 
----
+***
 
 ### 简答题
 
@@ -245,6 +286,7 @@ function track(target, key) {
 ```
 
 **选择WeakMap的原因：**
+
 - WeakMap的key是弱引用，不影响垃圾回收
 - 当响应式对象不再被引用时，其依赖关系可被自动回收
 - 避免内存泄漏
@@ -377,24 +419,24 @@ getter触发/track收集
 diff/patch更新真实DOM
 ```
 
----
+***
 
 **2. 请详细对比Vue2的Object.defineProperty和Vue3的Proxy在响应式实现上的差异。**
 
 **答案：**
 
-| 对比维度 | Vue2 (defineProperty) | Vue3 (Proxy) |
-|---------|----------------------|-------------|
-| **拦截方式** | 劫持属性getter/setter | 代理整个对象所有操作 |
-| **新增属性** | 无法检测，需Vue.set | 天然支持 |
-| **删除属性** | 无法检测，需Vue.delete | 天然支持 |
-| **数组监听** | 重写7个数组方法 | 原生支持索引和length变化 |
-| **初始化性能** | 递归遍历所有属性 | 懒代理，访问时才代理 |
-| **内存占用** | 每个属性都要定义getter/setter | 一个Proxy代理整个对象 |
-| **支持数据类型** | 对象、数组（有限） | 对象、数组、Map、Set、WeakMap、WeakSet |
-| **嵌套对象** | 初始化时递归处理 | 访问时懒代理 |
-| **Symbol属性** | 不支持 | 支持 |
-| **兼容性** | IE9+ | 不支持IE |
+| 对比维度         | Vue2 (defineProperty) | Vue3 (Proxy)                  |
+| ------------ | --------------------- | ----------------------------- |
+| **拦截方式**     | 劫持属性getter/setter     | 代理整个对象所有操作                    |
+| **新增属性**     | 无法检测，需Vue.set         | 天然支持                          |
+| **删除属性**     | 无法检测，需Vue.delete      | 天然支持                          |
+| **数组监听**     | 重写7个数组方法              | 原生支持索引和length变化               |
+| **初始化性能**    | 递归遍历所有属性              | 懒代理，访问时才代理                    |
+| **内存占用**     | 每个属性都要定义getter/setter | 一个Proxy代理整个对象                 |
+| **支持数据类型**   | 对象、数组（有限）             | 对象、数组、Map、Set、WeakMap、WeakSet |
+| **嵌套对象**     | 初始化时递归处理              | 访问时懒代理                        |
+| **Symbol属性** | 不支持                   | 支持                            |
+| **兼容性**      | IE9+                  | 不支持IE                         |
 
 **性能差异示例：**
 
@@ -430,7 +472,7 @@ const bigDataProxy = reactive(bigData)
 // 只创建了一层Proxy，内层对象访问时才代理
 ```
 
----
+***
 
 **3. 请解释Vue3响应式系统的嵌套代理实现和raw（原始对象）获取机制。**
 
@@ -492,11 +534,12 @@ console.log(obj.b.d)
 ```
 
 **这种设计的好处：**
+
 1. **减少初始化开销**：不需要一次性递归所有嵌套对象
 2. **按需代理**：只有被访问到的嵌套属性才会被代理
 3. **避免循环引用问题**：Proxy基于访问时创建，天然处理循环引用
 
----
+***
 
 ### 编程题
 
@@ -866,7 +909,7 @@ state.count++
 state.info.name = 'Vue3 Reactive'
 ```
 
----
+***
 
 ## Computed实现原理
 
@@ -920,7 +963,7 @@ D. computed只能在template中使用
 
 **答案：A**
 
----
+***
 
 ### 简答题
 
@@ -1019,7 +1062,36 @@ console.log(double.value) // 直接返回value，不执行计算
 **3. 脏值检测流程：**
 
 ```
-访问.value
+vue2.x中，绑定事件每次触发都要重新生成全新的function去更新，cacheHandlers 是Vue3中提供的事件缓存对象，当 cacheHandlers 开启，会自动生成一个内联函数，同时生成一个静态节点。当事件再次触发时，只需从缓存中调用即可，无需再次更新。
+
+默认情况下onClick会被视为动态绑定，所以每次都会追踪它的变化，但是同一个函数没必要追踪变化，直接缓存起来复用即可。
+
+例如：下面我们同样是通过Vue 3 Template Explorer，来看一下事件监听器缓存的作用：
+
+<div>
+    <div @click="todo">做点有趣的事</div>
+</div>
+该段 html 经过编译后变成我们下面的结构(未开启事件监听缓存)：
+
+export function render(...) {
+    return (_openBlock(),_createBlock('div', null, [
+            _createVNode('div',{ onClick: _ctx.todo}, '做点有趣的事', 8 /* PROPS */,
+                ['onClick']),
+        ])
+    )
+}
+当开启事件监听器缓存后：
+
+export function render(...) {
+    return (_openBlock(),_createBlock('div', null, [
+            _createVNode('div',{
+                    onClick:    //开启监听后
+                        _cache[1] || (_cache[1] = (...args) =>_ctx.todo(...args)),
+                },'做点有趣的事'),
+        ])
+    )
+}
+可以对比开启事件监听缓存前后的代码，转换之后的代码, 大家可能还看不懂, 但是不要紧，我们只需要观察有没有静态标记即可，在Vue3的diff算法中, 只有有静态标记的才会进行比较, 才会进行追踪。访问.value
   → 检查 isDirty
   → true：执行 computedEffect() → 更新value → isDirty = false → 返回value
   → false：直接返回value
@@ -1059,15 +1131,15 @@ const total = computed(() => subtotal.value * 1.2)  // 嵌套computed
 
 **与Vue2 computed的关键区别：**
 
-| 特性 | Vue2 computed | Vue3 computed |
-|------|--------------|-------------|
-| 依赖追踪 | 在Watcher中手动管理 | 基于effect自动追踪 |
-| 缓存机制 | 基于Watcher.dirty属性 | 基于isDirty标记 |
-| 调度执行 | 同步 | 支持scheduler自定义调度 |
-| 嵌套computed | 依赖Watcher队列 | 原生支持，自动处理 |
-| 类型安全 | 不原生支持 | 完美支持TypeScript |
+| 特性         | Vue2 computed     | Vue3 computed    |
+| ---------- | ----------------- | ---------------- |
+| 依赖追踪       | 在Watcher中手动管理     | 基于effect自动追踪     |
+| 缓存机制       | 基于Watcher.dirty属性 | 基于isDirty标记      |
+| 调度执行       | 同步                | 支持scheduler自定义调度 |
+| 嵌套computed | 依赖Watcher队列       | 原生支持，自动处理        |
+| 类型安全       | 不原生支持             | 完美支持TypeScript   |
 
----
+***
 
 **2. 如何理解computed的懒执行和缓存特性在性能优化上的意义？**
 
@@ -1110,7 +1182,7 @@ const randomClick = () => console.log('click')
 
 computed与其他响应式数据的联动形成了 **精确的依赖图**，确保只有真正依赖变化的部分才会更新。
 
----
+***
 
 ### 编程题
 
@@ -1256,7 +1328,7 @@ const renderEffect = effect(() => {
 // 即使访问三次，subtotal/tax/total各自只计算一次
 ```
 
----
+***
 
 ## Watch实现原理
 
@@ -1326,7 +1398,7 @@ D. 以上都是
 
 **答案：D**
 
----
+***
 
 ### 简答题
 
@@ -1577,21 +1649,21 @@ function watchEffect(effect, options = {}) {
 }
 ```
 
----
+***
 
 **2. 请对比watch、watchEffect、watchPostEffect、watchSyncEffect的差异和使用场景。**
 
 **答案：**
 
-| 特性 | watch | watchEffect | watchPostEffect | watchSyncEffect |
-|------|-------|------------|----------------|----------------|
-| **执行时机** | 首次不执行（默认） | 立即执行 | 立即执行 | 立即执行 |
-| **数据源** | 需明确指定 | 自动收集 | 自动收集 | 自动收集 |
-| **新旧值** | 支持 | 不支持 | 不支持 | 不支持 |
-| **调度时机** | 默认异步(前) | 默认异步(前) | 组件更新后(post) | 同步(sync) |
-| **flush选项** | 'pre'\|'post'\|'sync' | 'pre'\|'post'\|'sync' | 'post'固定 | 'sync'固定 |
-| **缓存机制** | 无 | 无 | 无 | 无 |
-| **竞态处理** | onCleanup | onCleanup | onCleanup | onCleanup |
+| 特性          | watch                 | watchEffect           | watchPostEffect | watchSyncEffect |
+| ----------- | --------------------- | --------------------- | --------------- | --------------- |
+| **执行时机**    | 首次不执行（默认）             | 立即执行                  | 立即执行            | 立即执行            |
+| **数据源**     | 需明确指定                 | 自动收集                  | 自动收集            | 自动收集            |
+| **新旧值**     | 支持                    | 不支持                   | 不支持             | 不支持             |
+| **调度时机**    | 默认异步(前)               | 默认异步(前)               | 组件更新后(post)     | 同步(sync)        |
+| **flush选项** | 'pre'\|'post'\|'sync' | 'pre'\|'post'\|'sync' | 'post'固定        | 'sync'固定        |
+| **缓存机制**    | 无                     | 无                     | 无               | 无               |
+| **竞态处理**    | onCleanup             | onCleanup             | onCleanup       | onCleanup       |
 
 **选择指南：**
 
@@ -1634,7 +1706,7 @@ watchSyncEffect(() => {
 })
 ```
 
----
+***
 
 ### 编程题
 
@@ -1883,7 +1955,7 @@ stop()
 count.value++ // 不会触发上面的回调
 ```
 
----
+***
 
 ## KeepAlive实现原理
 
@@ -1969,7 +2041,7 @@ D. 仅template
 
 **答案：B**
 
----
+***
 
 ### 简答题
 
@@ -2259,7 +2331,7 @@ function patchKeepAliveComponent(vnode, container) {
   → 卸载被淘汰的组件
 ```
 
----
+***
 
 **2. 请分析KeepAlive在Vue Router中的应用场景和注意事项。**
 
@@ -2298,7 +2370,7 @@ function patchKeepAliveComponent(vnode, container) {
 3. **key的重要性**：使用动态key可以控制缓存的粒度
 4. **include/exclude配合**：结合路由meta配置更灵活
 
----
+***
 
 ### 设计题
 
@@ -2469,7 +2541,7 @@ const AdvancedKeepAlive = {
 }
 ```
 
----
+***
 
 ## 响应式系统进阶
 
@@ -2632,16 +2704,16 @@ triggerRef(shallow) // ✅ 强制触发依赖更新
 
 **各API应用场景对比：**
 
-| API | 应用场景 | 性能影响 |
-|-----|---------|---------|
-| shallowRef | 大对象、第三方库对象 | 减少深层代理开销 |
-| shallowReactive | 仅需要第一层响应 | 减少深层代理开销 |
-| readonly | props透传、状态暴露 | 阻止写操作 |
-| toRaw | 需要原始对象进行操作 | 无 |
-| markRaw | 不希望被响应化的对象 | 阻止代理 |
-| triggerRef | 手动控制更新时机 | 精确控制 |
+| API             | 应用场景         | 性能影响     |
+| --------------- | ------------ | -------- |
+| shallowRef      | 大对象、第三方库对象   | 减少深层代理开销 |
+| shallowReactive | 仅需要第一层响应     | 减少深层代理开销 |
+| readonly        | props透传、状态暴露 | 阻止写操作    |
+| toRaw           | 需要原始对象进行操作   | 无        |
+| markRaw         | 不希望被响应化的对象   | 阻止代理     |
+| triggerRef      | 手动控制更新时机     | 精确控制     |
 
----
+***
 
 ## 虚拟DOM与Diff算法
 
@@ -2878,7 +2950,154 @@ function patchKeyedChildren(c1, c2, container) {
 3. **最长递增子序列**：最小化DOM移动次数
 4. **双端指针优化**：从两端向中间比较
 
----
+1、diff算法的优化--静态标记（PatchFlag）
+
+vue2中的虚拟dom是全量的对比（每个节点不论写死的还是动态的都会一层一层比较，这就浪费了大部分事件在对比静态节点上）
+
+vue3编译模板时，动态节点做标记
+标记分为不同的类型，如TEXT，PROPS
+diff算法时，可以区分静态节点，以及不同类型的动态节点
+
+vue3新增了静态标记（patchflag）与上次虚拟节点对比时，只对比带有patch flag的节点（动态数据所在的节点）；可通过flag信息得知当前节点要对比的具体内容。
+我们在Vue Template Explorer 上做测试,我们可以直观的看到对应的静态标记
+
+![vue3 静态标记的内容](./17801587-6a597816a9ae58a1.webp)
+
+上面的模板中前第一个段落是静态固定不变的，而第二个段落的内容绑定的HelloWorld属性，当HelloWorld改变的时候，Vue会生成新的虚拟DOM然后和旧的进行对比。
+
+当视图更新时，只对动态节点部分进行diff运算，减少了资源的损耗。Patchflag是个枚举，取值为1代表这个元素的文本是动态绑定的，取值为2代表元素的class是动态绑定的。
+![vue3 vue2 算法对比](./17801587-7937f3c35d63e825.webp)
+从上图中可以看出 在vue3中如果是静态文本，更新时则不需要对比，只需要对只对动态节点部分进行diff运算，也就是更精准的更新dom;
+
+静态标记枚举了十几个类型,如下：
+
+```
+export const enum PatchFlags {
+  
+  TEXT = 1,// 1 动态的文本节点
+  CLASS = 1 << 1,  // 2 动态的 class
+  STYLE = 1 << 2,  // 4 动态的 style
+  PROPS = 1 << 3,  // 8 动态属性，不包括类名和样式
+  FULL_PROPS = 1 << 4,  // 16 动态 key，当 key 变化时需要完整的 diff 算法做比较
+  HYDRATE_EVENTS = 1 << 5,  // 32 表示带有事件监听器的节点
+  STABLE_FRAGMENT = 1 << 6,   // 64 一个不会改变子节点顺序的 Fragment
+  KEYED_FRAGMENT = 1 << 7, // 128 带有 key 属性的 Fragment
+  UNKEYED_FRAGMENT = 1 << 8, // 256 子节点没有 key 的 Fragment
+  NEED_PATCH = 1 << 9,   // 512  表示只需要non-props修补的元素
+  DYNAMIC_SLOTS = 1 << 10,  // 1024 动态的solt
+  DEV_ROOT_FRAGMENT = 1 << 11, //2048 表示仅因为用户在模板的根级别放置注释而创建的片段。 这是一个仅用于开发的标志，因为注释在生产中被剥离。
+ 
+  //以下两个是特殊标记
+  HOISTED = -1,  // 表示已提升的静态vnode,更新时调过整个子树
+  BAIL = -2 // 指示差异算法应该退出优化模式
+}
+```
+
+2、hoistStatic 静态提升
+
+vue2无论元素是否参与更新，每次都会重新创建然后再渲染。
+
+1. 将静态节点的定义，提升到父作用域，缓存起来
+2. 多个相邻的静态节点，会被合并起来，一起定义，这样就会定义一次，避免多次定义
+
+所以vue3对于不参与更新的元素，会做静态提升，只会被创建一次，在渲染时直接复用即可。
+例如：利用Vue 3 Template Explorer,来直观的感受一下：
+
+```
+<div>
+    <div>共创1</div>
+    <div>共创2</div>
+    <div>{{name}}</div>
+</div>
+```
+
+静态提升之前
+
+```
+export function render(...) {
+    return (
+        _openBlock(),
+        _createBlock('div', null, [
+            _createVNode('div', null, '共创1'),
+            _createVNode('div', null, '共创2'),
+            _createVNode(
+                'div',
+                null,
+                _toDisplayString(_ctx.name),
+                1 /* TEXT */
+            ),
+        ])
+    )
+}
+```
+
+静态提升之后
+
+```
+const _hoisted_1 = /*#__PURE__*/ _createVNode(
+    'div',
+    null,
+    '共创1',
+    -1 /* HOISTED */
+)
+const _hoisted_2 = /*#__PURE__*/ _createVNode(
+    'div',
+    null,
+    '共创2',
+    -1 /* HOISTED */
+)
+
+export function render(...) {
+    return (
+        _openBlock(),
+        _createBlock('div', null, [
+            _hoisted_1,
+            _hoisted_2,
+            _createVNode(
+                'div',
+                null,
+                _toDisplayString(_ctx.name),
+                1 /* TEXT */
+            ),
+        ])
+    )
+}
+```
+
+从以上代码中我们可以看出，\_hoisted\_1 和\_hoisted\_2 两个方法被提升到了渲染函数 render 之外，也就是我们说的静态提升。通过静态提升可以避免每次渲染的时候都要重新创建这些对象，从而大大提高了渲染效率。
+
+3.cacheHandlers 事件侦听器缓存
+vue2.x中，绑定事件每次触发都要重新生成全新的function去更新，cacheHandlers 是Vue3中提供的事件缓存对象，当 cacheHandlers 开启，会自动生成一个内联函数，同时生成一个静态节点。当事件再次触发时，只需从缓存中调用即可，无需再次更新。
+
+默认情况下onClick会被视为动态绑定，所以每次都会追踪它的变化，但是同一个函数没必要追踪变化，直接缓存起来复用即可。
+
+例如：下面我们同样是通过Vue 3 Template Explorer，来看一下事件监听器缓存的作用：
+
+<div>
+    <div @click="todo">做点有趣的事</div>
+</div>
+该段 html 经过编译后变成我们下面的结构(未开启事件监听缓存)：
+
+export function render(...) {
+return (\_openBlock(),\_createBlock('div', null, \[
+\_createVNode('div',{ onClick: \_ctx.todo}, '做点有趣的事', 8 /\* PROPS \*/,
+\['onClick']),
+])
+)
+}
+当开启事件监听器缓存后：
+
+export function render(...) {
+return (\_openBlock(),\_createBlock('div', null, \[
+\_createVNode('div',{
+onClick:    //开启监听后
+\_cache\[1] || (\_cache\[1] = (...args) =>\_ctx.todo(...args)),
+},'做点有趣的事'),
+])
+)
+}
+可以对比开启事件监听缓存前后的代码，转换之后的代码, 大家可能还看不懂, 但是不要紧，我们只需要观察有没有静态标记即可，在Vue3的diff算法中, 只有有静态标记的才会进行比较, 才会进行追踪。
+--------------------------------------------------------------------------------------------------
 
 ## 编译优化原理
 
@@ -2908,7 +3127,7 @@ D. 减少打包体积
 
 **答案：A**
 
----
+***
 
 ### 简答题
 
@@ -2990,7 +3209,7 @@ patch时：只遍历Block Tree的动态节点
 跳过所有静态节点，性能大幅提升
 ```
 
----
+***
 
 ## 组件化与渲染机制
 
@@ -3113,7 +3332,7 @@ defineExpose({
 })
 ```
 
----
+***
 
 ## 组合式API设计
 
@@ -3254,7 +3473,7 @@ function useKeyboard(key: string, handler: () => void) {
 }
 ```
 
----
+***
 
 ## Vue3工程化实践
 
@@ -3311,17 +3530,17 @@ export const useAppStore = defineStore('app', () => {
 
 #### 工程化工具链
 
-| 工具 | 用途 |
-|------|------|
-| Vite | 构建工具 |
-| TypeScript | 类型检查 |
-| Vitest | 单元测试 |
-| Cypress/Playwright | E2E测试 |
-| ESLint + Prettier | 代码规范 |
+| 工具                  | 用途    |
+| ------------------- | ----- |
+| Vite                | 构建工具  |
+| TypeScript          | 类型检查  |
+| Vitest              | 单元测试  |
+| Cypress/Playwright  | E2E测试 |
+| ESLint + Prettier   | 代码规范  |
 | Husky + lint-staged | Git钩子 |
-| GitHub Actions | CI/CD |
+| GitHub Actions      | CI/CD |
 
----
+***
 
 ## 性能优化策略
 
@@ -3391,7 +3610,7 @@ const total = computed(() => items.value.reduce(...))
 const search = useDebounce(query => fetchResults(query), 300)
 ```
 
----
+***
 
 ## 源码分析与设计思想
 
@@ -3404,6 +3623,7 @@ const search = useDebounce(query => fetchResults(query), 300)
 #### 1. 响应式系统的抽象设计
 
 Vue3将响应式系统提取为独立的 `@vue/reactivity` 包，意味着：
+
 - 可以在非Vue项目中使用（如Node.js、React）
 - 可以和任意渲染器组合
 - 设计清晰，职责单一
@@ -3442,7 +3662,7 @@ PatchFlags + Block Tree的设计实现了 **编译时信息指导运行时操作
 
 这种分层架构让每个包职责清晰，便于维护和扩展。
 
----
+***
 
 ## 总结
 
