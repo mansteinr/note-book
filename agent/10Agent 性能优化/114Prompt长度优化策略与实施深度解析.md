@@ -48,24 +48,47 @@ flowchart TB
 ### 1.2 优化的核心目标
 
 ```mermaid
-mindmap
-  root((Prompt优化目标))
-    长度缩减
-      Token消耗降低50%+
-      上下文空间释放
-      成本显著下降
-    功能保持
-      核心指令不丢失
-      任务准确率不降
-      行为一致性保持
-    性能提升
-      响应速度提升
-      Lost in Middle缓解
-      幻觉率降低
-    可维护性
-      结构清晰
-      易于迭代
-      版本可追溯
+flowchart TB
+    ROOT[Prompt优化目标]
+
+    subgraph G1[长度缩减]
+        direction TB
+        G1A[Token消耗降低50%+]
+        G1B[上下文空间释放]
+        G1C[成本显著下降]
+    end
+
+    subgraph G2[功能保持]
+        direction TB
+        G2A[核心指令不丢失]
+        G2B[任务准确率不降]
+        G2C[行为一致性保持]
+    end
+
+    subgraph G3[性能提升]
+        direction TB
+        G3A[响应速度提升]
+        G3B[Lost in Middle缓解]
+        G3C[幻觉率降低]
+    end
+
+    subgraph G4[可维护性]
+        direction TB
+        G4A[结构清晰]
+        G4B[易于迭代]
+        G4C[版本可追溯]
+    end
+
+    ROOT --> G1
+    ROOT --> G2
+    ROOT --> G3
+    ROOT --> G4
+
+    style ROOT fill:#fff3cd,stroke:#d39e00,stroke-width:3px
+    style G1 fill:#d4edda,stroke:#155724
+    style G2 fill:#d1ecf1,stroke:#0c5460
+    style G3 fill:#f8d7da,stroke:#721c24
+    style G4 fill:#e2d6f3,stroke:#4a148c
 ```
 
 
