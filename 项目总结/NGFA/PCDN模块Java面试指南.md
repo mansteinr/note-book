@@ -1287,5 +1287,324 @@ Partition 1 ──→ Consumer A
 Partition 2 ──→ Consumer C
 ```
 
-这样 Partition 1 就不会一直没人消费。
+### Feign 是什么？
 
+Feign 是一个声明式 HTTP 客户端，主要用于微服务之间的接口调用。Feign 把“调用其他服务的 HTTP 接口”封装成 Java 接口，让开发人员可以像调用普通 Java 方法一样调用远程服务。 Feign 最大的价值就是：把远程 HTTP 调用封装起来。
+
+
+```
+@FeignClient(name = "node-service")
+public interface NodeClient {
+
+    @GetMapping("/node/{id}")
+    Node getNode(@PathVariable("id") Long id);
+}
+```
+业务代码直接
+```
+Node node = nodeClient.getNode(10001L);
+```
+
+项目中使用 Feign 主要用于微服务之间的 HTTP 接口调用。
+
+比如 PCDN 项目中，不同业务模块可能拆分成不同的微服务，当一个服务需要获取另一个服务的节点信息、任务信息或者其他业务数据时，我们通过 Feign 定义远程调用接口。
+
+业务代码不需要自己拼接 HTTP URL，也不需要手动处理 HTTP 请求，而是直接调用 Feign Client 的 Java 方法，由 Feign 底层完成 HTTP 请求和响应结果的转换。
+
+所以 Feign 在项目中的主要作用就是简化微服务之间的服务调用，提高代码的可读性和开发效率。
+
+
+### 项目中的微服务架构
+```
+                         PCDN系统
+                            │
+                            ↓
+                     Spring Cloud
+                            │
+          ┌─────────────────┼─────────────────┐
+          ↓                 ↓                 ↓
+       节点服务           任务服务           数据服务
+          │                 │                 │
+          └─────────────────┼─────────────────┘
+                            │
+                       Nacos注册中心
+                            │
+                服务注册 + 服务发现
+                            
+       ┌──────────────────────────────────────┐
+       │                                      │
+       ↓                                      ↓
+    OpenFeign                              Kafka
+       ↓                                      ↓
+   同步服务调用                    Topic → Partition
+                                              ↓
+                                         Consumer
+                                              ↓
+                                       数据处理/清洗
+                                              ↓
+                                         ClickHouse
+```
+
+核心关系可以记成：
+```
+Spring Boot
+    ↓
+开发微服务
+
+Spring Cloud
+    ↓
+微服务治理
+
+Nacos
+    ↓
+服务注册与发现
+
+OpenFeign
+    ↓
+微服务之间同步调用
+
+Kafka
+    ↓
+异步消息、削峰、解耦
+
+ClickHouse
+    ↓
+海量数据存储和分析
+```
+
+### 项目为什么采用微服务？
+我们的 PCDN 项目采用微服务架构，主要是为了实现业务模块之间的解耦。
+
+PCDN 系统涉及节点管理、任务管理、数据处理等不同业务，如果全部放在一个单体应用中，随着业务增长，代码之间的耦合会越来越高，同时不同业务模块的资源需求也不一样。
+
+拆分成微服务以后，每个服务负责相对独立的业务，可以独立开发、部署和扩容。
+
+例如 PCDN 数据处理相关业务的数据量比较大，可以针对数据处理服务单独扩容，而不需要整个系统一起扩容。
+
+同时，服务之间通过 Nacos、OpenFeign 等 Spring Cloud 组件进行服务治理和通信。
+
+
+### Spring Boot 在项目中干什么？
+Spring Boot 的主要作用是快速搭建和运行 Spring 应用，负责项目的启动、自动配置、Bean 管理以及各种组件的整合，让开发者少写配置。
+假设你的项目是一个 Java 微服务：
+```
+                 Spring Boot
+                     │
+       ┌─────────────┼─────────────┐
+       ↓             ↓             ↓
+   Web 服务       数据库        消息队列
+  Controller     MyBatis/JPA      Kafka
+       ↓             ↓             ↓
+     业务逻辑       MySQL/        消息消费
+     Service       ClickHouse
+```
+Spring Boot 相当于整个 Java 应用的基础运行框架。
+
+### 二、1. 负责项目启动
+通常会有一个启动类：
+```
+@SpringBootApplication
+public class Application {
+
+    public static void main(String[] args) {
+        SpringApplication.run(Application.class, args);
+    }
+}
+```
+
+执行：
+```
+main()
+  ↓
+Spring Boot 启动
+  ↓
+创建 Spring 容器
+  ↓
+加载各种 Bean
+  ↓
+启动 Web 服务
+  ↓
+项目运行
+```
+所以你可以理解：Spring Boot 帮我们把整个 Java 项目启动起来。
+
+三、2. 自动配置
+例如你引入spring-boot-starter-web Spring Boot 会自动帮你配置很多 Web 服务需要的东西。
+
+### 四、3. 管理 Bean
+
+```
+@Service
+public class UserService {
+}
+```
+Spring Boot 启动的时候，会扫描这个类，然后把它交给 Spring IoC 容器管理。
+
+Controller：
+```
+@RestController
+public class UserController {
+
+    @Autowired
+    private UserService userService;
+}
+```
+Spring 会自动把 UserService 注入进来。所以：Spring Boot 项目实际上是建立在 Spring IoC 容器之上的。
+
+五、4. 启动 Web 服务
+
+比如：```
+@RestController
+public class UserController {
+
+    @GetMapping("/user")
+    public String getUser() {
+        return "hello";
+    }
+}
+```
+启动 Spring Boot 后，就可以通过 HTTP 请求：
+```
+GET /user
+      ↓
+Tomcat
+      ↓
+Spring MVC
+      ↓
+UserController
+      ↓
+返回结果
+```
+Spring Boot 默认可以使用内嵌的 Tomcat，所以一般不需要单独安装 Tomcat 再部署项目。
+
+### 五、Nacos 在项目中的作用
+
+Nacos 主要用于：
+1. 服务注册与发现
+```
+节点服务
+任务服务
+数据服务
+```
+启动以后向 Nacos 注册：
+```
+节点服务
+  ↓
+Nacos
+
+任务服务
+  ↓
+Nacos
+
+数据服务
+  ↓
+Nacos
+```
+Nacos 中就维护：
+```
+服务名称
+IP地址
+端口
+健康状态
+```
+例如：
+```
+node-service
+
+192.168.1.101:8080
+192.168.1.102:8080
+192.168.1.103:8080
+```
+服务注册：服务告诉 Nacos“我在哪里”。
+服务发现：调用方通过 Nacos 找到“服务在哪里”。
+2. 配置管理（统一管理微服务配置。）
+比如：
+```
+数据库地址
+Kafka地址
+ClickHouse地址
+服务端口
+业务配置
+```
+
+以前可能每个服务自己维护,使用 Nacos 后，可以把配置集中管理,修改配置时，也可以更加方便地统一维护。
+
+
+
+###七、OpenFeign 在项目中的作用
+OpenFeign 是要用于微服务之间同步调用的组件。
+它提供了一个注解 @FeignClient，用于声明一个 OpenFeign 客户端。
+
+```
+@FeignClient(name = "node-service")
+public interface NodeClient {
+
+    @GetMapping("/node/{id}")
+    Node getNode(@PathVariable("id") Long id);
+}
+```
+
+业务代码：
+```
+@Autowired
+Node node = nodeClient.getNode(10001L);
+```
+
+开发人员感觉上就像调用一个普通 Java 方法。实际上底层发生的是：
+```
+Task Service
+     ↓
+OpenFeign
+     ↓
+HTTP请求
+     ↓
+Node Service
+     ↓
+HTTP响应
+     ↓
+OpenFeign
+     ↓
+Node对象
+```
+
+### 八、Nacos + OpenFeign 是怎么配合的？
+
+```
+任务服务
+    ↓
+OpenFeign
+    ↓
+node-service
+    ↓
+Nacos
+    ↓
+找到 Node Service 实例
+    ↓
+HTTP调用
+    ↓
+Node Service
+```
+
+```
+@FeignClient(name = "node-service")
+```
+指定的是：node-service 而不是：         192.168.1.101:8080
+
+Feign 配合服务发现机制，根据服务名找到对应的服务实例，再发起 HTTP 调用。
+
+九、为什么不用 RestTemplate，使用 OpenFeign？
+
+OpenFeign 是声明式的 HTTP 客户端，相比直接使用 RestTemplate 手动构造 HTTP 请求，代码更加简洁。
+
+我们只需要定义一个 Feign Client 接口和对应的请求方法，业务代码就可以像调用本地 Java 方法一样调用远程服务。
+
+同时 OpenFeign 可以和服务发现、负载均衡等 Spring Cloud 能力结合，比较适合微服务之间的服务调用。
+
+### 十、OpenFeign 是不是 RPC？
+OpenFeign 本质上是一个声明式 HTTP 客户端，不是传统意义上的 RPC 框架。它主要通过 HTTP 调用远程服务。
+
+### OpenFeign 调用服务时，如果有多个实例怎么办？
+如果 OpenFeign 调用的服务存在多个实例，Nacos 会维护该服务的实例列表，OpenFeign 通过服务发现获取实例信息，然后结合 Spring Cloud LoadBalancer 进行客户端负载均衡，从多个实例中选择一个进行调用。这样服务调用方不需要关心具体的 IP 和端口，同时可以通过增加服务实例来提高系统的并发处理能力和可用性
+
+### 如果一个微服务挂了怎么办？
+如果一个微服务实例挂掉，Nacos 会通过健康检查和实例状态发现异常，服务调用方通过服务发现获取可用实例，结合 Spring Cloud LoadBalancer 避免调用故障实例。如果整个微服务都不可用，那么 OpenFeign 调用会出现超时或失败，这时候需要通过超时控制、合理重试、熔断和降级等机制进行容灾，避免故障进一步扩散。同时生产环境一般还会通过 Docker、Kubernetes 等平台自动重启或扩容服务实例，恢复服务能力。

@@ -1,2 +1,3 @@
-String是不可变的（每次修改都创建新对象），StringBuilder和StringBuffer是可变的（在原有对象上修改）。
+String是不可变的（每次修改都创建新对象），
+StringBuilder和StringBuffer是可变的（在原有对象上修改）。
 StringBuilder线程不安全但性能高，StringBuffer线程安全但性能稍低。
