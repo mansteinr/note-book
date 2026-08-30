@@ -60,6 +60,161 @@ PCDN Report Java 服务
 
 这里 Java PCDN 模块更多承担 **业务分析和报表服务层** 的职责，而不是所有原始流量都由 Java 实时计算。
 
+Flink 是整个项目的实时数据处理引擎，负责把 Kafka 中持续进入的原始 NetFlow 数据进行实时清洗、关联、聚合和计算，然后将处理结果写入 ClickHouse。PCDN Java 服务主要查询 Flink 已处理好的数据，再进行业务评分和风险等级计算。
+
+
+Kafka 在项目中充当实时流量数据的消息传输和缓冲中心，把上游产生的海量 NetFlow 数据传递给 Flink 和后续系统，实现解耦、削峰和高吞吐处理。
+
+
+### 项目中没有用到redis 如何抗住高并发
+
+我们项目没有把 Redis 作为核心依赖，但系统的高并发处理并不是由单个 Redis 来承担的，而是根据不同类型的压力进行分层处理。实时数据接入层使用 Kafka 进行消息缓冲和削峰，Flink 负责分布式实时计算，ClickHouse 承担海量数据的 OLAP 查询，Java 微服务通过多实例部署和负载均衡进行横向扩展。
+
+PCDN 模块本身主要是查询已经经过 Flink 聚合处理后的 ClickHouse 数据，而不是直接处理海量原始 NetFlow，因此压力主要集中在 ClickHouse 查询层。我们通过预聚合、时间范围限制、分页和减少无效查询来降低压力。Redis 在这个架构中可以用于热点缓存，但并不是整个系统抗高并发的唯一方案
+
+### 项目中没有用到redis 如何抗住高并发
+
+1. Kafka：解决数据接入压力
+```
+高并发数据进入
+        ↓
+      Kafka
+        ↓
+消息暂存
+        ↓
+消费者按能力消费
+```
+
+假设：
+生产速度：100 万条/秒
+消费速度：60 万条/秒
+
+剩余数据：
+40 万条
+   ↓
+暂时积压在 Kafka
+
+所以 Kafka 解决的是：
+```
+突发流量
+    ↓
+削峰填谷
+    ↓
+系统不会因为瞬间高峰直接崩溃
+```
+
+### 2. Flink：分布式并行计算
+Kafka 中的数据通过多个 Partition 分发：
+```
+Kafka
+├── Partition 0
+├── Partition 1
+├── Partition 2
+└── Partition 3
+```
+Flink 可以多个并行实例消费：
+```
+Flink
+├── Task 1
+├── Task 2
+├── Task 3
+└── Task 4
+```
+压力变大时：
+```
+增加 Partition
+       +
+增加 Flink 并行度
+```
+
+这也加横向扩容
+
+因此：  
+
+```
+数据越多
+   ↓
+增加机器
+   ↓
+增加消费者
+   ↓
+提高处理能力
+```
+### 3. Flink 先计算，Java 不直接处理原始数据
+项目更合理的思路：
+```
+100 亿条原始 NetFlow
+        ↓
+      Kafka
+        ↓
+      Flink
+        ↓
+实时聚合
+        ↓
+5分钟 / 小时统计
+        ↓
+ClickHouse
+        ↓
+Java PCDN 查询
+```
+
+Java 查询的已经不是：100亿条原始数据 而是：已经处理好的聚合数据 这实际上就是： 通过预计算降低查询压力。
+
+### ClickHouse：解决海量查询
+
+```
+查询某省
+某时间范围
+某类用户
+流量排名
+PCDN风险等级
+```  
+这属于典型： OLAP 分析型查询
+ClickHouse：
+```
+列式存储
++
+高性能聚合
++
+分区
++
+分布式查询
+```
+适合这种场景。
+
+查询时：
+```
+用户查询
+    ↓
+Java
+    ↓
+ClickHouse
+    ↓
+读取相关列
+    ↓
+返回结果
+```
+而不是而不是 MySQL：
+```
+100 亿条数据
+    ↓
+普通行存数据库
+    ↓
+复杂 GROUP BY
+```
+
+### 面试官问：“为什么项目不用 Redis？”
+
+Redis 主要适合解决热点数据缓存、高频读写、分布式锁等问题，但它并不是所有高并发系统的必选组件。我们项目的数据特点是网络流量数据量大、实时产生、需要聚合分析，因此核心链路使用 Kafka 进行消息削峰，Flink 进行实时计算，ClickHouse 进行海量数据查询。
+
+PCDN 模块的核心数据来自 ClickHouse 的聚合结果，如果所有查询都直接依赖 Redis，反而会增加缓存一致性和内存成本。因此当前架构没有把 Redis 作为核心组件。
+### 配置数据怎么办？
+当前项目没有使用 Redis。对于配置类的低频变化数据，如果后续出现高并发热点访问，我会优先考虑增加本地 Caffeine 缓存，因为模型配置更新频率较低，而且 Java 服务本身可以维护短时间缓存。配置修改后可以通过主动刷新或者消息通知使缓存失效 Caffeine 也可以抗缓存压力，不一定必须 Redis。
+
+### 你们没有 Redis，怎么抗高并发？
+我们项目的高并发主要分为两类：一类是网络流量数据的高吞吐处理，另一类是用户访问查询。对于第一类，我们通过 Kafka 做消息缓冲和削峰，通过 Flink 进行分布式实时计算；对于查询场景，原始数据已经提前经过流处理和聚合，最终存储在 ClickHouse 中，Java 服务主要查询聚合后的数据。
+
+Java 服务采用无状态设计，可以通过多实例横向扩容。查询层通过时间范围、字段裁剪和分页减少单次查询压力。因此 Redis 并不是这个系统抗高并发的核心组件。对于模型配置等热点数据，如果后续访问压力增加，可以增加 Caffeine 或 Redis 缓存。
 ### 第三部分：PCDN 识别模型
 
 模块主要基于以下 6 类特征：
@@ -383,7 +538,7 @@ PCDN Java 查询
 ```
 
 ### 为什么选择 ClickHouse？
-
+OLAP：分析处理（分析数据）
 面试回答：
 
 > 这个场景主要是海量流量数据的聚合分析，查询通常按时间、省份、城市、IP、协议等维度做统计，属于典型 OLAP 场景。ClickHouse 列式存储、压缩率高，对 SUM、GROUP BY 等聚合查询性能较好，比传统 MySQL 更适合。
@@ -715,3 +870,422 @@ WHERE province_code = ?
 > 数据查询层主要使用 ClickHouse，为了避免直接扫描海量原始流量，我们使用聚合表、时间范围过滤、字段裁剪和分页等方式优化查询。对于高频配置数据，可以进一步通过本地缓存减少 Feign 调用。  
 >
 > 这个模块让我对 Java 微服务、OpenFeign、Spring Bean 生命周期、责任链模式、配置驱动设计以及 ClickHouse OLAP 查询都有比较深入的实践理解。
+
+
+
+### PCDN 项目整理
+节点产生数据 → Kafka 接收消息 → Topic 分类 → Partition 分片 → Consumer 消费 → 数据处理 → 数据库落库 → 通过 Kafka 削峰和水平扩展提高并发能力。
+
+### 为什么使用 Kafka？
+PCDN 项目中会有大量节点产生数据，例如节点上线、下线、心跳、流量、任务状态等。
+
+如果这些数据全部通过 HTTP 请求同步处理，并且每次请求都直接操作数据库，那么在节点数量比较多、数据集中上报的时候，数据库会承受比较大的压力。
+
+所以我们引入 Kafka，将部分非实时业务进行异步化。
+
+节点产生的数据先发送到 Kafka，由消费者异步处理和落库。
+
+这样主要解决三个问题：异步解耦、削峰填谷、水平扩展。
+
+### 消息里面放什么？
+比如 PCDN 节点上报：
+```
+{
+  "nodeId": "NODE_10001",
+  "timestamp": 1756500000000,
+  "type": "HEARTBEAT",
+  "status": "ONLINE",
+  "uploadSpeed": 10240,
+  "downloadSpeed": 20480
+}
+```
+可以理解成：
+```
+节点
+ ↓
+产生一条业务数据
+ ↓
+封装成 Kafka Message
+ ↓
+发送 Kafka
+```
+实际项目中消息通常会包含：
+```
+nodeId       节点ID
+messageType  消息类型
+timestamp    时间戳
+data         业务数据
+```
+例如：
+
+```
+{
+    "nodeId": "10001",
+    "messageType": "NODE_STATUS",
+    "timestamp": 1756500000000,
+    "data": {
+        "status": "ONLINE"
+    }
+}
+```
+
+## Topic 是什么？
+Kafka 里面不能把所有消息全部混在一起。所以需要 Topic。你可以把 Topic 理解成：Kafka 中的一条“消息分类通道”。
+Topic 是 Kafka 中的消息分类，每个消息都有一个 Topic。
+Topic 可以将消息分类存储，方便消费者根据 Topic 进行消费。
+
+```
+Kafka
+│
+├── node-heartbeat
+│
+├── node-status
+│
+├── task-result
+│
+└── traffic-report
+```
+不同业务进入不同 Topic。例如节点心跳：
+```
+Node
+ ↓
+node-heartbeat Topic
+```
+
+任务结果：
+```
+Task
+ ↓
+task-result Topic
+```
+这样消费者可以针对不同业务进行处理。
+
+### 四、Partition 是什么？
+这是 Kafka 面试最重要的一个概念。
+
+假设：
+```
+node-heartbeat
+```
+这个 Topic 有：
+```
+Partition 0
+Partition 1
+Partition 2
+Partition 3
+```
+
+那么
+```
+             Topic
+                │
+       node-heartbeat
+                │
+       ┌────────┼────────┐
+       ↓        ↓        ↓
+      P0       P1       P2       P3
+```
+为什么要分 Partition？
+因为如果所有消息只有一个队列：
+```
+100万个消息
+     ↓
+   一个队列
+     ↓
+一个消费者慢慢处理
+```
+吞吐量就比较有限。
+如果拆成多个 Partition：
+```
+             Kafka
+               │
+      ┌────────┼────────┐
+      ↓        ↓        ↓
+     P0       P1       P2
+      ↓        ↓        ↓
+     C0       C1       C2
+```
+就可以并行处理。吞吐量就高了。 Partition 的核心作用就是提高 Kafka 的并行能力和吞吐量。
+
+### 消息怎么进入 Partition？（Kafka 怎么决定一条消息进入哪个 Partition？）
+常见方式是根据 Key。例如：nodeId = 10001
+
+Kafka 可以根据：hash(nodeId) % partition数量
+来决定一条消息进入哪个 Partition。
+
+```
+NODE-10001
+      ↓
+    hash
+      ↓
+Partition 1
+```
+
+这样做还有一个好处：
+```
+NODE-10001
+      ↓
+    hash
+      ↓
+Partition 1
+```
+如果节点ID不变，那么消息就会一直进入 Partition 1。
+```
+同一个 nodeId 的消息可以尽量进入同一个 Partition。
+
+### 六、Consumer 是干什么的？
+Consumer 是 Kafka 中的消息消费者，每个消息都有一个 Consumer。
+Consumer 可以从 Kafka 中消费消息，进行处理。
+Consumer 可以根据 Topic 进行消费，也可以根据 Partition 进行消费。
+Consumer 可以根据 Group 进行消费，也可以根据 Offset 进行消费。
+你的项目可以理解为：
+
+```
+PCDN节点
+   ↓
+Java服务
+   ↓
+Kafka
+   ↓
+Topic
+   ↓
+Partition
+   ↓
+Consumer
+   ↓
+数据处理
+   ↓
+ClickHouse
+```
+例如 PCDN 节点产生大量流量数据：
+```
+节点1 ─┐
+节点2 ─┤
+节点3 ─┤
+节点4 ─┤
+      ↓
+    Kafka
+      ↓
+   Partition
+      ↓
+   Consumer
+      ↓
+   数据处理
+      ↓
+  ClickHouse
+```
+
+Consumer 主要负责：
+
+从 Kafka 获取消息
+解析消息
+对数据进行业务处理
+对数据进行清洗、转换
+批量写入 ClickHouse
+
+### 为什么不直接写 ClickHouse？
+项目中大量 PCDN 节点数据、流量数据、监控数据、统计数据，使用 ClickHouse 是比较符合场景的。 
+如果直接：
+```
+节点
+ ↓
+Java
+ ↓
+ClickHouse
+```
+大量数据同时写入，会形成很大的瞬时压力。
+所以可以：
+```
+节点
+ ↓
+Java
+ ↓
+Kafka
+ ↓
+Topic
+ ↓
+Partition
+ ↓
+Consumer
+ ↓
+数据处理
+ ↓
+ClickHouse
+```
+Kafka 可以先把消息接下来。 削峰填谷
+ClickHouse 负责：海量数据的存储、分析和查询。
+
+### Consumer Group 是什么？
+这是 Kafka 面试非常常问的。
+在消息队列（如Kafka）中，Consumer Group（消费者组） 是一群共同消费一个或多个Topic（主题）的消费者实例的集合。它是实现并行消费和负载均衡的核心机制。
+假设：
+```
+Topic
+│
+├── P0
+├── P1
+├── P2
+└── P3
+```
+有一个 Consumer Group：
+```
+Consumer Group
+│
+├── Consumer 1
+├── Consumer 2
+├── Consumer 3
+└── Consumer 4
+```
+Kafka 可以把 Partition 分配给不同 Consumer：
+
+```
+P0 → Consumer 1
+P1 → Consumer 2
+P2 → Consumer 3
+P3 → Consumer 4
+```
+于是：
+4个消费者
+     ↓
+并行消费
+
+这就是 Kafka 的水平扩展能力。
+
+### 十、如果消息很多怎么办？一个 Consumer 处理不过来。怎么办？
+增加 Consumer：
+```
+Consumer 1
+Consumer 2
+Consumer 3
+Consumer 4
+Consumer 5
+Consumer 6
+```
+同时增加 Partition：
+```
+Partition 4
+Partition 5
+Partition 6
+```
+
+于是：
+```
+Kafka
+ │
+ ├── P0 → C1
+ ├── P1 → C2
+ ├── P2 → C3
+ ├── P3 → C4
+ ├── P4 → C5
+ └── P5 → C6
+ ```
+ 这样就可以提高整体消费能力。
+
+ Kafka 通过 Partition 实现消息分片，通过 Consumer Group 实现消费者水平扩展，从而提高整体吞吐能力。
+
+
+ ## 那 Kafka 最后怎么写数据库？
+ Kafka 本身不会直接写 ClickHouse，中间是由 **Consumer（消费者）**负责。
+
+ 整体流程：
+ ```
+ PCDN节点
+   ↓
+Java服务
+   ↓
+Kafka
+   ↓
+Topic
+   ↓
+Partition
+   ↓
+Consumer
+   ↓
+数据解析/清洗/转换
+   ↓
+批量写入 ClickHouse
+
+ ```
+例如：
+```
+Kafka Consumer
+      ↓
+获取消息
+      ↓
+反序列化
+      ↓
+数据清洗
+      ↓
+数据转换
+      ↓
+批量攒数据
+      ↓
+ClickHouse
+```
+
+### 十三、面试官问：Kafka 会不会丢消息？
+
+Kafka 本身支持消息持久化，并且可以通过副本机制提高可靠性。生产者发送消息时可以根据可靠性要求配置 ACK，Consumer 成功处理消息后再提交 Offset，这样可以降低消息丢失的风险。
+Offset：Offset 中文叫偏移量，用来标识消息在 Partition 中的位置。Consumer 会通过 Offset 记录和提交自己的消费进度，当 Consumer 重启或者发生故障时，可以根据 Offset 从之前的位置继续消费，从而实现消息消费进度的管理。
+
+例如：
+Partition 0
+
+0  1  2  3  4  5  6  7
+         ↑
+       Offset
+```
+Consumer 已经处理到：Offset = 5 那么下次就可以从相应位置继续消费。
+
+可以把 Kafka 最核心的 4 个概念直接记成 Topic（主题） → Partition（分区） → Message（消息） → Offset（消息位置）。
+
+Topic、Partition、Offset 三者关系：
+```
+Topic（主题）
+│
+├── Partition 0（分区）
+│      ├── Offset 0 → 消息A
+│      ├── Offset 1 → 消息B
+│      └── Offset 2 → 消息C
+│
+├── Partition 1（分区）
+│      ├── Offset 0 → 消息D
+│      ├── Offset 1 → 消息E
+│      └── Offset 2 → 消息F
+│
+└── Partition 2（分区）
+       ├── Offset 0 → 消息G
+       └── Offset 1 → 消息H
+```
+注意：Offset 是 Partition 级别的，不是整个 Topic 全局唯一的。
+
+
+### 十四、面试官问：Consumer 挂了怎么办？
+Kafka 一般通过 Consumer Group（消费者组）+ 心跳机制 + Rebalance（重新分配） 来处理。
+
+如果 Kafka Consumer 挂掉，Kafka 会通过心跳机制发现 Consumer 失效，然后触发 Consumer Group 的 Rebalance，把原来由故障 Consumer 负责的 Partition 重新分配给其他 Consumer。新的 Consumer 会根据已经提交的 Offset 继续消费。
+
+但是如果业务处理成功后还没来得及提交 Offset，Consumer 就宕机了，那么消息可能会被重新消费。因此在实际项目中还需要考虑消息重复消费问题，一般通过业务幂等、唯一 ID 等方式保证数据不会重复处理。
+```
+Topic：pcdn-data
+
+Partition 0 ──→ Consumer A
+Partition 1 ──→ Consumer B
+Partition 2 ──→ Consumer C
+```
+假设 Consumer B 挂掉了：
+
+```
+Partition 0 ──→ Consumer A
+Partition 1 ──→ ❌ Consumer B
+Partition 2 ──→ Consumer C
+```
+Kafka 发现 Consumer B 长时间没有心跳，就认为它已经失效。 然后触发 Rebalance（重新分配）：
+```
+Partition 0 ──→ Consumer A
+Partition 1 ──→ Consumer A
+Partition 2 ──→ Consumer C
+```
+
+这样 Partition 1 就不会一直没人消费。
+
