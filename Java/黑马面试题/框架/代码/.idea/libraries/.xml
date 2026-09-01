@@ -1,0 +1,11 @@
+<component name="libraryTable">
+  <library name="代码">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/spring-demo.zip!/" />
+      <root url="jar://$PROJECT_DIR$/mybatis-demo.zip!/" />
+      <root url="jar://$PROJECT_DIR$/ssm-demo.zip!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
