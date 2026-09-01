@@ -5,64 +5,31 @@
 - [高级Vue3工程师面试题](#高级vue3工程师面试题)
   - [目录](#目录)
   - [Vue3响应式原理](#vue3响应式原理)
-    - [选择题](#选择题)
     - [简答题](#简答题)
     - [编程题](#编程题)
   - [Computed实现原理](#computed实现原理)
-    - [选择题](#选择题-1)
-    - [简答题](#简答题-1)
     - [编程题](#编程题-1)
   - [Watch实现原理](#watch实现原理)
-    - [选择题](#选择题-2)
-    - [简答题](#简答题-2)
     - [编程题](#编程题-2)
   - [KeepAlive实现原理](#keepalive实现原理)
-    - [选择题](#选择题-3)
-    - [简答题](#简答题-3)
+    - [选择题](#选择题)
+    - [简答题](#简答题-1)
     - [设计题](#设计题)
   - [Vue3架构与优化](#vue3架构与优化)
-    - [选择题](#选择题-4)
-    - [简答题](#简答题-4)
   - [父子组件生命周期调用顺序](#父子组件生命周期调用顺序)
-    - [选择题](#选择题-5)
-    - [简答题](#简答题-5)
   - [组合式API深入](#组合式api深入)
-    - [选择题](#选择题-6)
-    - [简答题](#简答题-6)
   - [Vue3编译原理](#vue3编译原理)
-    - [选择题](#选择题-7)
-    - [简答题](#简答题-7)
   - [性能优化](#性能优化)
-    - [选择题](#选择题-8)
-    - [简答题](#简答题-8)
   - [项目实战与最佳实践](#项目实战与最佳实践)
-    - [选择题](#选择题-9)
+    - [选择题](#选择题-1)
     - [案例分析题](#案例分析题)
   - [源码阅读与设计思想](#源码阅读与设计思想)
-    - [简答题](#简答题-9)
+    - [简答题](#简答题-2)
   - [总结](#总结)
 
 ---
 
 ## Vue3响应式原理
-
-### 选择题
-
-**1. Vue3响应式系统使用的是以下哪种API？**
-A. Object.defineProperty
-B. Proxy
-C. Object.defineProperty + Proxy
-D. Reflect
-
-**答案：B**
-
-**2. Vue3的ref和reactive的区别描述正确的是？**
-A. ref用于基本类型，reactive用于对象
-B. ref返回的是值本身，reactive返回代理对象
-C. ref底层也是使用reactive实现的
-D. reactive可以用于所有类型
-
-**答案：C**
 
 **3. Vue3响应式系统中，effect函数的主要作用是？**
 A. 收集依赖
@@ -71,14 +38,6 @@ C. 副作用管理
 D. 数据响应化
 
 **答案：C**
-
-**4. 关于Vue3的响应式系统，以下哪个说法是错误的？**
-A. 使用Proxy可以监听对象属性的添加和删除
-B. 直接给对象赋值会丢失响应性
-C. Vue3的响应式系统支持Map和Set
-D. 使用Proxy可以监听数组索引的变化
-
-**答案：B**
 
 ---
 
@@ -355,27 +314,6 @@ countRef.value = 200 // 输出：countRef: 200
 
 ## Computed实现原理
 
-### 选择题
-
-**1. 关于Vue3的computed，以下描述错误的是？**
-A. computed默认是懒执行的
-B. computed具有缓存机制
-C. computed可以设置getter和setter
-D. computed总是会重新计算
-
-**答案：D**
-
-**2. computed的getter函数中访问的响应式数据变化时，会发生什么？**
-A. 立即重新计算
-B. 标记为dirty，下次访问时重新计算
-C. computed值直接更新
-D. 什么都不做
-
-**答案：B**
-
----
-
-### 简答题
 
 **1. 请详细解释Vue3中computed的实现原理，包括懒执行、缓存机制和脏值检测。**
 
@@ -536,28 +474,6 @@ console.log('第三次访问doubleCount:', doubleCount.value) // 重新计算：
 ---
 
 ## Watch实现原理
-
-### 选择题
-
-**1. Vue3中，watch的以下哪个特性是watchEffect不具备的？**
-A. 自动收集依赖
-B. 可以获取旧值
-C. 支持立即执行
-D. 可以手动停止
-
-**答案：B**
-
-**2. 关于watch的deep选项，描述正确的是？**
-A. deep: true会递归监听对象内部变化
-B. deep选项会影响性能，应该尽量避免使用
-C. deep选项仅适用于ref类型
-D. 使用deep选项后，watch一定会执行多次
-
-**答案：A**
-
----
-
-### 简答题
 
 **1. 请详细解释Vue3中watch的实现原理，包括watchEffect、watch的区别和各自的工作机制。**
 
@@ -816,19 +732,6 @@ D. Set
 
 **2. KeepAlive组件使用的缓存淘汰算法是？**
 A. FIFO
-B. LRU
-C. LFU
-D. 随机淘汰
-
-**答案：B**
-
-**3. 被KeepAlive缓存的组件，切换时会触发哪些生命周期钩子？**
-A. created → mounted → unmounted
-B. activated → deactivated
-C. mounted → unmounted
-D. beforeUnmount → unmounted
-
-**答案：B**
 
 ---
 
@@ -1126,36 +1029,6 @@ const AdvancedKeepAlive = {
 
 ## Vue3架构与优化
 
-### 选择题
-
-**1. Vue3相比Vue2，以下哪个不是性能提升的方面？**
-A. 更小的打包体积
-B. 更快的虚拟DOM
-C. 更好的内存管理
-D. 直接操作DOM而不是虚拟DOM
-
-**答案：D**
-
-**2. Vue3的Tree-shaking支持是通过什么实现的？**
-A. 使用CommonJS
-B. 使用ES Modules
-C. 使用AMD
-D. 代码压缩
-
-**答案：B**
-
-**3. 关于Vue3的Patch Flags，描述错误的是？**
-A. 标记节点的动态属性
-B. 可以减少比较范围
-C. 提高diff效率
-D. 只在开发模式使用
-
-**答案：D**
-
----
-
-### 简答题
-
 **1. 请分析Vue3相比Vue2在架构设计、性能优化、开发体验等方面的改进。**
 
 **答案：**
@@ -1202,28 +1075,6 @@ const _hoisted_2 = /*#__PURE__*/_createTextVNode("静态内容")
 
 ## 父子组件生命周期调用顺序
 
-### 选择题
-
-**1. Vue3中，父子组件生命周期的执行顺序是？**
-A. 父beforeCreate → 父created → 子beforeCreate → 子created → 子mounted → 父mounted
-B. 父beforeCreate → 子beforeCreate → 子created → 父created → 子mounted → 父mounted
-C. 子beforeCreate → 子created → 子mounted → 父beforeCreate → 父created → 父mounted
-D. 父beforeCreate → 父created → 父mounted → 子beforeCreate → 子created → 子mounted
-
-**答案：A**
-
-**2. 当父组件更新时，子组件的生命周期执行顺序是？**
-A. 父beforeUpdate → 子beforeUpdate → 子updated → 父updated
-B. 子beforeUpdate → 子updated → 父beforeUpdate → 父updated
-C. 父beforeUpdate → 父updated → 子beforeUpdate → 子updated
-D. 只有父组件执行生命周期，子组件不执行
-
-**答案：A**
-
----
-
-### 简答题
-
 **1. 请详细说明Vue3中父子组件生命周期的完整调用顺序。**
 
 **答案：**
@@ -1261,36 +1112,6 @@ Vue3 中父子组件生命周期的执行遵循"**从外到内，再从内到外
 ---
 
 ## 组合式API深入
-
-### 选择题
-
-**1. 组合式API中的ref和toRef/toRefs有什么区别？**
-A. 没有区别
-B. ref是响应式，toRef不是
-C. toRef用于保持与源对象的响应式连接
-D. ref只能用于基本类型
-
-**答案：C**
-
-**2. 关于provide/inject的描述，正确的是？**
-A. 只能在setup()中使用
-B. provide传递的数据在子组件中修改会影响父组件
-C. inject的数据默认是响应式的
-D. provide/inject只能传基本类型
-
-**答案：B**
-
-**3. customHook的最佳实践不包括？**
-A. 以use开头命名
-B. 返回ref对象
-C. 包含完整的组件模板
-D. 可以组合其他hook
-
-**答案：C**
-
----
-
-### 简答题
 
 **1. 请谈谈组合式API相比选项式API的优势，以及如何设计可复用的custom hook。**
 
@@ -1379,36 +1200,6 @@ function useFetch(url, options = {}) {
 
 ## Vue3编译原理
 
-### 选择题
-
-**1. Vue3的template编译不包括以下哪个阶段？**
-A. parse（解析）
-B. transform（转换）
-C. generate（生成）
-D. execute（执行）
-
-**答案：D**
-
-**2. Vue3的静态提升优化的主要作用是？**
-A. 减少内存使用
-B. 避免重复创建相同节点
-C. 提高渲染性能
-D. 减少代码体积
-
-**答案：B**
-
-**3. PatchFlags的作用是？**
-A. 标记哪些元素是静态的
-B. 标记节点的动态属性，优化diff
-C. 提供调试信息
-D. 标记组件类型
-
-**答案：B**
-
----
-
-### 简答题
-
 **1. 请解释Vue3的template编译流程，包括parse、transform、generate三个阶段的具体工作。**
 
 **答案：**
@@ -1492,43 +1283,13 @@ const PatchFlags = {
 }
 ```
 
-2. **静态提升**：将静态内容提升到render函数外，避免重复创建
-3. **事件缓存**：内联事件处理器缓存
-4. **v-once**：只渲染一次的标记
+1. **静态提升**：将静态内容提升到render函数外，避免重复创建
+2. **事件缓存**：内联事件处理器缓存
+3. **v-once**：只渲染一次的标记
 
 ---
 
 ## 性能优化
-
-### 选择题
-
-**1. 以下哪个不是Vue3的性能优化策略？**
-A. 虚拟DOM优化
-B. 响应式系统优化
-C. 编译时优化
-D. 自动删除未使用的代码
-
-**答案：D**
-
-**2. v-for渲染列表时，key的最佳实践是？**
-A. 使用索引
-B. 使用唯一且稳定的id
-C. 使用随机数
-D. 不使用key
-
-**答案：B**
-
-**3. 关于Vue3组件更新优化，描述正确的是？**
-A. 每次都完整重新渲染
-B. 使用PatchFlags只比较动态部分
-C. 组件总是重新渲染
-D. 只比较props变化
-
-**答案：B**
-
----
-
-### 简答题
 
 **1. Vue3应用的常见性能优化策略有哪些？请从编译时、运行时、架构设计等层面说明。**
 
