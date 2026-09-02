@@ -802,77 +802,73 @@ window.parent
 ---
 
 ## 18.1 Props
+Props 方式主要用于主应用向子应用传递初始化数据或回调函数。它类似于给组件传递 props，是一种简单、直接的单向数据流方式
 
-适合：
+$once = 只监听一次（自动销毁）
 
-```text
-主应用
-   ↓
-子应用
+$off = 手动取消监听（销毁指定的监听器）
+
+
+
+主应用侧代码示例 (以Vue为例)：
+```
+<WujieVue
+  name="sub-app"
+  url="//example.com/sub-app"
+  :props="{ 
+    userInfo: { name: 'Alice', role: 'admin' },
+    jumpTo: jumpFunction 
+  }"
+></WujieVue>
 ```
 
-例如：
+子应用侧代码示例：
+```
+// 子应用通过 window.$wujie.props 访问
+const userInfo = window.$wujie?.props.userInfo;
+console.log(userInfo.name); // 输出 'Alice'
 
-```javascript
-props: {
-    userId: 1001,
-    token: 'xxx'
-}
+// 调用主应用传递来的函数
+window.$wujie?.props.jumpTo('/new-page'); 
 ```
 
-子应用读取：
-
-```javascript
-$wujie.props.userId
-```
-
-适合：
-
-```text
-初始化配置
-用户信息
-权限信息
-业务参数
-```
 
 ---
 
 # 十九、EventBus
 
-如果多个应用之间需要通信：
+Event Bus 是 Wujie 中最核心、最灵活的通信方式，它采用发布-订阅模式，能轻松实现主子应用间、子应用与子应用间的双向通信
+其核心API包含 $on、$off、$once、$emit 等，用法类似于一个标准的事件总线
 
-```text
-                 EventBus
-              /     |      \
-             /      |       \
-          主应用    A        B
+主应用侧代码示例：
 ```
+// 从 wujie 包中导入 bus 实例
+import { bus } from 'wujie';
 
-例如：
+// 1. 监听来自子应用的事件
+bus.$on('dataUpdate', (data) => {
+  console.log('收到子应用的数据:', data);
+});
 
-```text
-用户登录
-订单状态变化
-权限变化
-主题变化
-语言变化
+// 2. 向所有子应用发送事件
+bus.$emit('globalCommand', { action: 'refresh' });
 ```
-
-可以通过事件通知。
-
-但是要注意：
-
-```text
-不要让EventBus变成全局垃圾场
+子应用侧代码示例：
 ```
+// 子应用通过 window.$wujie.bus 访问总线
 
-应该：
+// 1. 监听来自主应用或其他子应用的事件
+window.$wujie.bus.$on('globalCommand', (command) => {
+  if (command.action === 'refresh') {
+    // 执行刷新逻辑
+  }
+});
 
-```text
-事件命名规范
-事件生命周期管理
-及时取消监听
-避免循环依赖
+// 2. 向主应用发送事件
+window.$wujie.bus.$emit('dataUpdate', { key: 'value' });
+
+// 3. 向其他子应用发送事件（通过同一个 bus 实现）
+window.$wujie.bus.$emit('crossAppEvent', { target: 'appB', data: 'hello' });
 ```
 
 ---
@@ -918,7 +914,20 @@ event.origin
 
 ---
 
-# 二十一、Wujie + WebSocket
+# window 通信
+
+由于子应用运行的iframe的src和主应用是同域的，所以相互可以直接通信  
+主应用调用子应用的全局数据
+```
+window.document.querySelector("iframe[name=子应用id]").contentWindow.xxx;
+
+```
+子应用调用主应用的全局数据:
+```
+window.parent.xxx;
+```
+
+
 
 实际项目中一个比较典型的问题：
 
