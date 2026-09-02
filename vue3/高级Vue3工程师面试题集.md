@@ -18,54 +18,8 @@
 
 ## Vue3响应式系统
 
-### 选择题
-
-**1. Vue3响应式系统的核心底层API是？**
-A. Object.defineProperty
-B. Proxy + Reflect
-C. Object.observe
-D. Proxy
-
-**答案：B**
-
-**2. 关于Vue3的Proxy实现响应式，描述正确的是？**
-A. Proxy只能代理对象的第一层属性
-B. Proxy代理后所有操作都会经过拦截器
-C. Proxy不需要配合Reflect使用
-D. Proxy无法监听数组变化
-
-**答案：B**
-
-**3. Vue3中reactive和ref的关系描述正确的是？**
-A. ref基于Object.defineProperty实现
-B. reactive可以处理基本类型
-C. ref的value如果是对象，内部会调用reactive处理
-D. ref和reactive没有任何关系
-
-**答案：C**
-
-**4. Vue3响应式系统中，effect函数的执行时机是？**
-A. 创建时立即执行一次
-B. 只在依赖变化时执行
-C. 创建时执行，依赖变化时也执行
-D. 由开发者手动调用
-
-**答案：C**
-
----
-
-### 简答题
-
 **题目1：请详细阐述Vue3响应式系统的完整实现，从数据创建到视图更新的全流程。**
 
-**考察重点：**
-- Proxy拦截机制
-- 依赖收集与track函数
-- 触发更新与trigger函数
-- effect副作用系统
-- 懒代理实现
-
-**参考答案：**
 
 Vue3响应式系统基于 **Proxy + Reflect + Effect系统** 实现，完整流程如下：
 
@@ -261,23 +215,9 @@ function cleanup(effectFn) {
 3. effect执行render → 访问响应式数据 → track收集
 4. 生成新vnode树 → diff算法 → patch DOM
 ```
-
-**评分标准：**
-- 能说明Proxy的基本使用：60分
-- 能完整说明track和trigger流程：80分
-- 能解释懒代理、WeakMap选择、栈管理等细节：100分
-
 ---
 
 **题目2：请详细对比Vue2和Vue3响应式系统的区别。**
-
-**考察重点：**
-- Object.defineProperty vs Proxy
-- 数组监听实现
-- 对象深层监听
-- 初始化性能
-
-**参考答案：**
 
 | 对比维度 | Vue2 (defineProperty) | Vue3 (Proxy) |
 |---------|----------------------|-------------|
