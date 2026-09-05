@@ -10,69 +10,92 @@
 
 ## 目录
 
-- [一、概述：为什么不能直接杀死线程](#一概述为什么不能直接杀死线程)
-
-  - [Q1. Thread.stop() 为什么被弃用？](#q1-threadstop-为什么被弃用)
-
-  - [Q2. 协作式停止的核心思想？](#q2-协作式停止的核心思想)
-
-- [二、方式一：volatile 标志位](#二方式一volatile-标志位)
-
-  - [Q3. 如何用 volatile 标志位停止线程？](#q3-如何用-volatile-标志位停止线程)
-
-  - [Q4. volatile 标志位的局限？](#q4-volatile-标志位的局限)
-
-- [三、方式二：interrupt 中断机制](#三方式二interrupt-中断机制)
-
-  - [Q5. interrupt() 方法的原理？](#q5-interrupt-方法的原理)
-
-  - [Q6. interrupted() 和 isInterrupted() 的区别？](#q6-interrupted-和-isinterrupted-的区别)
-
-  - [Q7. 如何正确响应中断？](#q7-如何正确响应中断)
-
-  - [Q8. 如何停止阻塞中的线程？](#q8-如何停止阻塞中的线程)
-
-- [四、方式三：Future.cancel()](#四方式三futurecancel)
-
-  - [Q9. Future.cancel(boolean) 如何工作？](#q9-futurecancelboolean-如何工作)
-
-  - [Q10. cancel(true) 不生效的原因？](#q10-canceltrue-不生效的原因)
-
-- [五、方式四：线程池关闭](#五方式四线程池关闭)
-
-  - [Q11. shutdown() 和 shutdownNow() 的区别？](#q11-shutdown-和-shutdownnow-的区别)
-
-  - [Q12. 如何优雅关闭线程池？](#q12-如何优雅关闭线程池)
-
-  - [Q13. awaitTermination 的作用？](#q13-awaittermination-的作用)
-
-- [六、方式五：毒丸模式（Poison Pill）](#六方式五毒丸模式poison-pill)
-
-  - [Q14. 毒丸模式的原理与实现？](#q14-毒丸模式的原理与实现)
-
-- [七、阻塞 IO 与特殊场景](#七阻塞-io-与特殊场景)
-
-  - [Q15. 如何停止阻塞在 Socket IO 的线程？](#q15-如何停止阻塞在-socket-io-的线程)
-
-  - [Q16. 如何停止阻塞在锁上的线程？](#q16-如何停止阻塞在锁上的线程)
-
-- [八、JVM 关闭与 Shutdown Hook](#八jvm-关闭与-shutdown-hook)
-
-  - [Q17. Shutdown Hook 的作用与使用？](#q17-shutdown-hook-的作用与使用)
-
-- [九、综合方案与最佳实践](#九综合方案与最佳实践)
-
-  - [Q18. 各方案对比与选型？](#q18-各方案对比与选型)
-
-  - [Q19. 优雅停机完整方案？](#q19-优雅停机完整方案)
-
-- [十、速答与踩坑总结](#十速答与踩坑总结)
-
-  - [10.1 速答卡片](#101-速答卡片)
-
-  - [10.2 实战踩坑 10 例](#102-实战踩坑-10-例)
-
-  - [10.3 复习优先级表](#103-复习优先级表)
+- [Java 关闭线程的方式详解](#java-关闭线程的方式详解)
+  - [目录](#目录)
+  - [一、概述：为什么不能直接杀死线程](#一概述为什么不能直接杀死线程)
+    - [Q1. Thread.stop() 为什么被弃用？](#q1-threadstop-为什么被弃用)
+      - [核心答案](#核心答案)
+      - [三大问题](#三大问题)
+      - [数据不一致示例](#数据不一致示例)
+    - [Q2. 协作式停止的核心思想？](#q2-协作式停止的核心思想)
+      - [核心思想](#核心思想)
+      - [协作式停止的三大要素](#协作式停止的三大要素)
+  - [二、方式一：volatile 标志位](#二方式一volatile-标志位)
+    - [Q3. 如何用 volatile 标志位停止线程？](#q3-如何用-volatile-标志位停止线程)
+      - [核心原理](#核心原理)
+      - [代码示例](#代码示例)
+      - [封装为可复用的 Worker](#封装为可复用的-worker)
+    - [Q4. volatile 标志位的局限？](#q4-volatile-标志位的局限)
+      - [阻塞场景下 volatile 失效](#阻塞场景下-volatile-失效)
+  - [三、方式二：interrupt 中断机制](#三方式二interrupt-中断机制)
+    - [Q5. interrupt() 方法的原理？](#q5-interrupt-方法的原理)
+      - [核心答案](#核心答案-1)
+      - [interrupt 的行为](#interrupt-的行为)
+      - [中断标记流转](#中断标记流转)
+    - [Q6. interrupted() 和 isInterrupted() 的区别？](#q6-interrupted-和-isinterrupted-的区别)
+      - [示例](#示例)
+    - [Q7. 如何正确响应中断？](#q7-如何正确响应中断)
+      - [核心原则](#核心原则)
+      - [正确写法](#正确写法)
+      - [错误写法](#错误写法)
+    - [Q8. 如何停止阻塞中的线程？](#q8-如何停止阻塞中的线程)
+      - [阻塞在 sleep / wait / join](#阻塞在-sleep--wait--join)
+      - [阻塞在 BlockingQueue](#阻塞在-blockingqueue)
+      - [阻塞在 Lock.lockInterruptibly()](#阻塞在-locklockinterruptibly)
+  - [四、方式三：Future.cancel()](#四方式三futurecancel)
+    - [Q9. Future.cancel(boolean) 如何工作？](#q9-futurecancelboolean-如何工作)
+      - [核心答案](#核心答案-2)
+      - [状态流转](#状态流转)
+      - [使用示例](#使用示例)
+      - [cancel 返回值](#cancel-返回值)
+      - [cancel 后的查询](#cancel-后的查询)
+    - [Q10. cancel(true) 不生效的原因？](#q10-canceltrue-不生效的原因)
+      - [示例：cancel 不生效](#示例cancel-不生效)
+      - [长耗时任务的取消点设计](#长耗时任务的取消点设计)
+  - [五、方式四：线程池关闭](#五方式四线程池关闭)
+    - [Q11. shutdown() 和 shutdownNow() 的区别？](#q11-shutdown-和-shutdownnow-的区别)
+      - [流程图](#流程图)
+    - [Q12. 如何优雅关闭线程池？](#q12-如何优雅关闭线程池)
+      - [标准模板](#标准模板)
+      - [使用](#使用)
+      - [Spring Boot 中自动关闭](#spring-boot-中自动关闭)
+    - [Q13. awaitTermination 的作用？](#q13-awaittermination-的作用)
+      - [核心答案](#核心答案-3)
+      - [返回值](#返回值)
+      - [使用场景](#使用场景)
+      - [与 shutdown 的配合](#与-shutdown-的配合)
+  - [六、方式五：毒丸模式（Poison Pill）](#六方式五毒丸模式poison-pill)
+    - [Q14. 毒丸模式的原理与实现？](#q14-毒丸模式的原理与实现)
+      - [核心原理](#核心原理-1)
+      - [适用场景](#适用场景)
+      - [代码实现](#代码实现)
+      - [多消费者场景](#多消费者场景)
+      - [优缺点](#优缺点)
+  - [七、阻塞 IO 与特殊场景](#七阻塞-io-与特殊场景)
+    - [Q15. 如何停止阻塞在 Socket IO 的线程？](#q15-如何停止阻塞在-socket-io-的线程)
+      - [问题](#问题)
+      - [解决方案](#解决方案)
+    - [Q16. 如何停止阻塞在锁上的线程？](#q16-如何停止阻塞在锁上的线程)
+      - [问题](#问题-1)
+      - [解决方案：用 ReentrantLock.lockInterruptibly()](#解决方案用-reentrantlocklockinterruptibly)
+      - [对比](#对比)
+  - [八、JVM 关闭与 Shutdown Hook](#八jvm-关闭与-shutdown-hook)
+    - [Q17. Shutdown Hook 的作用与使用？](#q17-shutdown-hook-的作用与使用)
+      - [核心答案](#核心答案-4)
+      - [注册 Shutdown Hook](#注册-shutdown-hook)
+      - [Shutdown Hook 触发时机](#shutdown-hook-触发时机)
+      - [注意事项](#注意事项)
+  - [九、综合方案与最佳实践](#九综合方案与最佳实践)
+    - [Q18. 各方案对比与选型？](#q18-各方案对比与选型)
+      - [选型决策](#选型决策)
+    - [Q19. 优雅停机完整方案？](#q19-优雅停机完整方案)
+      - [完整流程](#完整流程)
+      - [实现代码](#实现代码)
+      - [Spring Boot 配置](#spring-boot-配置)
+  - [十、速答与踩坑总结](#十速答与踩坑总结)
+    - [10.1 速答卡片](#101-速答卡片)
+    - [10.2 实战踩坑 10 例](#102-实战踩坑-10-例)
+    - [10.3 复习优先级表](#103-复习优先级表)
 
 ***
 
@@ -283,10 +306,10 @@ public void run() {
 ```mermaid
 stateDiagram-v2
     [*] --> Normal: 线程正常
-    Normal --> Interrupted: interrupt()<br/>中断标记=true
-    Interrupted --> Normal: interrupted()<br/>返回true并清除标记
-    Interrupted --> CheckFailed: isInterrupted()<br/>返回true不清除
-    Interrupted --> Exception: 阻塞方法<br/>抛InterruptedException并清除标记
+    Normal --> Interrupted: interrupt() 设置中断标记=true
+    Interrupted --> Normal: interrupted() 返回true并清除标记
+    Interrupted --> CheckFailed: isInterrupted() 返回true不清除
+    Interrupted --> Exception: 阻塞方法抛InterruptedException并清除标记
 ```
 
 ***
