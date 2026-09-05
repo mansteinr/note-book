@@ -1,0 +1,12 @@
+server:
+  port: ${port:8081}
+spring:
+  application:
+    name: designpattern-demo
+login:
+  types:
+    account: accountGranter
+    sms: smsGranter
+    we_chat: weChatGranter
+logging:
+  config: classpath:logback-spring.xml
