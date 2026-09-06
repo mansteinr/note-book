@@ -10,95 +10,174 @@
 
 ## 目录
 
-- [一、Vue3 在 Hybrid 中的定位与架构](#一vue3-在-hybrid-中的定位与架构)
-
-  - [Q1. Vue3 为什么适合 Hybrid 开发？与 Vue2 对比优势？](#q1-vue3-为什么适合-hybrid-开发与-vue2-对比优势)
-
-  - [Q2. Vue3 在 Hybrid App 中的典型架构设计？](#q2-vue3-在-hybrid-app-中的典型架构设计)
-
-  - [Q3. Vue3 应用在 WebView 中的启动流程？](#q3-vue3-应用在-webview-中的启动流程)
-
-  - [Q4. Vue3 Composition API 在 Hybrid 中的优势？](#q4-vue3-composition-api-在-hybrid-中的优势)
-
-  - [Q5. Vue3 的 Tree Shaking 与 Hybrid 包体积优化？](#q5-vue3-的-tree-shaking-与-hybrid-包体积优化)
-
-- [二、JSBridge 与 Vue3 结合](#二jsbridge-与-vue3-结合)
-
-  - [Q6. 如何封装一个 Vue3 可用的 JSBridge（useBridge Hook）？](#q6-如何封装一个-vue3-可用的-jsbridgeusebridge-hook)
-
-  - [Q7. 如何把 Native 回调转为 Vue3 响应式数据？](#q7-如何把-native-回调转为-vue3-响应式数据)
-
-  - [Q8. 如何在 Vue3 组件中统一处理 Bridge 调用的 Loading 和错误？](#q8-如何在-vue3-组件中统一处理-bridge-调用的-loading-和错误)
-
-  - [Q9. 如何设计 Vue3 中的 Bridge 插件（Vue Plugin）？](#q9-如何设计-vue3-中的-bridge-插件vue-plugin)
-
-  - [Q10. Native 主动推送消息如何与 Vue3 响应式系统打通？](#q10-native-主动推送消息如何与-vue3-响应式系统打通)
-
-- [三、Vue3 路由在 WebView 中的坑](#三vue3-路由在-webview-中的坑)
-
-  - [Q11. Vue Router 在 WebView 中用 hash 还是 history 模式？](#q11-vue-router-在-webview-中用-hash-还是-history-模式)
-
-  - [Q12. WebView 返回键（物理返回 / 手势返回）如何与 Vue Router 集成？](#q12-webview-返回键物理返回--手势返回如何与-vue-router-集成)
-
-  - [Q13. 多 WebView 模式下 Vue Router 的状态同步问题？](#q13-多-webview-模式下-vue-router-的状态同步问题)
-
-  - [Q14. 离线包场景下 Vue Router 的 base 路径如何配置？](#q14-离线包场景下-vue-router-的-base-路径如何配置)
-
-  - [Q15. Vue Router 懒加载与 WebView 离线包的协同？](#q15-vue-router-懒加载与-webview-离线包的协同)
-
-- [四、状态管理与响应式](#四状态管理与响应式)
-
-  - [Q16. Pinia 在 Hybrid 中的优势与使用？](#q16-pinia-在-hybrid-中的优势与使用)
-
-  - [Q17. 如何在 Pinia 中持久化状态到本地存储？](#q17-如何在-pinia-中持久化状态到本地存储)
-
-  - [Q18. Vue3 响应式原理（Proxy）在 Hybrid 中的兼容性？](#q18-vue3-响应式原理proxy在-hybrid-中的兼容性)
-
-  - [Q19. 如何在 Hybrid 中管理全局登录态与 Token？](#q19-如何在-hybrid-中管理全局登录态与-token)
-
-- [五、Vue3 性能在 Hybrid 中的优化](#五vue3-性能在-hybrid-中的优化)
-
-  - [Q20. Vue3 首屏优化在 Hybrid 中的特殊手段？](#q20-vue3-首屏优化在-hybrid-中的特殊手段)
-
-  - [Q21. 如何用 v-memo / v-once 优化长列表在 WebView 中的渲染？](#q21-如何用-v-memo--v-once-优化长列表在-webview-中的渲染)
-
-  - [Q22. Vue3 异步组件 defineAsyncComponent 与 WebView 加载？](#q22-vue3-异步组件-defineasynccomponent-与-webview-加载)
-
-  - [Q23. 如何避免 Vue3 重渲染导致 WebView 卡顿？](#q23-如何避免-vue3-重渲染导致-webview-卡顿)
-
-  - [Q24. Vue3 KeepAlive 在 Hybrid 页面切换中的使用？](#q24-vue3-keepalive-在-hybrid-页面切换中的使用)
-
-- [六、Vue3 生命周期与 WebView 事件](#六vue3-生命周期与-webview-事件)
-
-  - [Q25. Vue3 生命周期与 WebView 生命周期的对应关系？](#q25-vue3-生命周期与-webview-生命周期的对应关系)
-
-  - [Q26. WebView 页面销毁时 Vue3 组件的清理（定时器/监听/订阅）？](#q26-webview-页面销毁时-vue3-组件的清理定时器监听订阅)
-
-  - [Q27. 如何监听 WebView 的可见性变化（pagehide / visibilitychange）？](#q27-如何监听-webview-的可见性变化pagehide--visibilitychange)
-
-- [七、TypeScript 与工程化](#七typescript-与工程化)
-
-  - [Q28. Vue3 + TS 在 Hybrid 中的类型定义实践？](#q28-vue3--ts-在-hybrid-中的类型定义实践)
-
-  - [Q29. Vite + Vue3 + 多入口打包离线包配置？](#q29-vite--vue3--多入口打包离线包配置)
-
-  - [Q30. 如何在 Vue3 中做环境判断（H5 / Hybrid / 小程序）？](#q30-如何在-vue3-中做环境判断h5--hybrid--小程序)
-
-- [八、综合实战题](#八综合实战题)
-
-  - [Q31. 设计一个 Vue3 + Hybrid 的通用支付组件？](#q31-设计一个-vue3--hybrid-的通用支付组件)
-
-  - [Q32. 设计一个 Vue3 的 Hybrid 路由守卫 + 登录态校验？](#q32-设计一个-vue3-的-hybrid-路由守卫--登录态校验)
-
-  - [Q33. 设计一个 Vue3 + Bridge 的图片上传组件？](#q33-设计一个-vue3--bridge-的图片上传组件)
-
-- [九、高频速答与踩坑总结](#九高频速答与踩坑总结)
-
-  - [9.1 速答卡片（20 秒一题）](#91-速答卡片20-秒一题)
-
-  - [9.2 实战踩坑 10 例](#92-实战踩坑-10-例)
-
-  - [9.3 复习优先级表](#93-复习优先级表)
+- [H5 Hybrid + Vue3 混合开发高频面试题与详细回答](#h5-hybrid--vue3-混合开发高频面试题与详细回答)
+  - [目录](#目录)
+  - [一、Vue3 在 Hybrid 中的定位与架构](#一vue3-在-hybrid-中的定位与架构)
+    - [Q1. Vue3 为什么适合 Hybrid 开发？与 Vue2 对比优势？](#q1-vue3-为什么适合-hybrid-开发与-vue2-对比优势)
+      - [Vue3 相比 Vue2 的核心优势](#vue3-相比-vue2-的核心优势)
+      - [为什么 Proxy 对 Hybrid 更重要？](#为什么-proxy-对-hybrid-更重要)
+      - [包体积对比（影响 Hybrid 首屏）](#包体积对比影响-hybrid-首屏)
+    - [Q2. Vue3 在 Hybrid App 中的典型架构设计？](#q2-vue3-在-hybrid-app-中的典型架构设计)
+      - [架构全景](#架构全景)
+      - [目录结构](#目录结构)
+      - [main.ts 入口](#maints-入口)
+    - [Q3. Vue3 应用在 WebView 中的启动流程？](#q3-vue3-应用在-webview-中的启动流程)
+      - [启动优化要点](#启动优化要点)
+    - [Q4. Vue3 Composition API 在 Hybrid 中的优势？](#q4-vue3-composition-api-在-hybrid-中的优势)
+      - [逻辑复用：Bridge 逻辑抽成 Hook](#逻辑复用bridge-逻辑抽成-hook)
+      - [关注点聚合](#关注点聚合)
+      - [更好的 Tree Shaking](#更好的-tree-shaking)
+    - [Q5. Vue3 的 Tree Shaking 与 Hybrid 包体积优化？](#q5-vue3-的-tree-shaking-与-hybrid-包体积优化)
+      - [Vue3 的 Tree Shaking 支持](#vue3-的-tree-shaking-支持)
+      - [构建产物对比](#构建产物对比)
+      - [Hybrid 包体积优化策略](#hybrid-包体积优化策略)
+      - [Vite 配置](#vite-配置)
+      - [路由懒加载](#路由懒加载)
+  - [二、JSBridge 与 Vue3 结合](#二jsbridge-与-vue3-结合)
+    - [JSBridge 通信原理（前置基础）](#jsbridge-通信原理前置基础)
+      - [为什么需要 JSBridge](#为什么需要-jsbridge)
+      - [双向通信全景](#双向通信全景)
+      - [JS → Native 的三种实现方式](#js--native-的三种实现方式)
+      - [Native → JS 的实现方式](#native--js-的实现方式)
+      - [回调配对机制：callbackId + Promise](#回调配对机制callbackid--promise)
+      - [消息协议约定](#消息协议约定)
+      - [安全设计](#安全设计)
+    - [Q6. 如何封装一个 Vue3 可用的 JSBridge（useBridge Hook）？](#q6-如何封装一个-vue3-可用的-jsbridgeusebridge-hook)
+      - [核心设计](#核心设计)
+      - [Bridge 核心层](#bridge-核心层)
+      - [useBridge Hook](#usebridge-hook)
+      - [业务 composables](#业务-composables)
+      - [组件中使用](#组件中使用)
+    - [Q7. 如何把 Native 回调转为 Vue3 响应式数据？](#q7-如何把-native-回调转为-vue3-响应式数据)
+      - [场景：Native 主动推送（如定位更新、网络变化）](#场景native-主动推送如定位更新网络变化)
+      - [响应式封装：useBridgeEvent](#响应式封装usebridgeevent)
+      - [使用示例：监听网络变化](#使用示例监听网络变化)
+      - [使用示例：监听定位更新](#使用示例监听定位更新)
+    - [Q8. 如何在 Vue3 组件中统一处理 Bridge 调用的 Loading 和错误？](#q8-如何在-vue3-组件中统一处理-bridge-调用的-loading-和错误)
+      - [方案1：Hook 统一管理](#方案1hook-统一管理)
+      - [方案2：全局错误处理（app.config.errorHandler）](#方案2全局错误处理appconfigerrorhandler)
+      - [方案3：全局 Loading（Pinia store）](#方案3全局-loadingpinia-store)
+    - [Q9. 如何设计 Vue3 中的 Bridge 插件（Vue Plugin）？](#q9-如何设计-vue3-中的-bridge-插件vue-plugin)
+      - [插件实现](#插件实现)
+      - [组件中使用](#组件中使用-1)
+    - [Q10. Native 主动推送消息如何与 Vue3 响应式系统打通？](#q10-native-主动推送消息如何与-vue3-响应式系统打通)
+      - [架构](#架构)
+      - [完整实现：全局事件总线 + Pinia 同步](#完整实现全局事件总线--pinia-同步)
+      - [Pinia 同步原生状态](#pinia-同步原生状态)
+      - [组件中使用响应式原生数据](#组件中使用响应式原生数据)
+  - [三、Vue3 路由在 WebView 中的坑](#三vue3-路由在-webview-中的坑)
+    - [Q11. Vue Router 在 WebView 中用 hash 还是 history 模式？](#q11-vue-router-在-webview-中用-hash-还是-history-模式)
+      - [核心区别](#核心区别)
+      - [为什么 Hybrid 推荐 hash 模式？](#为什么-hybrid-推荐-hash-模式)
+      - [hash 模式配置](#hash-模式配置)
+      - [history 模式（需 Native 配合）](#history-模式需-native-配合)
+    - [Q12. WebView 返回键（物理返回 / 手势返回）如何与 Vue Router 集成？](#q12-webview-返回键物理返回--手势返回如何与-vue-router-集成)
+      - [方案：Native 调用 JS 判断是否可返回](#方案native-调用-js-判断是否可返回)
+      - [JS 端实现](#js-端实现)
+      - [Native 端实现（Android）](#native-端实现android)
+      - [Vue Router 4 中判断可返回](#vue-router-4-中判断可返回)
+    - [Q13. 多 WebView 模式下 Vue Router 的状态同步问题？](#q13-多-webview-模式下-vue-router-的状态同步问题)
+      - [问题场景](#问题场景)
+      - [解决方案](#解决方案)
+    - [Q14. 离线包场景下 Vue Router 的 base 路径如何配置？](#q14-离线包场景下-vue-router-的-base-路径如何配置)
+      - [问题](#问题)
+      - [解决方案](#解决方案-1)
+      - [自定义协议场景](#自定义协议场景)
+      - [静态资源路径配置（Vite）](#静态资源路径配置vite)
+    - [Q15. Vue Router 懒加载与 WebView 离线包的协同？](#q15-vue-router-懒加载与-webview-离线包的协同)
+      - [离线包打包策略](#离线包打包策略)
+      - [路由懒加载（动态 import）](#路由懒加载动态-import)
+      - [预加载首屏路由](#预加载首屏路由)
+      - [离线包增量更新与懒加载协同](#离线包增量更新与懒加载协同)
+  - [四、状态管理与响应式](#四状态管理与响应式)
+    - [Q16. Pinia 在 Hybrid 中的优势与使用？](#q16-pinia-在-hybrid-中的优势与使用)
+      - [Pinia vs Vuex](#pinia-vs-vuex)
+      - [基础用法](#基础用法)
+    - [Q17. 如何在 Pinia 中持久化状态到本地存储？](#q17-如何在-pinia-中持久化状态到本地存储)
+      - [使用 pinia-plugin-persistedstate](#使用-pinia-plugin-persistedstate)
+      - [手动持久化（更灵活）](#手动持久化更灵活)
+      - [持久化到 IndexedDB（大数据）](#持久化到-indexeddb大数据)
+    - [Q18. Vue3 响应式原理（Proxy）在 Hybrid 中的兼容性？](#q18-vue3-响应式原理proxy在-hybrid-中的兼容性)
+      - [Proxy 浏览器兼容性](#proxy-浏览器兼容性)
+      - [低版本 Android 兼容方案](#低版本-android-兼容方案)
+      - [检测 Proxy 并降级](#检测-proxy-并降级)
+      - [Vue3 响应式原理简述](#vue3-响应式原理简述)
+    - [Q19. 如何在 Hybrid 中管理全局登录态与 Token？](#q19-如何在-hybrid-中管理全局登录态与-token)
+      - [登录流程](#登录流程)
+      - [Pinia 管理登录态](#pinia-管理登录态)
+      - [路由守卫](#路由守卫)
+      - [HTTP 请求携带 Token](#http-请求携带-token)
+      - [Token 失效处理（Native 通知）](#token-失效处理native-通知)
+  - [五、Vue3 性能在 Hybrid 中的优化](#五vue3-性能在-hybrid-中的优化)
+    - [Q20. Vue3 首屏优化在 Hybrid 中的特殊手段？](#q20-vue3-首屏优化在-hybrid-中的特殊手段)
+      - [Hybrid 首屏优化全景](#hybrid-首屏优化全景)
+      - [Suspense + 骨架屏](#suspense--骨架屏)
+      - [组件级懒加载](#组件级懒加载)
+      - [编译优化（Vue3 自动）](#编译优化vue3-自动)
+    - [Q21. 如何用 v-memo / v-once 优化长列表在 WebView 中的渲染？](#q21-如何用-v-memo--v-once-优化长列表在-webview-中的渲染)
+      - [v-once：只渲染一次](#v-once只渲染一次)
+      - [v-memo：条件性缓存渲染](#v-memo条件性缓存渲染)
+      - [v-memo + 虚拟列表](#v-memo--虚拟列表)
+      - [v-memo 注意事项](#v-memo-注意事项)
+    - [Q22. Vue3 异步组件 defineAsyncComponent 与 WebView 加载？](#q22-vue3-异步组件-defineasynccomponent-与-webview-加载)
+      - [基本用法](#基本用法)
+      - [与离线包协同](#与离线包协同)
+      - [路由级 + 组件级懒加载](#路由级--组件级懒加载)
+    - [Q23. 如何避免 Vue3 重渲染导致 WebView 卡顿？](#q23-如何避免-vue3-重渲染导致-webview-卡顿)
+      - [重渲染原因与解决](#重渲染原因与解决)
+      - [markRaw：跳过响应式](#markraw跳过响应式)
+      - [shallowRef / shallowReactive](#shallowref--shallowreactive)
+      - [精确 watch](#精确-watch)
+    - [Q24. Vue3 KeepAlive 页面切换中的使用？](#q24-vue3-keepalive-页面切换中的使用)
+      - [KeepAlive 缓存组件](#keepalive-缓存组件)
+      - [生命周期：onActivated / onDeactivated](#生命周期onactivated--ondeactivated)
+      - [Hybrid 场景：KeepAlive 与 WebView 生命周期](#hybrid-场景keepalive-与-webview-生命周期)
+      - [KeepAlive 缓存策略](#keepalive-缓存策略)
+  - [六、Vue3 生命周期与 WebView 事件](#六vue3-生命周期与-webview-事件)
+    - [Q25. Vue3 生命周期与 WebView 生命周期的对应关系？](#q25-vue3-生命周期与-webview-生命周期的对应关系)
+      - [生命周期对应表](#生命周期对应表)
+      - [Hybrid 中 onMounted 用法](#hybrid-中-onmounted-用法)
+      - [WebView 页面隐藏时的处理](#webview-页面隐藏时的处理)
+    - [Q26. WebView 页面销毁时 Vue3 组件的清理（定时器/监听/订阅）？](#q26-webview-页面销毁时-vue3-组件的清理定时器监听订阅)
+      - [清理清单](#清理清单)
+      - [统一清理模式](#统一清理模式)
+      - [Vue3 自动清理（onScopeDispose）](#vue3-自动清理onscopedispose)
+      - [内存泄漏检测](#内存泄漏检测)
+    - [Q27. 如何监听 WebView 的可见性变化（pagehide / visibilitychange）？](#q27-如何监听-webview-的可见性变化pagehide--visibilitychange)
+      - [事件对比](#事件对比)
+      - [完整封装](#完整封装)
+      - [使用示例](#使用示例)
+      - [Native 配合：主动通知 JS](#native-配合主动通知-js)
+  - [七、TypeScript 与工程化](#七typescript-与工程化)
+    - [Q28. Vue3 + TS 在 Hybrid 中的类型定义实践？](#q28-vue3--ts-在-hybrid-中的类型定义实践)
+      - [Bridge 类型定义](#bridge-类型定义)
+      - [组件 Props 类型](#组件-props-类型)
+      - [Pinia 类型](#pinia-类型)
+      - [环境变量类型](#环境变量类型)
+    - [Q29. Vite + Vue3 + 多入口打包离线包配置？](#q29-vite--vue3--多入口打包离线包配置)
+      - [Vite 配置](#vite-配置-1)
+      - [离线包清单自动生成](#离线包清单自动生成)
+    - [Q30. 如何在 Vue3 中做环境判断（H5 / Hybrid / 小程序）？](#q30-如何在-vue3-中做环境判断h5--hybrid--小程序)
+      - [环境判断工具](#环境判断工具)
+      - [在 Vue3 中使用](#在-vue3-中使用)
+      - [环境相关逻辑封装](#环境相关逻辑封装)
+  - [八、综合实战题](#八综合实战题)
+    - [Q31. 设计一个 Vue3 + Hybrid 的通用支付组件？](#q31-设计一个-vue3--hybrid-的通用支付组件)
+      - [需求](#需求)
+      - [组件实现](#组件实现)
+      - [使用](#使用)
+    - [Q32. 设计一个 Vue3 的 Hybrid 路由守卫 + 登录态校验？](#q32-设计一个-vue3-的-hybrid-路由守卫--登录态校验)
+      - [路由配置](#路由配置)
+      - [路由守卫](#路由守卫-1)
+      - [Pinia 中的静默登录](#pinia-中的静默登录)
+    - [Q33. 设计一个 Vue3 + Bridge 的图片上传组件？](#q33-设计一个-vue3--bridge-的图片上传组件)
+      - [需求](#需求-1)
+      - [组件实现](#组件实现-1)
+      - [图片压缩工具](#图片压缩工具)
+  - [九、高频速答与踩坑总结](#九高频速答与踩坑总结)
+    - [9.1 速答卡片（20 秒一题）](#91-速答卡片20-秒一题)
+    - [9.2 实战踩坑 10 例](#92-实战踩坑-10-例)
+    - [9.3 复习优先级表](#93-复习优先级表)
 
 ***
 
@@ -393,7 +472,7 @@ flowchart TB
     O --> T[第三方库按需]
     O --> P[打包分析]
 
-    V --> V1[import { ref } from 'vue']
+    V --> V1["import { ref } from 'vue'"]
     R --> R1[defineAsyncComponent]
     C --> C1[defineAsyncComponent]
     T --> T1[element-plus 按需 / vant 按需]
@@ -456,6 +535,204 @@ export default createRouter({
 ***
 
 ## 二、JSBridge 与 Vue3 结合
+
+### JSBridge 通信原理（前置基础）
+
+> 在看 Q6 的 `useBridge` 封装之前，先搞懂底层：WebView 里的 JS 到底怎么调用 Native？Native 又怎么把结果送回 JS？
+
+#### 为什么需要 JSBridge
+
+Hybrid 页面运行在 **WebView 沙箱**中：JS 只能操作 DOM 和浏览器标准 API，没有拍照、定位、支付、通讯录、原生路由跳转等系统能力。**JSBridge 就是 JS 运行时与 Native 运行时之间的「消息通道 + 通信协议」**，让 H5 能调用原生能力，也让 Native 能主动向 H5 推送事件（网络变化、定位更新、登录失效等）。
+
+本质上它解决两个方向的通信：
+
+1. **JS → Native**：JS 把「调用哪个能力 + 参数」通过通道发给 Native；
+2. **Native → JS**：Native 执行完后，让 WebView 执行一段 JS，把结果 / 事件推回 H5。
+
+#### 双向通信全景
+
+```mermaid
+flowchart LR
+    subgraph WV["WebView（JS 运行时）"]
+        JS["JS 业务代码<br/>bridge.call('getLocation')"]
+        CB["window.__BridgeCallback__<br/>全局回调入口"]
+    end
+    subgraph NA["Native 运行时"]
+        INJ["注入 API<br/>AndroidBridge / messageHandlers"]
+        CAP["原生能力<br/>定位 / 拍照 / 支付"]
+        EVAL["evaluateJavaScript"]
+    end
+
+    JS -->|"① postMessage(payload)"| INJ
+    INJ -->|"② 分发 action"| CAP
+    CAP -->|"③ 结果 JSON"| EVAL
+    EVAL -->|"④ 执行 window.__BridgeCallback__(result)"| CB
+    CB -->|"⑤ 按 callbackId resolve"| JS
+```
+
+#### JS → Native 的三种实现方式
+
+| 方式 | 原理 | Android 实现 | iOS 实现 | 优点 | 缺点 |
+|-----|------|------------|---------|------|------|
+| **注入 API**（主流） | Native 向 JS 上下文注入原生对象，JS 直接调其方法 | `addJavascriptInterface` → `window.AndroidBridge.invoke()` | `WKScriptMessageHandler` → `window.webkit.messageHandlers.bridge.postMessage()` | 入口规范、参数无长度限制、性能好 | iOS 统一走 `postMessage`，需自行按 action 分发 |
+| **拦截 URL Scheme**（兜底） | JS 触发自定义协议请求，Native 拦截导航事件 | `shouldOverrideUrlLoading` | `decidePolicyForNavigationAction` | 兼容性极好、无注入安全漏洞 | URL 长度受限（约 2KB）、纯异步、延迟高、连续调用易被吞 |
+| **拦截弹窗**（老旧） | 重写 `prompt/alert/console.log`，消息藏在文案里 | `onJsPrompt` | `runJavaScriptTextInputPanel...` | `prompt` 可同步返回值 | Hack 写法、污染弹窗、已基本淘汰 |
+
+> 现代 Hybrid 基本采用「**注入 API 为主，URL Scheme 兜底**」：高版本用注入，低版本或注入失败时降级 Scheme。
+
+**方式一：注入 API（Android）**
+
+```java
+// Android 4.2+：被暴露给 JS 的方法必须加 @JavascriptInterface 注解
+public class JsBridge {
+    private final WebView webView;
+
+    @JavascriptInterface
+    public void invoke(String payload) {
+        // payload: {"action":"getLocation","data":{},"callbackId":"cb_1"}
+        JSONObject msg = new JSONObject(payload);
+        String action = msg.optString("action");
+        String callbackId = msg.optString("callbackId");
+
+        // 执行原生能力（定位/拍照/支付...），完成后切回主线程回调 JS
+        webView.post(() -> {
+            String result = "{\"callbackId\":\"" + callbackId + "\",\"code\":0,\"data\":{\"lat\":31.2}}";
+            webView.evaluateJavascript(
+                "javascript:window.__BridgeCallback__(" + result + ")", null);
+        });
+    }
+}
+
+webView.getSettings().setJavaScriptEnabled(true);
+webView.addJavascriptInterface(new JsBridge(webView), "AndroidBridge");
+```
+
+**方式一：注入 API（iOS WKWebView）**
+
+```swift
+class BridgeHandler: NSObject, WKScriptMessageHandler {
+    weak var webView: WKWebView?
+
+    func userContentController(_ uc: WKUserContentController,
+                               didReceive message: WKScriptMessage) {
+        // JS 端调用：window.webkit.messageHandlers.bridge.postMessage(payload)
+        guard message.name == "bridge",
+              let body = message.body as? String,
+              let data = body.data(using: .utf8),
+              let msg = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return }
+
+        let callbackId = msg["callbackId"] as? String ?? ""
+        // 执行原生能力后回调 JS（result 为响应 JSON 字符串）
+        webView?.evaluateJavaScript("window.__BridgeCallback__(\(result))")
+    }
+}
+
+webView.configuration.userContentController.add(BridgeHandler(), name: "bridge")
+```
+
+**方式二：URL Scheme 拦截（兜底方案）**
+
+```javascript
+// JS 端：用隐藏 iframe 发起自定义协议请求（比直接改 location.href 更可靠）
+function callByScheme(action, data = {}) {
+  const callbackId = `cb_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const url = `jsbridge://${action}?data=${encodeURIComponent(JSON.stringify(data))}&callbackId=${callbackId}`;
+
+  const iframe = document.createElement('iframe');
+  iframe.style.display = 'none';
+  iframe.src = url;                 // Native 拦截到 jsbridge:// 协议
+  document.body.appendChild(iframe);
+  setTimeout(() => iframe.remove(), 100);
+  return callbackId;
+}
+```
+
+```java
+// Android 端拦截导航
+@Override
+public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+    Uri uri = request.getUrl();
+    if ("jsbridge".equals(uri.getScheme())) {
+        String action = uri.getHost();                          // 如 camera/open
+        String data = uri.getQueryParameter("data");
+        String callbackId = uri.getQueryParameter("callbackId");
+        // 处理原生能力后，evaluateJavascript 回调 JS
+        return true;   // 拦截，不真正加载该 URL
+    }
+    return super.shouldOverrideUrlLoading(view, request);
+}
+```
+
+#### Native → JS 的实现方式
+
+Native 无法直接调用 JS 变量，只能**让 WebView 执行一段 JS 代码字符串**，约定调用 H5 提前挂在 `window` 上的全局入口：
+
+| 平台 | API | 特点 |
+|-----|-----|------|
+| Android < 4.4 | `webView.loadUrl("javascript:fn()")` | 无返回值、有刷新开销、已废弃 |
+| Android ≥ 4.4 | `webView.evaluateJavascript("javascript:fn()", callback)` | 高效、可获取 JS 返回值 |
+| iOS WKWebView | `webView.evaluateJavaScript("fn()")` | 高效、可获取返回值 |
+| iOS UIWebView | `stringByEvaluatingJavaScript(from:)` | 老旧、已淘汰 |
+
+关键约定：**Native 不直接调用业务函数**，而是统一调用 `window.__BridgeCallback__`（请求响应）和 `window.__BridgeEvent__`（事件推送）两个全局入口，由 JS 侧内部分发——Native 不需要感知 H5 的内部结构。
+
+#### 回调配对机制：callbackId + Promise
+
+一次 Bridge 调用是异步的，且可能同时有几十个调用在飞行中，因此需要 **callbackId 配对**：
+
+1. JS 发起调用时生成唯一 `callbackId`，把 `resolve / reject` 存入回调表；
+2. payload 中带上 `callbackId` 发给 Native；
+3. Native 处理完把 `callbackId` 原样带回，调用全局回调入口；
+4. JS 侧按 id 找到对应 Promise，`resolve` 结果或 `reject` 错误，并做超时清理。
+
+这正是 Q6 中 `HybridBridge.call()` 的核心设计：
+
+```mermaid
+sequenceDiagram
+    participant JS as H5 (Vue3)
+    participant CH as WebView 通道
+    participant NA as Native
+
+    JS->>CH: bridge.call("getLocation")
+    Note over JS: 生成 callbackId=cb_1，存入 callbacks Map
+    CH->>NA: AndroidBridge.invoke(payload JSON)
+    NA->>NA: 调用系统定位能力
+    NA->>CH: evaluateJavaScript
+    CH->>JS: window.__BridgeCallback__(result)
+    Note over JS: 按 callbackId 匹配，resolve(data) 或 reject
+```
+
+#### 消息协议约定
+
+三端（JS / Android / iOS）按统一的 JSON 信封（envelope）解析：
+
+```jsonc
+// 请求：JS → Native
+{ "action": "getLocation", "data": { "type": "gcj02" }, "callbackId": "cb_1725000001_1" }
+
+// 响应：Native → JS（请求回调）
+{ "callbackId": "cb_1725000001_1", "code": 0, "data": { "lat": 31.23, "lng": 121.47 }, "message": "" }
+
+// 事件：Native → JS（主动推送，无 callbackId，带 event 名）
+{ "event": "networkChange", "data": { "online": false } }
+```
+
+- `action`：Native 注册的能力名（必须在白名单内）；
+- `code`：`0` 表示成功，非 0 为业务错误，配合 `message` 描述；
+- 事件推送与请求回调走两个全局入口，事件由 Q7 / Q10 的 `useBridgeEvent` 接收。
+
+#### 安全设计
+
+| 风险 | 防御措施 |
+|-----|---------|
+| 恶意页面调用 Bridge | Native 校验当前页面**域名白名单**，非可信 host 不注入对象、不响应 Scheme |
+| 越权调用敏感能力 | Native 维护 **action 白名单**；支付、通讯录等需额外鉴权 + 用户授权 |
+| 参数注入 | Native 端对 payload 做类型、长度、字段校验 |
+| Android 4.2 以下注入漏洞 | 低版本 `addJavascriptInterface` 可被 JS 反射调用系统类，应**降级 URL Scheme**；4.2+ 暴露方法必须加 `@JavascriptInterface` |
+| 回调劫持 / 数据泄露 | 回调入口校验 `callbackId` 合法性；token 等敏感数据不走 Bridge 明文传递 |
+
+***
 
 ### Q6. 如何封装一个 Vue3 可用的 JSBridge（useBridge Hook）？
 
