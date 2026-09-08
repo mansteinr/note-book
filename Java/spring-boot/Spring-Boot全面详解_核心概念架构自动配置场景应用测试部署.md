@@ -425,10 +425,10 @@ flowchart TB
         L1[实例化<br/>Instantiation] --> L2[属性注入<br/>Populate Properties]
         L2 --> L3[BeanNameAware<br/>BeanFactoryAware]
         L3 --> L4[BeanPostProcessor<br/>前置处理]
-        L4 --> L5[初始化<br/>@PostConstruct/InitializingBean/init-method]
+        L4 --> L5["初始化<br/>@PostConstruct/InitializingBean/init-method"]
         L5 --> L6[BeanPostProcessor<br/>后置处理<br/>AOP代理在此生成]
         L6 --> L7[Bean就绪<br/>可被使用]
-        L7 --> L8[销毁<br/>@PreDestroy/DisposableBean/destroy-method]
+        L7 --> L8["销毁<br/>@PreDestroy/DisposableBean/destroy-method"]
     end
     
     style L1 fill:#1677ff,color:#fff
