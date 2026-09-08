@@ -222,10 +222,10 @@ flowchart TB
     S[实例化 Bean] --> P[属性赋值 Populate]
     P --> A1[Aware 回调<br/>BeanNameAware/BeanFactoryAware/ApplicationContextAware]
     A1 --> BPP1[BeanPostProcessor.postProcessBeforeInitialization]
-    BPP1 --> INIT[初始化<br/>@PostConstruct → InitializingBean.afterPropertiesSet → init-method]
+    BPP1 --> INIT["初始化<br/>@PostConstruct → InitializingBean.afterPropertiesSet → init-method"]
     INIT --> BPP2[BeanPostProcessor.postProcessAfterInitialization]
     BPP2 --> U[使用 Bean]
-    U --> D[销毁<br/>@PreDestroy → DisposableBean.destroy → destroy-method]
+    U --> D["销毁<br/>@PreDestroy → DisposableBean.destroy → destroy-method"]
 ```
 
 #### 详细阶段
@@ -704,14 +704,14 @@ Spring Boot 启动时通过 `@EnableAutoConfiguration` 加载 `META-INF/spring.f
 
 ```mermaid
 flowchart TB
-    S[启动 @SpringBootApplication] --> EA[@EnableAutoConfiguration]
+    S["启动 @SpringBootApplication"] --> EA["@EnableAutoConfiguration"]
     EA --> AI[AutoConfigurationImportSelector]
     AI --> SF[加载 spring.factories / .imports]
     SF --> Filter{条件过滤}
-    Filter -->|@ConditionalOnClass| C1[类是否存在]
-    Filter -->|@ConditionalOnBean| C2[Bean 是否存在]
-    Filter -->|@ConditionalOnProperty| C3[配置是否满足]
-    Filter -->|@ConditionalOnMissingBean| C4[Bean 是否缺失]
+    Filter -->|"@ConditionalOnClass"| C1[类是否存在]
+    Filter -->|"@ConditionalOnBean"| C2[Bean 是否存在]
+    Filter -->|"@ConditionalOnProperty"| C3[配置是否满足]
+    Filter -->|"@ConditionalOnMissingBean"| C4[Bean 是否缺失]
     C1 & C2 & C3 & C4 --> PASS[条件满足]
     PASS --> REG[注册 BeanDefinition]
     REG --> Done[自动配置完成]
